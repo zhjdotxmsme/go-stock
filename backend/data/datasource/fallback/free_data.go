@@ -141,10 +141,36 @@ func (p *MootdxKLineProvider) GetKLine(ctx context.Context, code string, period 
 	return ConvertKLineData(code, period, *kLines), nil
 }
 
+// TonghuashunFundamentalProvider provides EPS一致预期 from 同花顺 (10jqka).
+type TonghuashunFundamentalProvider struct{}
+
+func (p *TonghuashunFundamentalProvider) Name() string { return "10jqka" }
+func (p *TonghuashunFundamentalProvider) Priority() int { return 15 }
+func (p *TonghuashunFundamentalProvider) Available(ctx context.Context) bool { return true }
+
+func (p *TonghuashunFundamentalProvider) GetFundamental(ctx context.Context, code string) (*datasource.FundamentalData, error) {
+	logger.SugaredLogger.Infof("datasource: fundamental %s from 10jqka (not yet implemented)", code)
+	return nil, fmt.Errorf("10jqka fundamental: not yet implemented for %s", code)
+}
+
+// BaiduSectorProvider provides concept/sector data from 百度股市通.
+type BaiduSectorProvider struct{}
+
+func (p *BaiduSectorProvider) Name() string { return "baidu" }
+func (p *BaiduSectorProvider) Priority() int { return 20 }
+func (p *BaiduSectorProvider) Available(ctx context.Context) bool { return true }
+
+func (p *BaiduSectorProvider) GetSectorData(ctx context.Context, code string) (*datasource.SectorData, error) {
+	logger.SugaredLogger.Infof("datasource: sector %s from baidu (not yet implemented)", code)
+	return nil, fmt.Errorf("baidu sector: not yet implemented for %s", code)
+}
+
 func RegisterFreeDataSources(router *datasource.Router) {
 	router.RegisterQuoteProvider(&MootdxQuoteProvider{})
 	router.RegisterQuoteProvider(&TencentQuoteProvider{})
 	router.RegisterKLineProvider(&MootdxKLineProvider{})
 	router.RegisterKLineProvider(&TencentKLineProvider{})
-	logger.SugaredLogger.Info("free data sources registered: mootdx, tencent finance")
+	router.RegisterFundamentalProvider(&TonghuashunFundamentalProvider{})
+	router.RegisterSectorProvider(&BaiduSectorProvider{})
+	logger.SugaredLogger.Info("free data sources registered: mootdx, tencent, 10jqka, baidu")
 }
