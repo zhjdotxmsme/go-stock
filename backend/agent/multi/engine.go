@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"go-stock/backend/data"
+	"go-stock/backend/db"
 	"go-stock/backend/logger"
+	"go-stock/backend/models"
 	"strings"
 	"sync"
 	"time"
@@ -114,7 +116,10 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 			"label": "分析完成",
 		})
 
-		// Phase 5: Emit final report
+		// Phase 5: Save to SQLite
+		saveMultiAgentResult(ac)
+
+		// Phase 6: Emit final report
 		emitFinalReport(ch, finalReport)
 	}()
 
@@ -299,4 +304,46 @@ func (e *MultiAgentEngine) runSimpleQuery(ctx context.Context, ac *AgentContext,
 		InvestmentThesis: "",
 	}
 	emitFinalReport(ch, report)
+}
+
+// saveMultiAgentResult persists the multi-agent analysis results to SQLite.
+func saveMultiAgentResult(ac *AgentContext) {
+	if ac == nil {
+		return
+	}
+
+	// Build a combined result string from all analyst reports
+	var combined strings.Builder
+	combined.WriteString(fmt.Sprintf("## 多智能体分析报告 - %s(%s)\n\n", ac.StockName, ac.StockCode))
+	combined.WriteString(fmt.Sprintf("提问: %s\n\n", ac.UserQuery))
+
+	for _, r := range ac.Reports {
+		if r.Error != "" {
+			combined.WriteString(fmt.Sprintf("### %s - 数据不可用\n\n", r.Role))
+			continue
+		}
+		combined.WriteString(fmt.Sprintf("### %s (评级: %s)\n%s\n\n", r.Role, r.Rating, r.Content))
+	}
+
+	if ac.Debate != nil {
+		combined.WriteString("## 多空辩论\n\n")
+		for _, round := range ac.Debate.Rounds {
+			combined.WriteString(fmt.Sprintf("第%d轮 看多: %s\n", round.RoundNum, round.BullArgument))
+			combined.WriteString(fmt.Sprintf("第%d轮 看空: %s\n", round.RoundNum, round.BearArgument))
+		}
+	}
+
+	if ac.FinalReport != nil {
+		combined.WriteString(fmt.Sprintf("## 最终评级: %s\n%s\n", ac.FinalReport.OverallRating, ac.FinalReport.Conclusion))
+	}
+
+	db.Dao.Create(&models.AIResponseResult{
+		StockCode: ac.StockCode,
+		StockName: ac.StockName,
+		ModelName: "multi-agent-7",
+		Content:   combined.String(),
+		Question:  ac.UserQuery,
+	})
+
+	logger.SugaredLogger.Infof("saved multi-agent result for %s(%s) to SQLite", ac.StockName, ac.StockCode)
 }
