@@ -3,7 +3,9 @@ package data
 import (
 	"context"
 	"fmt"
+	"go-stock/backend/db"
 	"go-stock/backend/logger"
+	"go-stock/backend/models"
 	"math"
 	"sort"
 )
@@ -36,7 +38,28 @@ type IndicatorSummary struct {
 
 // GetTechnicalIndicators computes technical indicators from K-line data and returns them.
 // Uses the existing datasource to fetch K-line data, then computes indicators locally.
+// Also checks whether the stock-sdk MCP server is running (status == "available"/"running") as a
+// readiness signal for future integration with MCP-based indicator calls.
 func GetTechnicalIndicators(ctx context.Context, code string, period string, count int) (*IndicatorResult, error) {
+	logger.SugaredLogger.Infof("indicators requested for %s period=%s count=%d", code, period, count)
+
+	// Check if stock-sdk MCP server is running
+	var mcp models.MCPServer
+	err := db.Dao.Where("name = ? AND enable = ?", "stock-sdk", true).First(&mcp).Error
+	if err == nil && mcp.ID > 0 {
+		if mcp.Status == "available" || mcp.Status == "running" {
+			logger.SugaredLogger.Infof("stock-sdk MCP server is %s, ready for indicator calls", mcp.Status)
+		} else {
+			logger.SugaredLogger.Debugf("stock-sdk MCP server status: %s (not running)", mcp.Status)
+		}
+	}
+
+	// Compute indicators from K-line data (existing local computation path)
+	return computeIndicatorsFromKLine(code, period, count)
+}
+
+// computeIndicatorsFromKLine fetches K-line data and computes technical indicators locally.
+func computeIndicatorsFromKLine(code string, period string, count int) (*IndicatorResult, error) {
 	// Fetch K-line data from the datasource layer
 	stockApi := NewStockDataApi()
 	klineData := stockApi.GetKLineData(code, period, int64(count))
