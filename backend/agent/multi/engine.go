@@ -2,8 +2,12 @@ package multi
 
 import (
 	"context"
+	"fmt"
+	"go-stock/backend/data"
 	"go-stock/backend/logger"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/schema"
@@ -38,6 +42,13 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 			UserQuery:  userQuery,
 			AIConfigID: e.aiConfigID,
 			StreamCh:   ch,
+		}
+
+		// Fast path: simple queries skip the full multi-agent pipeline
+		if isSimpleQuery(userQuery) {
+			logger.SugaredLogger.Infof("simple query detected, using fast path: %q", userQuery)
+			e.runSimpleQuery(ctx, ac, ch)
+			return
 		}
 
 		// Phase 1: Orchestrator
@@ -198,4 +209,79 @@ func emitFinalReport(ch chan<- *schema.Message, report *FinalReport) {
 		Role:    schema.Assistant,
 		Content: string(raw),
 	}
+}
+
+// isSimpleQuery detects straightforward queries that don't need the full multi-agent pipeline.
+// These are queries about price, code, name, or simple factual lookups.
+func isSimpleQuery(q string) bool {
+	lower := strings.ToLower(strings.TrimSpace(q))
+	if lower == "" {
+		return false
+	}
+
+	simplePatterns := []string{
+		"价格", "股价", "行情", "最新", "现价", "今开", "昨收",
+		"最高", "最低", "成交量", "成交额", "涨幅", "跌幅",
+		"代码", "简称", "全称", "名字",
+		"多少", "是什么", "多少钱",
+		"price", "quote", "current",
+	}
+
+	for _, p := range simplePatterns {
+		if strings.Contains(lower, p) {
+			// Still skip if the query has analysis keywords
+			analysisPatterns := []string{
+				"分析", "评价", "总结", "趋势", "建议",
+				"基本面", "技术面", "情绪",
+				"分析一下", "全面分析", "深度",
+				"analyze", "analysis",
+			}
+			for _, ap := range analysisPatterns {
+				if strings.Contains(lower, ap) {
+					return false
+				}
+			}
+			return true
+		}
+	}
+
+	// Short queries (under 10 chars) that aren't asking for analysis
+	if len([]rune(lower)) < 10 && !strings.Contains(lower, "分析") {
+		return true
+	}
+
+	return false
+}
+
+// runSimpleQuery handles simple queries with a quick direct response.
+func (e *MultiAgentEngine) runSimpleQuery(ctx context.Context, ac *AgentContext, ch chan<- *schema.Message) {
+	emitEvent(ch, "agent:phase", map[string]string{
+		"phase": "quick", "status": "start",
+		"label": "快速查询中...",
+	})
+
+	// Try to get real-time price
+	price, priceTime := data.GetRealTimeStockPriceInfo(ctx, ac.StockCode)
+
+	answer := fmt.Sprintf("**%s(%s)** 快速查询结果：\n\n", ac.StockName, ac.StockCode)
+	if price != "" {
+		answer += fmt.Sprintf("- 当前价格：**%s**\n", price)
+		if priceTime != "" {
+			answer += fmt.Sprintf("- 更新时间：%s\n", priceTime)
+		}
+	}
+	answer += fmt.Sprintf("- 查询时间：%s\n", time.Now().Format("2006-01-02 15:04:05"))
+	answer += "\n> 💡 如需深度分析，请输入包含「分析」关键词的问题。"
+
+	emitEvent(ch, "agent:phase", map[string]string{
+		"phase": "quick", "status": "end",
+		"label": "查询完成",
+	})
+
+	report := &FinalReport{
+		OverallRating:    "hold",
+		Conclusion:       answer,
+		InvestmentThesis: "",
+	}
+	emitFinalReport(ch, report)
 }

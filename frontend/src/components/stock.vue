@@ -75,6 +75,7 @@ import {useRoute, useRouter} from 'vue-router'
 import MoneyTrend from "./moneyTrend.vue";
 import StockSparkLine from "./stockSparkLine.vue";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
+import MultiAgentResult from "./MultiAgentResult.vue";
 
 const route = useRoute()
 const router = useRouter()
@@ -169,6 +170,19 @@ const data = reactive({
 })
 const feishiInterval = ref(null)
 const aiAnalysisTimeout = ref(null)
+
+// Multi-agent streaming state
+const multiAgentState = reactive({
+  active: false,
+  currentPhase: '',
+  phaseLabel: '',
+  phases: {},
+  reports: {},
+  ratings: {},
+  debates: [],
+  finalReport: null,
+  done: false,
+})
 
 
 const currentGroupId = ref(0)
@@ -396,12 +410,15 @@ onBeforeMount(() => {
 
   EventsOn("newChatStream", async (msg) => {
     if (msg === "DONE") {
-      // 清除超时定时器
       if (aiAnalysisTimeout.value) {
         clearTimeout(aiAnalysisTimeout.value)
         aiAnalysisTimeout.value = null
       }
-      SaveAIResponseResult(data.code, data.name, data.airesult, data.chatId, data.question, data.aiConfigId)
+      if (multiAgentState.active) {
+        multiAgentState.done = true
+      } else {
+        SaveAIResponseResult(data.code, data.name, data.airesult, data.chatId, data.question, data.aiConfigId)
+      }
       data.loading = false
       data.analysisStatus = "分析完成"
       message.destroyAll()
@@ -413,30 +430,83 @@ onBeforeMount(() => {
       setTimeout(() => {
         data.analysisStatus = ""
       }, 3000)
-    } else {
-      if (msg.chatId) {
-        data.chatId = msg.chatId
-      }
-      if (msg.question) {
-        data.question = msg.question
-      }
-      if (msg.content || msg.reasoning_content || msg.extraContent) {
-        if (!data.airesult) {
-          data.analysisStatus = "AI正在分析中..."
-        }
-        data.loading = false
-      }
-      if (msg.content) {
-        data.airesult = data.airesult + msg.content
-      }
-      if (msg.reasoning_content) {
-        data.airesult = data.airesult + msg.reasoning_content
-      }
-      if (msg.extraContent) {
-        data.airesult = data.airesult + msg.extraContent
-      }
-      scrollToAiResultBottom()
+      return
     }
+
+    // Try parsing as structured multi-agent event
+    try {
+      const rawContent = msg.Content || msg.content || ''
+      let parsed = null
+      if (typeof rawContent === 'string' && rawContent.startsWith('{')) {
+        parsed = JSON.parse(rawContent)
+      }
+
+      if (parsed && parsed.type === 'agent:phase') {
+        multiAgentState.active = true
+        multiAgentState.currentPhase = parsed.phase
+        multiAgentState.phaseLabel = parsed.label
+        if (parsed.status === 'end') {
+          multiAgentState.phases[parsed.phase] = true
+        }
+        data.analysisStatus = parsed.label || '分析中...'
+        return
+      }
+
+      if (parsed && parsed.type === 'agent:token') {
+        multiAgentState.active = true
+        const agent = parsed.agent
+        if (!multiAgentState.reports[agent]) {
+          multiAgentState.reports[agent] = ''
+        }
+        multiAgentState.reports[agent] += parsed.token
+        data.loading = false
+        data.analysisStatus = `${agentTitle(agent)}分析师分析中...`
+        return
+      }
+
+      if (parsed && parsed.type === 'agent:debate') {
+        multiAgentState.active = true
+        multiAgentState.debates.push({
+          round: parsed.round,
+          side: parsed.side,
+          argument: parsed.argument,
+        })
+        return
+      }
+
+      if (parsed && parsed.type === 'agent:final') {
+        multiAgentState.active = true
+        multiAgentState.finalReport = parsed.report
+        data.airesult = parsed.report?.conclusion || ''
+        return
+      }
+    } catch (e) {
+      // Not a multi-agent event, fall through to legacy handling
+    }
+
+    // Legacy flat-message handling
+    if (msg.chatId) {
+      data.chatId = msg.chatId
+    }
+    if (msg.question) {
+      data.question = msg.question
+    }
+    if (msg.content || msg.reasoning_content || msg.extraContent) {
+      if (!data.airesult) {
+        data.analysisStatus = "AI正在分析中..."
+      }
+      data.loading = false
+    }
+    if (msg.content) {
+      data.airesult = data.airesult + msg.content
+    }
+    if (msg.reasoning_content) {
+      data.airesult = data.airesult + msg.reasoning_content
+    }
+    if (msg.extraContent) {
+      data.airesult = data.airesult + msg.extraContent
+    }
+    scrollToAiResultBottom()
   })
 
   EventsOn("changeTab", async (msg) => {
@@ -2118,6 +2188,11 @@ async function copyToClipboard() {
   }
 }
 
+function agentTitle(role) {
+  const map = { fundamental: '基本面', technical: '技术面', sentiment: '情绪面', news: '新闻面', synthesis: '综合' }
+  return map[role] || role
+}
+
 function scrollToAiResultBottom() {
   nextTick(() => {
     requestAnimationFrame(() => {
@@ -2805,18 +2880,25 @@ watch(modalShow6, (newVal) => {
 
   <n-modal transform-origin="center" v-model:show="modalShow4" preset="card" style="width: 800px;max-width: calc(100vw - 32px);"
            :title="'['+data.name+']AI分析'">
-    <n-spin size="small" :show="data.loading && !data.airesult">
-      <MdEditor v-if="enableEditor" :toolbars="toolbars" ref="mdEditorRef" style="height: 440px;max-height: 60vh;text-align: left"
-                :modelValue="data.airesult" :theme="theme">
-        <template #defToolbars>
-          <ExportPDF :file-name="data.name+'['+data.code+']AI分析报告'" style="text-align: left"
-                     :modelValue="data.airesult" @onProgress="handleProgress"/>
-        </template>
-      </MdEditor>
-      <div v-if="!enableEditor" ref="aiResultScrollRef" style="height: 440px;max-height: 60vh;text-align: left;overflow-y: auto;">
-        <MdPreview ref="mdPreviewRef" :modelValue="data.airesult" :theme="theme"/>
-      </div>
-    </n-spin>
+    <!-- Multi-agent structured view -->
+    <div v-if="multiAgentState.active">
+      <MultiAgentResult :state="multiAgentState" />
+    </div>
+    <!-- Legacy flat markdown view -->
+    <div v-else>
+      <n-spin size="small" :show="data.loading && !data.airesult">
+        <MdEditor v-if="enableEditor" :toolbars="toolbars" ref="mdEditorRef" style="height: 440px;max-height: 60vh;text-align: left"
+                  :modelValue="data.airesult" :theme="theme">
+          <template #defToolbars>
+            <ExportPDF :file-name="data.name+'['+data.code+']AI分析报告'" style="text-align: left"
+                       :modelValue="data.airesult" @onProgress="handleProgress"/>
+          </template>
+        </MdEditor>
+        <div v-if="!enableEditor" ref="aiResultScrollRef" style="height: 440px;max-height: 60vh;text-align: left;overflow-y: auto;">
+          <MdPreview ref="mdPreviewRef" :modelValue="data.airesult" :theme="theme"/>
+        </div>
+      </n-spin>
+    </div>
     <template #footer>
       <n-flex justify="space-between" ref="tipsRef">
         <n-text type="info" v-if="data.time">
