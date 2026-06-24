@@ -111,9 +111,9 @@ func parseAccessSecret(apiKey string) (ak, sk string) {
 func ptrFloat32(v float32) *float32 { return &v }
 func ptrBool(v bool) *bool          { return &v }
 
-// createChatModel 按 Eino 生态组件路由（参见 https://www.cloudwego.io/zh/docs/eino/ecosystem_integration/chat_model/ ）
+// CreateChatModel 按 Eino 生态组件路由（参见 https://www.cloudwego.io/zh/docs/eino/ecosystem_integration/chat_model/ ）
 // 未命中专用实现时回退到 OpenAI 兼容 ChatModel（硅基流动、LM Studio、Azure OpenAI 等）。
-func createChatModel(ctx context.Context, aiConfig data.AIConfig) (model.ToolCallingChatModel, error) {
+func CreateChatModel(ctx context.Context, aiConfig data.AIConfig) (model.ToolCallingChatModel, error) {
 	baseURL := normalizeChatModelBaseURL(aiConfig.BaseUrl)
 	baseLower := strings.ToLower(baseURL)
 	temperature := float32(aiConfig.Temperature)

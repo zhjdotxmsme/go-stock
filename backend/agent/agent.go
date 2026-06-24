@@ -96,7 +96,7 @@ func classifyComplexity(question string) AgentMode {
 
 func GetStockAiAgent(ctx *context.Context, aiConfig data.AIConfig, question string, agentMode string) *AgentInstance {
 	logger.SugaredLogger.Infof("GetStockAiAgent aiConfig: %v", aiConfig)
-	toolableChatModel, err := createChatModel(*ctx, aiConfig)
+	toolableChatModel, err := CreateChatModel(*ctx, aiConfig)
 	if err != nil {
 		logger.SugaredLogger.Error(err.Error())
 		return nil
