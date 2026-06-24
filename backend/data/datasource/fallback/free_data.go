@@ -3,6 +3,7 @@ package fallback
 import (
 	"context"
 	"fmt"
+	"go-stock/backend/data"
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/logger"
 	"io"
@@ -94,7 +95,7 @@ func (p *TencentKLineProvider) GetKLine(ctx context.Context, code string, period
 	}, nil
 }
 
-// MootdxQuoteProvider provides real-time quotes from mootdx (TCP 7709).
+// MootdxQuoteProvider provides real-time quotes via existing TDX API (free, unlimited).
 type MootdxQuoteProvider struct{}
 
 func (p *MootdxQuoteProvider) Name() string { return "mootdx" }
@@ -102,12 +103,48 @@ func (p *MootdxQuoteProvider) Priority() int { return 5 }
 func (p *MootdxQuoteProvider) Available(ctx context.Context) bool { return true }
 
 func (p *MootdxQuoteProvider) GetQuote(ctx context.Context, code string) (*datasource.QuoteData, error) {
-	return nil, fmt.Errorf("mootdx quote: not yet implemented for %s", code)
+	// Use existing StockDataApi for real-time price info
+	price, priceTime := data.GetRealTimeStockPriceInfo(ctx, code)
+	if price == "" {
+		return nil, fmt.Errorf("mootdx quote: empty price for %s", code)
+	}
+	priceVal, _ := strconv.ParseFloat(strings.TrimSpace(price), 64)
+	var t time.Time
+	if priceTime != "" {
+		t, _ = time.Parse("2006-01-02 15:04:05", strings.TrimSpace(priceTime))
+	}
+	if t.IsZero() {
+		t = time.Now()
+	}
+	logger.SugaredLogger.Infof("datasource: quote %s from mootdx: %.2f", code, priceVal)
+	return &datasource.QuoteData{Code: code, Price: priceVal, Time: t}, nil
+}
+
+// MootdxKLineProvider provides K-line data via existing TDX API (free, unlimited).
+type MootdxKLineProvider struct{}
+
+func (p *MootdxKLineProvider) Name() string { return "mootdx_kline" }
+func (p *MootdxKLineProvider) Priority() int { return 5 }
+func (p *MootdxKLineProvider) Available(ctx context.Context) bool { return true }
+
+func (p *MootdxKLineProvider) GetKLine(ctx context.Context, code string, period string, count int) (*datasource.KLineData, error) {
+	// Reuse existing TdxKLineApi (which uses gotdx under the hood)
+	tdx := data.NewTdxKLineApi()
+	if tdx == nil {
+		return nil, fmt.Errorf("mootdx kline api not available")
+	}
+	kLines := tdx.GetKLineData(code, period, count)
+	if kLines == nil || len(*kLines) == 0 {
+		return nil, fmt.Errorf("mootdx kline: empty for %s", code)
+	}
+	logger.SugaredLogger.Infof("datasource: kline %s from mootdx (%d bars)", code, len(*kLines))
+	return ConvertKLineData(code, period, *kLines), nil
 }
 
 func RegisterFreeDataSources(router *datasource.Router) {
 	router.RegisterQuoteProvider(&MootdxQuoteProvider{})
 	router.RegisterQuoteProvider(&TencentQuoteProvider{})
+	router.RegisterKLineProvider(&MootdxKLineProvider{})
 	router.RegisterKLineProvider(&TencentKLineProvider{})
 	logger.SugaredLogger.Info("free data sources registered: mootdx, tencent finance")
 }

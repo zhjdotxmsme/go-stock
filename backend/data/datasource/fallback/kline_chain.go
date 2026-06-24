@@ -27,7 +27,7 @@ func (p *TDXKLineProvider) GetKLine(ctx context.Context, code string, period str
 		return nil, fmt.Errorf("tdx kline: empty result for %s", code)
 	}
 	logger.SugaredLogger.Infof("datasource: kline %s from tdx (%d bars)", code, len(*kLines))
-	return convertKLineData(code, period, *kLines), nil
+	return ConvertKLineData(code, period, *kLines), nil
 }
 
 // EastMoneyKLineProvider wraps EastMoney K-line data source (fallback).
@@ -53,7 +53,7 @@ func (p *EastMoneyKLineProvider) GetKLine(ctx context.Context, code string, peri
 		return nil, fmt.Errorf("eastmoney kline: empty result for %s", code)
 	}
 	logger.SugaredLogger.Infof("datasource: kline %s from eastmoney (%d bars)", code, len(*kLines))
-	return convertKLineData(code, period, *kLines), nil
+	return ConvertKLineData(code, period, *kLines), nil
 }
 
 // RegisterKLineChain registers all K-line providers with the router.
@@ -63,7 +63,7 @@ func RegisterKLineChain(router *datasource.Router) {
 }
 
 // convertKLineData converts legacy data.KLineData (string fields) to datasource.KLineData (float64 fields).
-func convertKLineData(code, period string, src []data.KLineData) *datasource.KLineData {
+func ConvertKLineData(code, period string, src []data.KLineData) *datasource.KLineData {
 	dst := &datasource.KLineData{
 		Code:   code,
 		Period: period,
