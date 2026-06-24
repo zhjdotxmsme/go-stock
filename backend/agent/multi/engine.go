@@ -25,7 +25,7 @@ func NewMultiAgentEngine(aiConfigID int) *MultiAgentEngine {
 
 // Run executes the full multi-agent analysis pipeline:
 //   1. Orchestrator: inject stock context
-//   2. 4 parallel analysts (fundamental, technical, sentiment, news)
+//   2. 7 parallel analysts (fundamental, technical, sentiment, news, policy, hotmoney, lockup)
 //   3. Bull/Bear researcher debate (2 rounds by default)
 //   4. Synthesis into final report
 // Returns a channel of streaming *schema.Message for the frontend.
@@ -128,9 +128,9 @@ func (e *MultiAgentEngine) runParallelAnalysts(ctx context.Context, ac *AgentCon
 		err    error
 	}
 
-	resultCh := make(chan result, 4)
+	resultCh := make(chan result, 7)
 	var wg sync.WaitGroup
-	wg.Add(4)
+	wg.Add(7)
 
 	go func() {
 		defer wg.Done()
@@ -150,6 +150,21 @@ func (e *MultiAgentEngine) runParallelAnalysts(ctx context.Context, ac *AgentCon
 	go func() {
 		defer wg.Done()
 		r, err := RunNewsAnalyst(ctx, ac)
+		resultCh <- result{r, err}
+	}()
+	go func() {
+		defer wg.Done()
+		r, err := RunPolicyAnalyst(ctx, ac)
+		resultCh <- result{r, err}
+	}()
+	go func() {
+		defer wg.Done()
+		r, err := RunHotMoneyAnalyst(ctx, ac)
+		resultCh <- result{r, err}
+	}()
+	go func() {
+		defer wg.Done()
+		r, err := RunLockupAnalyst(ctx, ac)
 		resultCh <- result{r, err}
 	}()
 
