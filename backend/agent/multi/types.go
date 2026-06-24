@@ -38,6 +38,30 @@ type FinalReport struct {
 	Conclusion         string
 }
 
+// PolicyReport is the output of the policy analyst
+type PolicyReport struct {
+	PolicyEvents   []string // recent policy events
+	IndustryImpact string   // impact on the industry
+	RegulatoryRisk []string // regulatory risks
+	Summary        string
+}
+
+// HotMoneyReport is the output of the hot money tracker
+type HotMoneyReport struct {
+	DragonTiger  []string // dragon tiger list data
+	CapitalFlow  string   // capital flow summary
+	MajorOrders  []string // major order流向
+	Summary      string
+}
+
+// LockupReport is the output of the lockup watcher
+type LockupReport struct {
+	UnlockEvents   []string // upcoming unlock events
+	ReductionPlans []string // major shareholder reduction plans
+	PledgeRatio    string   // pledge ratio
+	Summary        string
+}
+
 // AgentContext carries shared state through the Graph.
 // context.Context is NOT stored here — it is passed as the first parameter to each node function.
 type AgentContext struct {
@@ -51,5 +75,5 @@ type AgentContext struct {
 	FinalReport *FinalReport
 	// StreamCh is an optional channel for streaming token-level output to the frontend.
 	// When set, each node pushes streaming events as it processes.
-	StreamCh chan<- *schema.Message
+	StreamCh chan *schema.Message
 }
