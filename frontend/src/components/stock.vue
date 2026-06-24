@@ -477,7 +477,8 @@ onBeforeMount(() => {
       if (parsed && parsed.type === 'agent:final') {
         multiAgentState.active = true
         multiAgentState.finalReport = parsed.report
-        data.airesult = parsed.report?.conclusion || ''
+        // Build full markdown report for export
+        data.airesult = buildFullReport(multiAgentState)
         return
       }
     } catch (e) {
@@ -2191,6 +2192,49 @@ async function copyToClipboard() {
 function agentTitle(role) {
   const map = { fundamental: '基本面', technical: '技术面', sentiment: '情绪面', news: '新闻面', synthesis: '综合' }
   return map[role] || role
+}
+
+// buildFullReport constructs a complete markdown report from multi-agent state for export.
+function buildFullReport(state) {
+  let md = `# AI 多维度分析报告\n\n`
+  md += `> 生成时间：${new Date().toLocaleString()}\n\n`
+
+  // Analyst reports
+  const roles = ['fundamental', 'technical', 'sentiment', 'news']
+  const roleLabels = { fundamental: '基本面分析', technical: '技术面分析', sentiment: '情绪面分析', news: '新闻面分析' }
+
+  for (const role of roles) {
+    const content = state.reports[role]
+    if (content) {
+      md += `## 📊 ${roleLabels[role]}\n\n${content}\n\n`
+    }
+  }
+
+  // Debate
+  if (state.debates && state.debates.length > 0) {
+    md += `## ⚖️ 多空辩论\n\n`
+    for (const d of state.debates) {
+      const sideLabel = d.side === 'bull' ? '看多方' : '看空方'
+      md += `### ${sideLabel} 第${d.round}轮\n\n${d.argument}\n\n`
+    }
+  }
+
+  // Final report
+  const fr = state.finalReport
+  if (fr) {
+    md += `## 📝 最终结论\n\n`
+    md += `**总体评级**：${fr.overallRating || '待定'}\n\n`
+    if (fr.conclusion) md += `${fr.conclusion}\n\n`
+    if (fr.catalysts && fr.catalysts.length > 0) {
+      md += `### 催化剂\n\n${fr.catalysts.map(c => `- ${c}`).join('\n')}\n\n`
+    }
+    if (fr.riskFactors && fr.riskFactors.length > 0) {
+      md += `### 风险因素\n\n${fr.riskFactors.map(r => `- ${r}`).join('\n')}\n\n`
+    }
+  }
+
+  md += `---\n*本报告由 go-stock AI 多维度分析系统生成，仅供参考，不构成投资建议。*\n`
+  return md
 }
 
 function scrollToAiResultBottom() {
