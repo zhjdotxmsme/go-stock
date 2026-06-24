@@ -2,9 +2,11 @@ package multi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go-stock/backend/data"
 	"go-stock/backend/logger"
+	"io"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -36,15 +38,26 @@ func RunTechnicalAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, e
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的技术面\n\nK线数据(最近60个交易日):\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 
-	result, err := chatModel.Generate(ctx, messages)
+	streamResult, err := chatModel.Stream(ctx, messages)
 	if err != nil {
 		logger.SugaredLogger.Errorf("technical analyst LLM error: %v", err)
 		return &AgentReport{Role: "technical", Content: "", Summary: "分析失败", Rating: "neutral", Error: err.Error()}, nil
 	}
 
-	content := ""
-	if result != nil {
-		content = result.Content
+	var content string
+	for {
+		chunk, err := streamResult.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			logger.SugaredLogger.Errorf("technical analyst stream error: %v", err)
+			break
+		}
+		if chunk != nil {
+			content += chunk.Content
+			emitToken(ac, "technical", chunk.Content)
+		}
 	}
 
 	return &AgentReport{

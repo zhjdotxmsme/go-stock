@@ -37,6 +37,7 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 			Market:     market,
 			UserQuery:  userQuery,
 			AIConfigID: e.aiConfigID,
+			StreamCh:   ch,
 		}
 
 		// Phase 1: Orchestrator

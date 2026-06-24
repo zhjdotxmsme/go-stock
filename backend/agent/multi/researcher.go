@@ -2,8 +2,10 @@ package multi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go-stock/backend/logger"
+	"io"
 	"strings"
 
 	"github.com/cloudwego/eino/schema"
@@ -45,6 +47,7 @@ func RunDebate(ctx context.Context, ac *AgentContext, numRounds int) (*DebateRes
 			logger.SugaredLogger.Errorf("bull researcher round %d error: %v", round, err)
 			bullArg = "看多分析暂不可用"
 		}
+		emitDebate(ac, round, "bull", sanitizeJSON(bullArg))
 
 		// Bear researcher speaks
 		bearPrompt := fmt.Sprintf("基于以下分析报告，请从看空/风险角度进行分析:\n\n%s", analystSummary)
@@ -55,6 +58,7 @@ func RunDebate(ctx context.Context, ac *AgentContext, numRounds int) (*DebateRes
 			logger.SugaredLogger.Errorf("bear researcher round %d error: %v", round, err)
 			bearArg = "看空分析暂不可用"
 		}
+		emitDebate(ac, round, "bear", sanitizeJSON(bearArg))
 
 		result.Rounds = append(result.Rounds, DebateRound{
 			RoundNum:     round,
@@ -88,7 +92,7 @@ func RunDebate(ctx context.Context, ac *AgentContext, numRounds int) (*DebateRes
 	return result, nil
 }
 
-// callResearcher calls the LLM with the appropriate researcher prompt.
+// callResearcher calls the LLM with streaming, accumulates the response, and returns it.
 func callResearcher(ctx context.Context, ac *AgentContext, side string, userPrompt string) (string, error) {
 	var sysPrompt string
 	switch side {
@@ -110,14 +114,25 @@ func callResearcher(ctx context.Context, ac *AgentContext, side string, userProm
 		{Role: schema.User, Content: userPrompt},
 	}
 
-	result, err := chatModel.Generate(ctx, messages)
+	streamResult, err := chatModel.Stream(ctx, messages)
 	if err != nil {
 		return "", err
 	}
-	if result == nil {
-		return "", fmt.Errorf("empty LLM response")
+
+	var content string
+	for {
+		chunk, err := streamResult.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return content, err
+		}
+		if chunk != nil {
+			content += chunk.Content
+		}
 	}
-	return result.Content, nil
+	return content, nil
 }
 
 // extractListItems attempts to extract bullet items from LLM response.

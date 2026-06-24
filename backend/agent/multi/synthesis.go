@@ -2,8 +2,10 @@ package multi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go-stock/backend/logger"
+	"io"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -70,14 +72,30 @@ func RunSynthesis(ctx context.Context, ac *AgentContext) (*FinalReport, error) {
 		{Role: schema.User, Content: fmt.Sprintf("请基于以下分析数据生成最终投资分析报告:\n\n%s", contextStr)},
 	}
 
-	result, err := chatModel.Generate(ctx, messages)
+	streamResult, err := chatModel.Stream(ctx, messages)
 	if err != nil {
 		logger.SugaredLogger.Warnf("synthesis LLM error, using basic aggregation: %v", err)
 		return basicSynthesis(report, ac)
 	}
 
-	if result != nil && result.Content != "" {
-		report.Conclusion = result.Content
+	var conclusion string
+	for {
+		chunk, err := streamResult.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			logger.SugaredLogger.Warnf("synthesis stream error: %v", err)
+			break
+		}
+		if chunk != nil {
+			conclusion += chunk.Content
+			emitToken(ac, "synthesis", chunk.Content)
+		}
+	}
+
+	if conclusion != "" {
+		report.Conclusion = conclusion
 		report.OverallRating = aggregateRatings(ac.Reports)
 	}
 

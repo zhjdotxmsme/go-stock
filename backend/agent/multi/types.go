@@ -1,7 +1,6 @@
 package multi
 
-// No imports needed — AgentContext no longer stores context.Context.
-// Node functions receive ctx as their first parameter.
+import "github.com/cloudwego/eino/schema"
 
 // AgentReport is the output of each analyst node
 type AgentReport struct {
@@ -50,4 +49,7 @@ type AgentContext struct {
 	Reports    []AgentReport
 	Debate     *DebateResult
 	FinalReport *FinalReport
+	// StreamCh is an optional channel for streaming token-level output to the frontend.
+	// When set, each node pushes streaming events as it processes.
+	StreamCh chan<- *schema.Message
 }

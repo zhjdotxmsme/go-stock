@@ -1,6 +1,48 @@
 package multi
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/bytedance/sonic"
+	"github.com/cloudwego/eino/schema"
+)
+
+// emitToken sends a streaming token event to the frontend via AgentContext's StreamCh.
+func emitToken(ac *AgentContext, agent string, token string) {
+	if ac == nil || ac.StreamCh == nil {
+		return
+	}
+	payload := map[string]string{
+		"type":  "agent:token",
+		"agent": agent,
+		"token": token,
+	}
+	raw, _ := sonic.Marshal(payload)
+	ac.StreamCh <- &schema.Message{Role: schema.Assistant, Content: string(raw)}
+}
+
+// emitDebate sends a debate-round event to the frontend.
+func emitDebate(ac *AgentContext, round int, side string, argument string) {
+	if ac == nil || ac.StreamCh == nil {
+		return
+	}
+	payload := map[string]interface{}{
+		"type":     "agent:debate",
+		"round":    round,
+		"side":     side,
+		"argument": argument,
+	}
+	raw, _ := sonic.Marshal(payload)
+	ac.StreamCh <- &schema.Message{Role: schema.Assistant, Content: string(raw)}
+}
+
+// sanitizeJSON ensures the argument string is valid for JSON embedding by truncating if needed.
+func sanitizeJSON(s string) string {
+	if len(s) > 5000 {
+		return s[:5000] + "...[truncated]"
+	}
+	return s
+}
 
 // truncateSummary returns the first n characters of content as a summary.
 func truncateSummary(content string, n int) string {
@@ -15,7 +57,6 @@ func truncateSummary(content string, n int) string {
 }
 
 // extractRating attempts to find a bullish/bearish/neutral rating in the LLM response.
-// Uses simple keyword matching — the researcher/synthesis nodes will refine this.
 func extractRating(content string) string {
 	if content == "" {
 		return "neutral"
