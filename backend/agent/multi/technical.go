@@ -28,6 +28,24 @@ func RunTechnicalAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, e
 		dataStr += "暂无K线数据\n"
 	}
 
+	// Try to fetch technical indicators from stock-sdk MCP
+	indicators, _ := data.GetTechnicalIndicators(ctx, ac.StockCode, "101", 60)
+	if indicators != nil {
+		dataStr += "\n技术指标:\n"
+		if len(indicators.MA) > 0 {
+			dataStr += fmt.Sprintf("MA: %v\n", indicators.MA)
+		}
+		if len(indicators.MACD) > 0 {
+			dataStr += fmt.Sprintf("MACD: %v\n", indicators.MACD)
+		}
+		if len(indicators.RSI) > 0 {
+			dataStr += fmt.Sprintf("RSI: %v\n", indicators.RSI)
+		}
+		if len(indicators.KDJ) > 0 {
+			dataStr += fmt.Sprintf("KDJ: %v\n", indicators.KDJ)
+		}
+	}
+
 	chatModel, err := GetChatModel(ctx, "technical", ac.AIConfigID)
 	if err != nil {
 		return &AgentReport{Role: "technical", Content: "", Summary: "模型加载失败", Rating: "neutral", Error: err.Error()}, nil
