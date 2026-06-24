@@ -13,7 +13,7 @@
       >
         <n-icon size="18">
           <CheckCircle v-if="phase.done" />
-          <Loading v-else-if="phase.key === currentPhase" />
+          <Spinner v-else-if="phase.key === currentPhase" />
           <Circle v-else />
         </n-icon>
         <span class="phase-label">{{ phase.label }}</span>
@@ -77,8 +77,8 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue'
-import { CheckCircle, Circle, Loading } from '@vicons/fa'
+import { computed } from 'vue'
+import { CheckCircle, Circle, Spinner } from '@vicons/fa'
 import { MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 
