@@ -148,6 +148,8 @@ const aiPlatformOptions = [
   { label: 'Azure OpenAI (https://YOUR_RESOURCE.openai.azure.com)', value: 'https://YOUR_RESOURCE.openai.azure.com' },
   { label: 'OpenRouter (https://openrouter.ai/api/v1)', value: 'https://openrouter.ai/api/v1' },
   { label:'Ollama (http://localhost:11434/v1)', value: 'http://localhost:11434/v1' },
+  { label: 'Anthropic Claude (https://api.anthropic.com)', value: 'https://api.anthropic.com' },
+  { label: 'OpenAI 兼容接口 (自定义BaseURL)', value: '' },
 ]
 
 function getPlatformName(baseUrl) {

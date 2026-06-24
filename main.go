@@ -337,6 +337,9 @@ func AutoMigrate() {
 
 	//updateMultipleModel()
 
+	// 初始化默认技能
+	data.InitDefaultSkills()
+
 	// 初始化 global_stock_index_cache 定时任务
 	initGlobalStockIndexCacheTask()
 }
