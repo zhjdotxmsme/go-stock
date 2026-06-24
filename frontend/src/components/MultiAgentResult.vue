@@ -114,7 +114,7 @@ phases.forEach((p) => {
 })
 
 const visibleAnalysts = computed(() => {
-  const keys = ['fundamental', 'technical', 'sentiment', 'news']
+  const keys = ['fundamental', 'technical', 'sentiment', 'news', 'policy', 'hotmoney', 'lockup']
   return keys
     .filter((k) => props.state.reports[k])
     .map((k) => ({
@@ -136,7 +136,8 @@ const overallRatingType = computed(() => {
 })
 
 function analystTitle(role) {
-  const map = { fundamental: '基本面', technical: '技术面', sentiment: '情绪面', news: '新闻面' }
+  const map = { fundamental: '基本面', technical: '技术面', sentiment: '情绪面', news: '新闻面',
+    policy: '政策面', hotmoney: '资金面', lockup: '解禁面' }
   return map[role] || role
 }
 

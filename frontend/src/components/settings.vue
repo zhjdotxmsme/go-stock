@@ -1,5 +1,5 @@
 <script setup>
-import {h, onBeforeUnmount, onMounted, ref} from "vue";
+import {computed, h, onBeforeUnmount, onMounted, ref} from "vue";
 import {
   AddPrompt,
   DelPrompt,
@@ -58,6 +58,8 @@ const formValue = ref({
   qgqpBId: '',
   updateChannel: 'release',
   promptPlazaApiBase: '',
+  quickThinkModelId: null,
+  deepThinkModelId: null,
 })
 
 // 添加一个新的AI配置到列表
@@ -120,6 +122,13 @@ async function fetchAiModels(aiConfig) {
 
 const promptTemplates = ref([])
 const aiConfigExpandedNames = ref([])
+
+const aiConfigOptions = computed(() => {
+  return (formValue.value.openAI.aiConfigs || []).map(config => ({
+    label: config.name || `AI 配置 #${formValue.value.openAI.aiConfigs.indexOf(config) + 1}`,
+    value: config.ID,
+  }))
+})
 
 const aiPlatformOptions = [
   { label: 'DeepSeek (https://api.deepseek.com)', value: 'https://api.deepseek.com' },
@@ -238,6 +247,8 @@ onMounted(() => {
     formValue.value.qgqpBId = res.qgqpBId;
     formValue.value.updateChannel = res.updateChannel || 'release';
     formValue.value.promptPlazaApiBase = res.promptPlazaApiBase || '';
+    formValue.value.quickThinkModelId = res.quickThinkModelId || null;
+    formValue.value.deepThinkModelId = res.deepThinkModelId || null;
 
   })
 
@@ -283,6 +294,8 @@ function saveConfig() {
     qgqpBId: formValue.value.qgqpBId,
     updateChannel: formValue.value.updateChannel,
     promptPlazaApiBase: formValue.value.promptPlazaApiBase,
+    quickThinkModelId: formValue.value.quickThinkModelId,
+    deepThinkModelId: formValue.value.deepThinkModelId,
   })
 
   if (config.sponsorCode) {
@@ -376,6 +389,8 @@ function importConfig() {
       formValue.value.enableAgent = config.enableAgent
       formValue.value.qgqpBId = config.qgqpBId
       formValue.value.updateChannel = config.updateChannel || 'release'
+      formValue.value.quickThinkModelId = config.quickThinkModelId || null
+      formValue.value.deepThinkModelId = config.deepThinkModelId || null
     };
     reader.readAsText(file);
   };
@@ -753,6 +768,16 @@ function deletePrompt(ID) {
                     </n-grid>
                   </n-collapse-item>
                 </n-collapse>
+                <n-divider />
+                <h3>⚡ 双LLM模型配置</h3>
+                <n-space vertical>
+                  <n-form-item label="快速模型 (Quick Think)" description="用于分析师分析和研究员辩论，建议选轻量模型降低成本">
+                    <n-select v-model:value="formValue.quickThinkModelId" :options="aiConfigOptions" clearable placeholder="默认AI配置" />
+                  </n-form-item>
+                  <n-form-item label="深度模型 (Deep Think)" description="用于总结决策，建议选推理能力强的模型。留空则降级为快速模型">
+                    <n-select v-model:value="formValue.deepThinkModelId" :options="aiConfigOptions" clearable placeholder="使用快速模型(降级)" />
+                  </n-form-item>
+                </n-space>
                 <n-button type="primary" dashed @click="addAiConfig" style="width: 100%;">+ 添加AI配置</n-button>
               </n-space>
             </n-gi>
