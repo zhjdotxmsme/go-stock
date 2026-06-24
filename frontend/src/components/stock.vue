@@ -2925,20 +2925,20 @@ watch(modalShow6, (newVal) => {
   <n-modal transform-origin="center" v-model:show="modalShow4" preset="card" style="width: 800px;max-width: calc(100vw - 32px);"
            :title="'['+data.name+']AI分析'">
     <!-- Multi-agent structured view -->
-    <div v-if="multiAgentState.active">
+    <div v-if="multiAgentState.active" class="multi-agent-container">
       <MultiAgentResult :state="multiAgentState" />
     </div>
-    <!-- Legacy flat markdown view -->
-    <div v-else>
+    <!-- Legacy flat markdown view (always rendered for export access) -->
+    <div v-show="!multiAgentState.active" style="height: 440px;max-height: 60vh;">
       <n-spin size="small" :show="data.loading && !data.airesult">
-        <MdEditor v-if="enableEditor" :toolbars="toolbars" ref="mdEditorRef" style="height: 440px;max-height: 60vh;text-align: left"
+        <MdEditor v-if="enableEditor" :toolbars="toolbars" ref="mdEditorRef" style="height: 440px;text-align: left"
                   :modelValue="data.airesult" :theme="theme">
           <template #defToolbars>
             <ExportPDF :file-name="data.name+'['+data.code+']AI分析报告'" style="text-align: left"
                        :modelValue="data.airesult" @onProgress="handleProgress"/>
           </template>
         </MdEditor>
-        <div v-if="!enableEditor" ref="aiResultScrollRef" style="height: 440px;max-height: 60vh;text-align: left;overflow-y: auto;">
+        <div v-if="!enableEditor" ref="aiResultScrollRef" style="height: 440px;text-align: left;overflow-y: auto;">
           <MdPreview ref="mdPreviewRef" :modelValue="data.airesult" :theme="theme"/>
         </div>
       </n-spin>
