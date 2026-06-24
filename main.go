@@ -7,6 +7,8 @@ import (
 	"fmt"
 	assistantweb "go-stock/ai-assistant-web"
 	"go-stock/backend/data"
+	"go-stock/backend/data/datasource"
+	"go-stock/backend/data/datasource/fallback"
 	"go-stock/backend/db"
 	log "go-stock/backend/logger"
 	"go-stock/backend/machineid"
@@ -64,6 +66,20 @@ var VersionCommit string
 var OFFICIAL_STATEMENT string
 var BuildKey string
 
+func initDataSources() {
+	router := datasource.GetRouter()
+	cache := datasource.NewCacheLayer(256)
+	router.SetCache(cache)
+
+	fallback.RegisterQuoteChain(router)
+	fallback.RegisterKLineChain(router)
+	fallback.RegisterNewsChain(router)
+	fallback.RegisterFundamentalChain(router)
+	fallback.RegisterSectorChain(router)
+
+	log.SugaredLogger.Info("data source router initialized with fallback chains")
+}
+
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -78,6 +94,7 @@ func main() {
 	data.SetAppIcon(icon)
 	db.Init("")
 	data.InitAnalyzeSentiment()
+	initDataSources()
 	go AutoMigrate()
 
 	//db.Dao.Model(&data.Group{}).Where("id = ?", 0).FirstOrCreate(&data.Group{

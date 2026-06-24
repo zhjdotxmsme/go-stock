@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-stock/backend/agent"
+	"go-stock/backend/agent/multi"
 	"go-stock/backend/agent/tools"
 	"go-stock/backend/data"
 	"go-stock/backend/db"
@@ -1827,7 +1828,7 @@ func (a *App) SendDingDingMessageByType(message string, stockCode string, msgTyp
 	return data.NewDingDingAPI().SendDingDingMessage(message)
 }
 
-func (a *App) NewChatStream(stock, stockCode, question string, aiConfigId int, sysPromptId *int, enableTools bool, think bool) {
+func (a *App) NewChatStream(stock string, stockCode string, question string, aiConfigId int, sysPromptId *int, enableTools bool, think bool, agentMode string) {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.SugaredLogger.Errorf("NewChatStream panic: %v", err)
@@ -1838,13 +1839,11 @@ func (a *App) NewChatStream(stock, stockCode, question string, aiConfigId int, s
 			runtime.EventsEmit(a.ctx, "newChatStream", "DONE")
 		}
 	}()
-	var msgs <-chan map[string]any
-	if enableTools {
-		msgs = data.NewDeepSeekOpenAi(a.ctx, aiConfigId).NewChatStream(stock, stockCode, question, sysPromptId, a.AiTools, think)
-	} else {
-		msgs = data.NewDeepSeekOpenAi(a.ctx, aiConfigId).NewChatStream(stock, stockCode, question, sysPromptId, []data.Tool{}, think)
-	}
-	for msg := range msgs {
+	// Use the multi-agent engine as the primary analysis path
+	engine := multi.NewMultiAgentEngine(aiConfigId)
+	resultCh := engine.Run(a.ctx, stockCode, stock, "", question)
+
+	for msg := range resultCh {
 		runtime.EventsEmit(a.ctx, "newChatStream", msg)
 	}
 	runtime.EventsEmit(a.ctx, "newChatStream", "DONE")
