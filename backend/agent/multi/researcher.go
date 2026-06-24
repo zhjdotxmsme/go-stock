@@ -4,17 +4,20 @@ import (
 	"context"
 	"fmt"
 	"go-stock/backend/logger"
+	"strings"
+
+	"github.com/cloudwego/eino/schema"
 )
 
 // RunDebate executes the bull/bear debate loop.
 // numRounds: number of debate rounds (default 2, max 3)
-// Each round: Bull states argument → Bear states counter-argument
+// Each round: Bull LLM states argument → Bear LLM states counter-argument
 // Round 2+ includes rebuttals of the other side's prior points.
 func RunDebate(ctx context.Context, ac *AgentContext, numRounds int) (*DebateResult, error) {
 	if numRounds < 1 || numRounds > 3 {
 		numRounds = 2
 	}
-	
+
 	// Build analyst context summary from all available reports
 	var analystSummary string
 	for _, r := range ac.Reports {
@@ -22,40 +25,116 @@ func RunDebate(ctx context.Context, ac *AgentContext, numRounds int) (*DebateRes
 			analystSummary += fmt.Sprintf("【%s】数据不可用\n", r.Role)
 			continue
 		}
-		analystSummary += fmt.Sprintf("===== %s 分析报告 =====\n%s\n\n", r.Role, r.Content)
+		analystSummary += fmt.Sprintf("【%s】评级:%s\n摘要:%s\n\n", r.Role, r.Rating, r.Summary)
 	}
-	
+
 	result := &DebateResult{}
-	
+
 	for round := 1; round <= numRounds; round++ {
 		logger.SugaredLogger.Infof("debate round %d/%d", round, numRounds)
-		
+
 		// Bull researcher speaks
-		bullArg := fmt.Sprintf("[第%d轮 看多方] 基于以下分析:\n%s\n", round, analystSummary)
+		bullPrompt := fmt.Sprintf("基于以下分析报告，请从看多角度进行分析:\n\n%s", analystSummary)
 		if len(result.Rounds) > 0 {
 			last := result.Rounds[len(result.Rounds)-1]
-			bullArg += fmt.Sprintf("\n对方观点: %s\n请针对上述观点进行反驳。", last.BearArgument)
+			bullPrompt += fmt.Sprintf("\n\n空方观点:\n%s\n\n请针对上述空方观点进行反驳，提出看多的理由。", last.BearArgument)
 		}
-		
+
+		bullArg, err := callResearcher(ctx, ac, "bull", bullPrompt)
+		if err != nil {
+			logger.SugaredLogger.Errorf("bull researcher round %d error: %v", round, err)
+			bullArg = "看多分析暂不可用"
+		}
+
 		// Bear researcher speaks
-		bearArg := fmt.Sprintf("[第%d轮 看空方] 基于以下分析:\n%s\n", round, analystSummary)
-		bearArg += fmt.Sprintf("\n对方观点: %s\n请针对上述观点提出风险警示。", bullArg)
-		
+		bearPrompt := fmt.Sprintf("基于以下分析报告，请从看空/风险角度进行分析:\n\n%s", analystSummary)
+		bearPrompt += fmt.Sprintf("\n\n多方观点:\n%s\n\n请针对上述多方观点提出风险警示和看空理由。", bullArg)
+
+		bearArg, err := callResearcher(ctx, ac, "bear", bearPrompt)
+		if err != nil {
+			logger.SugaredLogger.Errorf("bear researcher round %d error: %v", round, err)
+			bearArg = "看空分析暂不可用"
+		}
+
 		result.Rounds = append(result.Rounds, DebateRound{
 			RoundNum:     round,
 			BullArgument: bullArg,
 			BearArgument: bearArg,
 		})
 	}
-	
-	// Extract consensus and disagreements (placeholder — will use LLM in full impl)
+
+	// Extract consensus and disagreements
 	if len(result.Rounds) > 0 {
 		last := result.Rounds[len(result.Rounds)-1]
 		result.BullFinalArg = last.BullArgument
 		result.BearFinalArg = last.BearArgument
-		result.ConsensusItems = []string{"待LLM提取共识点"}
-		result.Disagreements = []string{"待LLM提取分歧点"}
+
+		consensusPrompt := fmt.Sprintf("多方观点:\n%s\n\n空方观点:\n%s\n\n请列出双方达成共识的点和存在分歧的点。",
+			result.BullFinalArg, result.BearFinalArg)
+
+		consensusResult, err := callResearcher(ctx, ac, "synthesis", consensusPrompt)
+		if err == nil {
+			result.ConsensusItems = extractListItems(consensusResult, "共识")
+			result.Disagreements = extractListItems(consensusResult, "分歧")
+		}
+		if len(result.ConsensusItems) == 0 {
+			result.ConsensusItems = []string{"待进一步分析确认共识点"}
+		}
+		if len(result.Disagreements) == 0 {
+			result.Disagreements = []string{"待进一步分析确认分歧点"}
+		}
 	}
-	
+
 	return result, nil
+}
+
+// callResearcher calls the LLM with the appropriate researcher prompt.
+func callResearcher(ctx context.Context, ac *AgentContext, side string, userPrompt string) (string, error) {
+	var sysPrompt string
+	switch side {
+	case "bull":
+		sysPrompt = BullResearcherPrompt
+	case "bear":
+		sysPrompt = BearResearcherPrompt
+	default:
+		sysPrompt = "你是一个中立的分析助手，请客观列出观点。"
+	}
+
+	chatModel, err := GetChatModel(ctx, "researcher_"+side, ac.AIConfigID)
+	if err != nil {
+		return "", fmt.Errorf("researcher model: %w", err)
+	}
+
+	messages := []*schema.Message{
+		{Role: schema.System, Content: sysPrompt},
+		{Role: schema.User, Content: userPrompt},
+	}
+
+	result, err := chatModel.Generate(ctx, messages)
+	if err != nil {
+		return "", err
+	}
+	if result == nil {
+		return "", fmt.Errorf("empty LLM response")
+	}
+	return result.Content, nil
+}
+
+// extractListItems attempts to extract bullet items from LLM response.
+func extractListItems(text string, keyword string) []string {
+	var items []string
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "-") || strings.HasPrefix(trimmed, "*") || strings.HasPrefix(trimmed, "•") {
+			items = append(items, strings.TrimLeft(trimmed, "-*• "))
+		}
+	}
+	if len(items) == 0 && len(text) > 0 {
+		items = append(items, text)
+	}
+	return items
 }

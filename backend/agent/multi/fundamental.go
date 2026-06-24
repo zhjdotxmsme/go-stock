@@ -1,16 +1,57 @@
 package multi
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"go-stock/backend/data"
+	"go-stock/backend/logger"
+
+	"github.com/cloudwego/eino/schema"
+)
 
 // RunFundamentalAnalyst evaluates company financial health, valuation, and growth.
-// Uses tools: stock_info, financial_report, research_report
 func RunFundamentalAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, error) {
-	// LLM will be called with FundamentalAnalystPrompt + data tools
-	// For now, return a basic report structure
+	stockApi := data.NewStockDataApi()
+	stockApi.GetStockBaseInfo()
+
+	reports := data.GetFinancialReports(ac.StockCode, 30)
+
+	dataStr := fmt.Sprintf("股票: %s(%s)\n", ac.StockName, ac.StockCode)
+	if reports != nil && len(*reports) > 0 {
+		for i, r := range *reports {
+			if i < 5 {
+				dataStr += r + "\n"
+			}
+		}
+	} else {
+		dataStr += "暂无详细财务数据\n"
+	}
+
+	chatModel, err := GetChatModel(ctx, "fundamental", ac.AIConfigID)
+	if err != nil {
+		return &AgentReport{Role: "fundamental", Content: "", Summary: "模型加载失败", Rating: "neutral", Error: err.Error()}, nil
+	}
+
+	messages := []*schema.Message{
+		{Role: schema.System, Content: FundamentalAnalystPrompt},
+		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的基本面\n\n数据:\n%s", ac.StockName, ac.StockCode, dataStr)},
+	}
+
+	result, err := chatModel.Generate(ctx, messages)
+	if err != nil {
+		logger.SugaredLogger.Errorf("fundamental analyst LLM error: %v", err)
+		return &AgentReport{Role: "fundamental", Content: "", Summary: "分析失败", Rating: "neutral", Error: err.Error()}, nil
+	}
+
+	content := ""
+	if result != nil {
+		content = result.Content
+	}
+
 	return &AgentReport{
 		Role:    "fundamental",
-		Content: "",
-		Summary: "",
-		Rating:  "neutral",
+		Content: content,
+		Summary: truncateSummary(content, 100),
+		Rating:  extractRating(content),
 	}, nil
 }
