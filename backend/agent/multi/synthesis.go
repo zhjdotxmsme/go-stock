@@ -61,7 +61,7 @@ func RunSynthesis(ctx context.Context, ac *AgentContext) (*FinalReport, error) {
 	}
 
 	// Try to call LLM for structured synthesis
-	chatModel, err := GetChatModel(ctx, "synthesis", ac.AIConfigID)
+	chatModel, err := GetChatModelWithTier(ctx, "synthesis", LLMTierDeep, ac.AIConfigID)
 	if err != nil {
 		logger.SugaredLogger.Warnf("synthesis LLM unavailable, using basic aggregation: %v", err)
 		return basicSynthesis(report, ac)

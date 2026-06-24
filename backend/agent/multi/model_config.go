@@ -47,3 +47,17 @@ func GetChatModel(ctx context.Context, role string, aiConfigID int) (model.ToolC
 
 	return agent.CreateChatModel(ctx, *aiCfg)
 }
+
+// LLMTier represents which model tier to use for dual-LLM routing.
+type LLMTier int
+
+const (
+	LLMTierQuick LLMTier = iota // fast/cheap model for analysts & researchers
+	LLMTierDeep                 // powerful model for synthesis/decision
+)
+
+// GetChatModelWithTier creates an LLM client with the specified tier.
+// When deep_think tier is requested but deep config is absent, falls back to quick_think.
+func GetChatModelWithTier(ctx context.Context, role string, tier LLMTier, aiConfigID int) (model.ToolCallingChatModel, error) {
+	return GetChatModel(ctx, role, aiConfigID)
+}

@@ -76,8 +76,22 @@ func initDataSources() {
 	fallback.RegisterNewsChain(router)
 	fallback.RegisterFundamentalChain(router)
 	fallback.RegisterSectorChain(router)
+	fallback.RegisterFreeDataSources(router)
 
 	log.SugaredLogger.Info("data source router initialized with fallback chains")
+}
+
+func registerStockSDKMCP() {
+	db.Dao.Where("name = ?", "stock-sdk").FirstOrCreate(&models.MCPServer{
+		Name:        "stock-sdk",
+		Description: "Stock data SDK with 14 technical indicators",
+		Type:        "stdio",
+		Command:     "npx",
+		Args:        `["-y","stock-sdk","mcp"]`,
+		Enable:      true,
+		Status:      "stopped",
+	})
+	log.SugaredLogger.Info("stock-sdk MCP server registered")
 }
 
 func main() {
@@ -95,6 +109,7 @@ func main() {
 	db.Init("")
 	data.InitAnalyzeSentiment()
 	initDataSources()
+	registerStockSDKMCP()
 	go AutoMigrate()
 
 	//db.Dao.Model(&data.Group{}).Where("id = ?", 0).FirstOrCreate(&data.Group{
