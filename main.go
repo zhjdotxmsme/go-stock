@@ -7,6 +7,7 @@ import (
 	"fmt"
 	assistantweb "go-stock/ai-assistant-web"
 	"go-stock/backend/data"
+	backtestService "go-stock/backend/data/backtest"
 	"go-stock/backend/db"
 	log "go-stock/backend/logger"
 	"go-stock/backend/machineid"
@@ -202,6 +203,7 @@ func main() {
 		},
 		Bind: []interface{}{
 			app,
+			backtestService.NewService(),
 		},
 		// Windows platform specific options
 		Windows: &windows.Options{
@@ -302,6 +304,9 @@ func AutoMigrate() {
 	db.Dao.AutoMigrate(&models.CustomStrategy{})
 	db.Dao.AutoMigrate(&models.BKFundFlow{})
 	db.Dao.AutoMigrate(&models.ConceptFundFlow{})
+	db.Dao.AutoMigrate(&models.KLineBar{})
+	db.Dao.AutoMigrate(&models.KLineSyncLog{})
+	db.Dao.AutoMigrate(&models.AiRecommendBacktest{})
 
 	//updateMultipleModel()
 
