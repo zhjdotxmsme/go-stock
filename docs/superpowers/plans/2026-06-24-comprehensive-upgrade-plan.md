@@ -1,6 +1,6 @@
 # 全面升级实施计划（多项目整合）
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Upgrade go-stock's multi-agent system from 4 to 7 analysts, add free data sources, dual LLM routing, and stock-sdk MCP technical indicators.
 
@@ -15,7 +15,7 @@
 **Files:**
 - Modify: `backend/agent/multi/types.go`
 
-- [ ] **Step 1: Add PolicyReport, HotMoneyReport, LockupReport structs**
+- [x] **Step 1: Add PolicyReport, HotMoneyReport, LockupReport structs**
 
 ```go
 // PolicyReport is the output of the policy analyst
@@ -43,7 +43,7 @@ type LockupReport struct {
 }
 ```
 
-- [ ] **Step 2: Add StreamCh field to AgentContext**
+- [x] **Step 2: Add StreamCh field to AgentContext**
 
 ```go
 type AgentContext struct {
@@ -59,7 +59,7 @@ type AgentContext struct {
 }
 ```
 
-- [ ] **Step 3: Verify and commit**
+- [x] **Step 3: Verify and commit**
 
 ```bash
 cd E:/open-source/ai/go-stock && go vet ./backend/agent/multi/...
@@ -74,7 +74,7 @@ git -C E:/open-source/ai/go-stock commit -m "feat(multi-agent): add new report t
 **Files:**
 - Modify: `backend/agent/multi/prompts.go`
 
-- [ ] **Step 1: Append 3 new prompts**
+- [x] **Step 1: Append 3 new prompts**
 
 ```go
 const PolicyAnalystPrompt = `你是一位专业的政策分析师，专注于 A 股市场政策研究。请从以下维度进行分析：
@@ -108,7 +108,7 @@ const LockupAnalystPrompt = `你是一位专业的解禁监控师，专注于 A 
 解禁是 A 股特有的重大供给冲击因素。请给出评价（看多/看空/中性）。`
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git -C E:/open-source/ai/go-stock add backend/agent/multi/prompts.go
@@ -122,7 +122,7 @@ git -C E:/open-source/ai/go-stock commit -m "feat(multi-agent): add policy, hotm
 **Files:**
 - Create: `backend/agent/multi/policy.go`
 
-- [ ] **Step 1: Write policy.go**
+- [x] **Step 1: Write policy.go**
 
 ```go
 package multi
@@ -176,7 +176,7 @@ func RunPolicyAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, erro
 }
 ```
 
-- [ ] **Step 2: Verify and commit**
+- [x] **Step 2: Verify and commit**
 
 ```bash
 cd E:/open-source/ai/go-stock && go vet ./backend/agent/multi/...
@@ -191,7 +191,7 @@ git -C E:/open-source/ai/go-stock commit -m "feat(multi-agent): add policy analy
 **Files:**
 - Create: `backend/agent/multi/hotmoney.go`
 
-- [ ] **Step 1: Write hotmoney.go**
+- [x] **Step 1: Write hotmoney.go**
 
 Follow the same pattern as policy.go but with `HotMoneyAnalystPrompt` and role `"hotmoney"`.
 
@@ -247,7 +247,7 @@ func RunHotMoneyAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, er
 }
 ```
 
-- [ ] **Step 2: Verify and commit**
+- [x] **Step 2: Verify and commit**
 
 ```bash
 cd E:/open-source/ai/go-stock && go vet ./backend/agent/multi/...
@@ -262,7 +262,7 @@ git -C E:/open-source/ai/go-stock commit -m "feat(multi-agent): add hot money an
 **Files:**
 - Create: `backend/agent/multi/lockup.go`
 
-- [ ] **Step 1: Write lockup.go**
+- [x] **Step 1: Write lockup.go**
 
 Same pattern as the above but with `LockupAnalystPrompt` and role `"lockup"`.
 
@@ -318,7 +318,7 @@ func RunLockupAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, erro
 }
 ```
 
-- [ ] **Step 2: Verify and commit**
+- [x] **Step 2: Verify and commit**
 
 ```bash
 cd E:/open-source/ai/go-stock && go vet ./backend/agent/multi/...
@@ -333,7 +333,7 @@ git -C E:/open-source/ai/go-stock commit -m "feat(multi-agent): add lockup analy
 **Files:**
 - Modify: `backend/agent/multi/engine.go`
 
-- [ ] **Step 1: Extend runParallelAnalysts from 4 to 7 goroutines**
+- [x] **Step 1: Extend runParallelAnalysts from 4 to 7 goroutines**
 
 Change `resultCh` buffer from `4` to `7`, `wg.Add` from `4` to `7`, add 3 new goroutines.
 
@@ -384,7 +384,7 @@ func (e *MultiAgentEngine) runParallelAnalysts(ctx context.Context, ac *AgentCon
 
 Also update the Run() doc comment from "4 parallel analysts" to "7 parallel analysts".
 
-- [ ] **Step 2: Verify and commit**
+- [x] **Step 2: Verify and commit**
 
 ```bash
 cd E:/open-source/ai/go-stock && go vet ./backend/agent/multi/...
@@ -399,7 +399,7 @@ git -C E:/open-source/ai/go-stock commit -m "feat(multi-agent): expand engine fr
 **Files:**
 - Create: `backend/data/datasource/fallback/free_data.go`
 
-- [ ] **Step 1: Write free_data.go**
+- [x] **Step 1: Write free_data.go**
 
 Implement the free data source providers (Tencent Finance and mootdx stubs). Since mootdx requires a TCP connection library, start with HTTP-based sources first.
 
@@ -531,11 +531,11 @@ func RegisterFreeDataSources(router *datasource.Router) {
 }
 ```
 
-- [ ] **Step 2: Wire up in main.go**
+- [x] **Step 2: Wire up in main.go**
 
 Add `fallback.RegisterFreeDataSources(router)` call in `initDataSources()` in `main.go`, after the existing chain registrations.
 
-- [ ] **Step 3: Verify and commit**
+- [x] **Step 3: Verify and commit**
 
 ```bash
 cd E:/open-source/ai/go-stock && go vet ./backend/data/datasource/... ./backend/agent/multi/...
@@ -550,7 +550,7 @@ git -C E:/open-source/ai/go-stock commit -m "feat(datasource): add free data sou
 **Files:**
 - Modify: `backend/agent/multi/model_config.go`
 
-- [ ] **Step 1: Add LLMTier type and dual routing**
+- [x] **Step 1: Add LLMTier type and dual routing**
 
 ```go
 // LLMTier represents which model tier to use
@@ -571,7 +571,7 @@ func GetChatModelWithTier(ctx context.Context, role string, tier LLMTier, aiConf
 
 For now, `GetChatModelWithTier` can be a simple wrapper around `GetChatModel` since the dual config UI will be built later. The dual-tier routing will be a later enhancement — the API is in place for the Synthesis node to call `GetChatModelWithTier(ctx, "synthesis", LLMTierDeep, ac.AIConfigID)`.
 
-- [ ] **Step 2: Verify and commit**
+- [x] **Step 2: Verify and commit**
 
 ```bash
 cd E:/open-source/ai/go-stock && go vet ./backend/agent/multi/...
@@ -586,7 +586,7 @@ git -C E:/open-source/ai/go-stock commit -m "feat(multi-agent): add dual LLM tie
 **Files:**
 - Modify: `backend/agent/multi/synthesis.go`
 
-- [ ] **Step 1: Update synthesis.go to use LLMTierDeep**
+- [x] **Step 1: Update synthesis.go to use LLMTierDeep**
 
 Replace `GetChatModel(ctx, "synthesis", ac.AIConfigID)` with:
 ```go
@@ -595,7 +595,7 @@ chatModel, err := GetChatModelWithTier(ctx, "synthesis", LLMTierDeep, ac.AIConfi
 
 Add the updated import path.
 
-- [ ] **Step 2: Verify and commit**
+- [x] **Step 2: Verify and commit**
 
 ```bash
 cd E:/open-source/ai/go-stock && go vet ./backend/agent/multi/...
@@ -610,7 +610,7 @@ git -C E:/open-source/ai/go-stock commit -m "feat(multi-agent): synthesis node u
 **Files:**
 - Modify: `main.go`
 
-- [ ] **Step 1: Add stock-sdk MCP server registration**
+- [x] **Step 1: Add stock-sdk MCP server registration**
 
 In `main.go`, add a function to register the stock-sdk MCP server at startup:
 
@@ -634,7 +634,7 @@ Call `registerStockSDKMCP()` in `main()` after `initDataSources()`.
 
 Add import for `"go-stock/backend/models"` if not already present.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git -C E:/open-source/ai/go-stock add main.go
@@ -648,7 +648,7 @@ git -C E:/open-source/ai/go-stock commit -m "feat: register stock-sdk MCP server
 **Files:**
 - Create: `backend/data/tool_indicator.go`
 
-- [ ] **Step 1: Write tool_indicator.go**
+- [x] **Step 1: Write tool_indicator.go**
 
 This file wraps the stock-sdk MCP tool calls as a Go function for the technical analyst to use.
 
@@ -687,7 +687,7 @@ func GetTechnicalIndicators(ctx context.Context, code string, period string, cou
 }
 ```
 
-- [ ] **Step 2: Verify and commit**
+- [x] **Step 2: Verify and commit**
 
 ```bash
 cd E:/open-source/ai/go-stock && go vet ./backend/data/...
@@ -699,14 +699,14 @@ git -C E:/open-source/ai/go-stock commit -m "feat: add technical indicator tool 
 
 ### Task 12: Full build verification
 
-- [ ] **Step 1: Build check**
+- [x] **Step 1: Build check**
 
 ```bash
 cd E:/open-source/ai/go-stock && go build ./backend/...
 go vet ./backend/...
 ```
 
-- [ ] **Step 2: Verify git log**
+- [x] **Step 2: Verify git log**
 
 ```bash
 git -C E:/open-source/ai/go-stock log --oneline feat/multi-agent-analysis --not dev

@@ -3,15 +3,65 @@ package multi
 import (
 	"context"
 	"fmt"
+	"go-stock/backend/data"
 	"go-stock/backend/logger"
+	"time"
 
 	"github.com/cloudwego/eino/schema"
 )
 
+func formatF10Records(resp *data.F10GenericResp, max int) string {
+	if resp == nil || resp.Result == nil || len(resp.Result.Data) == 0 {
+		return "暂无数据\n"
+	}
+	var s string
+	for i, row := range resp.Result.Data {
+		if i >= max {
+			break
+		}
+		s += fmt.Sprintf("- 记录 %d:\n", i+1)
+		for k, v := range row {
+			if v == nil || v == "" {
+				continue
+			}
+			s += fmt.Sprintf("  %s: %v\n", k, v)
+		}
+	}
+	return s
+}
+
+func buildLockupData(ctx context.Context, ac *AgentContext) string {
+	stockApi := data.NewStockDataApi()
+
+	dataStr := fmt.Sprintf("股票: %s(%s)\n市场: %s\n分析时间: %s\n",
+		ac.StockName, ac.StockCode, ac.Market, time.Now().Format("2006-01-02 15:04:05"))
+
+	restricted, _ := stockApi.GetStockRestrictedShares(ac.StockCode)
+	dataStr += "\n限售股解禁数据:\n"
+	dataStr += formatF10Records(restricted, 10)
+
+	reduction, _ := stockApi.GetStockHolderReduction(ac.StockCode)
+	dataStr += "\n大股东减持计划数据:\n"
+	dataStr += formatF10Records(reduction, 10)
+
+	pledge, _ := stockApi.GetStockPledge(ac.StockCode)
+	dataStr += "\n股权质押数据:\n"
+	dataStr += formatF10Records(pledge, 10)
+
+	holderNum := stockApi.GetStockHolderNum(ac.StockCode)
+	if holderNum != nil && holderNum.Result.Data != nil && len(holderNum.Result.Data) > 0 {
+		dataStr += "\n股东户数变化(最新):\n"
+		first := holderNum.Result.Data[0]
+		dataStr += fmt.Sprintf("- 日期: %s, 股东总户数: %v, 较上期变化: %v%%, 户均持股: %v\n",
+			first.ENDDATE, first.HOLDERTOTALNUM, first.TOTALNUMRATIO, first.AVGFREESHARES)
+	}
+
+	return dataStr
+}
+
 // RunLockupAnalyst monitors unlocking events and shareholder reduction plans.
 func RunLockupAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, error) {
-	dataStr := fmt.Sprintf("股票: %s(%s)\n市场: %s\n解禁分析基于限售股解禁和股东减持数据。",
-		ac.StockName, ac.StockCode, ac.Market)
+	dataStr := buildLockupData(ctx, ac)
 
 	chatModel, err := GetChatModel(ctx, "lockup", ac.AIConfigID)
 	if err != nil {
@@ -37,6 +87,7 @@ func RunLockupAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, erro
 		}
 		if chunk != nil {
 			content += chunk.Content
+			emitToken(ac, "lockup", chunk.Content)
 		}
 	}
 

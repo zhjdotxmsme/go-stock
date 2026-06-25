@@ -668,6 +668,39 @@ func (receiver StockDataApi) GetStockOperationDeptTrade(stockCode string) (*F10G
 	return &data, nil
 }
 
+func (receiver StockDataApi) GetStockRestrictedShares(stockCode string) (*F10GenericResp, error) {
+	stockCode = normalizeF10Code(stockCode)
+	url := emF10BaseURL + "?reportName=RPT_F10_EH_FREESHARES&columns=ALL&quoteColumns=&filter=(SECUCODE%3D%22" + stockCode + "%22)&pageNumber=1&pageSize=50&sortTypes=-1&sortColumns=FREE_SHARES_DATE&source=HSF10&client=PC&v=" + convertor.ToString(time.Now().Unix())
+	var data F10GenericResp
+	err := receiver.f10Request(url, &data)
+	if err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
+func (receiver StockDataApi) GetStockHolderReduction(stockCode string) (*F10GenericResp, error) {
+	stockCode = normalizeF10Code(stockCode)
+	url := emF10BaseURL + "?reportName=RPT_F10_STOCKHOLDER_REDUCTION&columns=ALL&quoteColumns=&filter=(SECUCODE%3D%22" + stockCode + "%22)&pageNumber=1&pageSize=50&sortTypes=-1&sortColumns=BEGIN_DATE&source=HSF10&client=PC&v=" + convertor.ToString(time.Now().Unix())
+	var data F10GenericResp
+	err := receiver.f10Request(url, &data)
+	if err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
+func (receiver StockDataApi) GetStockPledge(stockCode string) (*F10GenericResp, error) {
+	stockCode = normalizeF10Code(stockCode)
+	url := emF10BaseURL + "?reportName=RPT_F10_STOCKHOLDER_PLEDGE&columns=ALL&quoteColumns=&filter=(SECUCODE%3D%22" + stockCode + "%22)&pageNumber=1&pageSize=50&sortTypes=-1&sortColumns=PLEDGE_DATE&source=HSF10&client=PC&v=" + convertor.ToString(time.Now().Unix())
+	var data F10GenericResp
+	err := receiver.f10Request(url, &data)
+	if err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
 func (receiver StockDataApi) GetStockLatestFinanceToMarkdown(stockCode string) string {
 	resp, err := receiver.GetStockLatestFinance(stockCode)
 	if err != nil {

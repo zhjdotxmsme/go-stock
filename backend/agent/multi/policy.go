@@ -3,15 +3,62 @@ package multi
 import (
 	"context"
 	"fmt"
+	"go-stock/backend/data"
 	"go-stock/backend/logger"
+	"time"
 
 	"github.com/cloudwego/eino/schema"
 )
 
+func buildPolicyData(ctx context.Context, ac *AgentContext) string {
+	newsApi := data.NewMarketNewsApi()
+
+	dataStr := fmt.Sprintf("股票: %s(%s)\n市场: %s\n分析时间: %s\n",
+		ac.StockName, ac.StockCode, ac.Market, time.Now().Format("2006-01-02 15:04:05"))
+
+	notices := newsApi.StockNotice(ac.StockCode)
+	if len(notices) > 0 {
+		dataStr += "\n近期公告:\n"
+		for i, n := range notices {
+			if i >= 10 {
+				break
+			}
+			if m, ok := n.(map[string]any); ok {
+				title, _ := m["title"].(string)
+				noticeDate, _ := m["notice_date"].(string)
+				columnName, _ := m["column_name"].(string)
+				dataStr += fmt.Sprintf("- [%s] %s (%s)\n", noticeDate, title, columnName)
+			}
+		}
+	} else {
+		dataStr += "\n近期公告: 暂无\n"
+	}
+
+	telegraphs := newsApi.GetNewsList("", 15)
+	if telegraphs != nil && len(*telegraphs) > 0 {
+		dataStr += "\n近期市场资讯:\n"
+		for i, t := range *telegraphs {
+			if i >= 10 {
+				break
+			}
+			if t == nil {
+				continue
+			}
+			dataStr += fmt.Sprintf("- [%s] %s\n", t.Source, t.Title)
+			if t.Content != "" {
+				dataStr += fmt.Sprintf("  %s\n", t.Content)
+			}
+		}
+	} else {
+		dataStr += "\n近期市场资讯: 暂无\n"
+	}
+
+	return dataStr
+}
+
 // RunPolicyAnalyst analyzes policy impacts on the stock.
 func RunPolicyAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, error) {
-	dataStr := fmt.Sprintf("股票: %s(%s)\n市场: %s\n政策面分析基于新闻和公告数据。",
-		ac.StockName, ac.StockCode, ac.Market)
+	dataStr := buildPolicyData(ctx, ac)
 
 	chatModel, err := GetChatModel(ctx, "policy", ac.AIConfigID)
 	if err != nil {
@@ -37,6 +84,7 @@ func RunPolicyAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, erro
 		}
 		if chunk != nil {
 			content += chunk.Content
+			emitToken(ac, "policy", chunk.Content)
 		}
 	}
 
