@@ -21,13 +21,17 @@ type Router struct {
 	cache                *CacheLayer
 }
 
-var globalRouter *Router
-var once sync.Once
+var (
+	globalRouter     *Router
+	globalKLineStore *KLineStore
+	routerOnce       sync.Once
+)
 
 // GetRouter returns the singleton router instance.
 func GetRouter() *Router {
-	once.Do(func() {
+	routerOnce.Do(func() {
 		globalRouter = &Router{}
+		globalKLineStore = NewKLineStore()
 	})
 	return globalRouter
 }
@@ -138,11 +142,37 @@ func (r *Router) GetKLine(ctx context.Context, code string, period string, count
 				key := CacheKey(DataTypeKLine, code, period, fmt.Sprintf("%d", count))
 				_ = r.cache.Set(ctx, key, string(DataTypeKLine), data, 300*time.Second)
 			}
+			// Persist to SQLite via KLineStore (async, non-blocking)
+			if globalKLineStore != nil && data != nil && len(data.Bars) > 0 {
+				bars := BarsFromKLineData(code, period, p.Name(), true, data)
+				if len(bars) > 0 {
+					go func() {
+						if err := globalKLineStore.UpsertKLines(context.Background(), bars); err != nil {
+							logger.SugaredLogger.Warnf("failed to persist klines: stock=%s error=%v", code, err)
+						}
+					}()
+				}
+			}
 			return data, nil
 		}
 		logger.SugaredLogger.Warnf("datasource: kline %s from %s failed: %v, trying next", code, p.Name(), err)
 	}
 	return nil, fmt.Errorf("GetKLine(%s): %w", code, ErrAllSourcesFailed)
+}
+
+// GetStockKLineDayData fetches daily K-line data with provider fallback.
+func (r *Router) GetStockKLineDayData(ctx context.Context, stockCode string, count int) (*KLineData, error) {
+	return r.GetKLine(ctx, stockCode, "day", count)
+}
+
+// GetStockKLineWeekData fetches weekly K-line data with provider fallback.
+func (r *Router) GetStockKLineWeekData(ctx context.Context, stockCode string, count int) (*KLineData, error) {
+	return r.GetKLine(ctx, stockCode, "week", count)
+}
+
+// GetStockKLineMonthData fetches monthly K-line data with provider fallback.
+func (r *Router) GetStockKLineMonthData(ctx context.Context, stockCode string, count int) (*KLineData, error) {
+	return r.GetKLine(ctx, stockCode, "month", count)
 }
 
 // GetNews gets news data with automatic fallback.
