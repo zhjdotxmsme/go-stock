@@ -17,6 +17,8 @@ type Input struct {
 	StopProfit   float64
 	Adjusted     bool
 	Benchmark    string
+	Shares       int  // 持仓股数（手数 = Shares / 100），默认 100
+	IsST         bool // 是否为 ST 股票，默认 false
 }
 
 type Result struct {
@@ -54,6 +56,9 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 	}
 	if in.Benchmark == "" {
 		in.Benchmark = "sh510300"
+	}
+	if in.Shares <= 0 {
+		in.Shares = 100
 	}
 
 	bars, err := e.store.QueryKLines(ctx, in.StockCode, "day", in.SignalDate, "", in.Adjusted)
