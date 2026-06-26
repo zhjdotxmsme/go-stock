@@ -3,6 +3,7 @@ package backtest
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go-stock/backend/data/datasource"
 )
@@ -44,6 +45,23 @@ func NewEngine() *Engine {
 	return &Engine{store: datasource.NewKLineStore()}
 }
 
+// limitUpDown 返回给定 Input 的涨跌停阈值系数。
+// 返回 (upThreshold, downThreshold)，例如 (1.099, 0.901) 表示 10% 涨跌停。
+func (e *Engine) limitUpDown(in Input) (upFactor, downFactor float64) {
+	if in.IsST {
+		return 1.049, 0.951 // ST 股 5%
+	}
+	// 根据代码前缀判断板块
+	code := in.StockCode
+	if strings.HasPrefix(code, "sh688") || strings.HasPrefix(code, "sz300") || strings.HasPrefix(code, "sz301") {
+		return 1.199, 0.801 // 科创板/创业板 20%
+	}
+	if strings.HasPrefix(code, "sh4") || strings.HasPrefix(code, "sh8") || strings.HasPrefix(code, "sz8") || strings.HasPrefix(code, "bj8") {
+		return 1.299, 0.701 // 北交所 30%
+	}
+	return 1.099, 0.901 // 主板 10%
+}
+
 func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 	if in.HoldingDays <= 0 {
 		in.HoldingDays = 20
@@ -81,6 +99,22 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 	}
 
 	signalBar := bars[0]
+
+	// 涨跌停约束检查：信号日若涨停/跌停，禁止买入
+	upFactor, downFactor := e.limitUpDown(in)
+
+	if signalBar.PrevClose > 0 {
+		switch {
+		case signalBar.Close >= signalBar.PrevClose*upFactor:
+			return nil, fmt.Errorf("price limit on signal date %s for %s: buy-day limit-up (close=%.2f >= prev=%.2f*%.4f)",
+				in.SignalDate, in.StockCode, signalBar.Close, signalBar.PrevClose, upFactor)
+		case signalBar.Close <= signalBar.PrevClose*downFactor:
+			return nil, fmt.Errorf("price limit on signal date %s for %s: buy-day limit-down (close=%.2f <= prev=%.2f*%.4f)",
+				in.SignalDate, in.StockCode, signalBar.Close, signalBar.PrevClose, downFactor)
+		}
+	}
+	// PrevClose == 0 时跳过检查（旧数据无此字段），保守允许交易
+
 	entry := in.EntryPrice
 	if entry <= 0 {
 		entry = signalBar.Close
