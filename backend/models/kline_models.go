@@ -17,6 +17,7 @@ type KLineBar struct {
 	High      float64
 	Low       float64
 	Close     float64
+	PrevClose float64   // 前一交易日收盘价，用于涨跌停计算；0 表示未知
 	Volume    int64
 	Amount    float64
 	Source    string    `gorm:"size:20"` // tdx / tencent / eastmoney / seed

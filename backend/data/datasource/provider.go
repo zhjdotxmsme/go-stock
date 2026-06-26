@@ -83,11 +83,12 @@ type KLineData struct {
 
 type KLineBar struct {
 	Time   time.Time `json:"time"`
-	Open   float64   `json:"open"`
-	High   float64   `json:"high"`
-	Low    float64   `json:"low"`
-	Close  float64   `json:"close"`
-	Volume int64     `json:"volume"`
+	Open      float64   `json:"open"`
+	High      float64   `json:"high"`
+	Low       float64   `json:"low"`
+	Close     float64   `json:"close"`
+	PrevClose float64   `json:"prevClose"` // 前一交易日收盘价
+	Volume    int64     `json:"volume"`
 	Amount float64   `json:"amount"`
 }
 

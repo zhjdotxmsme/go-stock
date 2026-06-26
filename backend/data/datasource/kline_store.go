@@ -183,11 +183,20 @@ func BarsFromKLineData(code, period, source string, adjusted bool, data *KLineDa
 			High:      b.High,
 			Low:       b.Low,
 			Close:     b.Close,
+			PrevClose: b.PrevClose, // 透传数据源提供的 PrevClose
 			Volume:    b.Volume,
 			Amount:    b.Amount,
 			Source:    source,
 		})
 	}
 	sort.Slice(bars, func(i, j int) bool { return bars[i].TradeDate < bars[j].TradeDate })
+
+	// 对未填充 PrevClose 的 bar 按序列填充（后一条的 PrevClose = 前一条的 Close）
+	for i := 1; i < len(bars); i++ {
+		if bars[i].PrevClose == 0 && bars[i-1].Close > 0 {
+			bars[i].PrevClose = bars[i-1].Close
+		}
+	}
+
 	return bars
 }
