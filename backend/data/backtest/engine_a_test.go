@@ -177,6 +177,66 @@ func TestST_NonST_Still10Percent(t *testing.T) {
 	assert.True(t, result.Win) // 5% 涨幅，非 ST 应正常交易
 }
 
+// ----- 科创板/创业板 20% 涨跌停测试 -----
+
+func TestSciTechLimit_20Percent(t *testing.T) {
+	restore := setupAEngineTestDB(t)
+	defer restore()
+
+	code := "sh688999"
+	// 科创板：PrevClose=100, Close=119 = 19% < 20% 阈值，可以买入
+	registerEngineMock(code, makeABars([]aprice{
+		{"2024-01-02", 100, 119, 100, 119, 100},
+		{"2024-01-03", 119, 120, 118, 119, 119},
+	}))
+
+	engine := NewEngine()
+	result, err := engine.Run(context.Background(), Input{
+		StockCode:   code,
+		SignalDate:  "2024-01-02",
+		EntryPrice:  100,
+		HoldingDays: 3,
+	})
+	require.NoError(t, err)
+	assert.True(t, result.Win)
+
+	// Close=120 >= 100*1.199=119.9 → 触发涨停
+	code2 := "sh688888"
+	registerEngineMock(code2, makeABars([]aprice{
+		{"2024-01-02", 100, 120, 100, 120, 100}, // 20% 涨停
+		{"2024-01-03", 120, 122, 118, 121, 120},
+	}))
+	_, err = engine.Run(context.Background(), Input{
+		StockCode:   code2,
+		SignalDate:  "2024-01-02",
+		EntryPrice:  120,
+		HoldingDays: 3,
+	})
+	assert.ErrorContains(t, err, "price limit")
+}
+
+func TestPriceLimit_NoPrevClose_SkipsCheck(t *testing.T) {
+	// 当 PrevClose=0 时（旧数据无字段），不触发涨跌停检查
+	restore := setupAEngineTestDB(t)
+	defer restore()
+
+	code := "test_no_prev"
+	registerEngineMock(code, makeABars([]aprice{
+		{"2024-01-02", 100, 110, 100, 110, 0}, // PrevClose=0，不检查
+		{"2024-01-03", 110, 112, 108, 111, 110},
+	}))
+
+	engine := NewEngine()
+	result, err := engine.Run(context.Background(), Input{
+		StockCode:   code,
+		SignalDate:  "2024-01-02",
+		EntryPrice:  110,
+		HoldingDays: 3,
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+}
+
 // ----- 测试辅助函数 (与 existing engine_test.go 兼容) -----
 
 type aprice struct {
