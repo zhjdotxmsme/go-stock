@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, reactive } from 'vue'
-import { BacktestRecommend, BacktestRecommendBatch } from '../../wailsjs/go/backtest/Service'
+import { RunSingleBacktest, RunBatchBacktest } from '../../wailsjs/go/backtest/Service'
 import {
   NAlert, NButton, NCard, NDataTable, NDatePicker, NDivider,
   NFlex, NForm, NFormItem, NGi, NGradientText, NGrid,
@@ -30,8 +30,11 @@ const singleForm = reactive({
 })
 
 const batchForm = reactive({
+  stockCode: '',
   startDate: null,
   endDate: null,
+  period: 'day',
+  entryPrice: 0,
   holdingDays: 5,
   stopLoss: 0.05,
   stopProfit: 0.1,
@@ -56,7 +59,6 @@ const singleMetrics = computed(() => {
     { label: '总收益率', value: pct(r.TotalReturn), raw: r.TotalReturn * 100 },
     { label: '最大回撤', value: pct(r.MaxDrawdown), raw: r.MaxDrawdown * 100 },
     { label: 'Alpha收益', value: pct(r.Alpha), raw: r.Alpha * 100 },
-    { label: '夏普比率', value: 'N/A', raw: 0 },
   ]
 })
 
@@ -64,13 +66,14 @@ const batchMetrics = computed(() => {
   const r = batchResult.value
   if (!r) return []
   return [
-    { metric: '总回测数', value: r.Total },
+    { metric: '总回测数', value: r.TotalTrades },
     { metric: '胜率', value: pct(r.WinRate) },
     { metric: '胜场', value: r.WinCount },
     { metric: '平均收益率', value: pct(r.AvgReturn) },
-    { metric: '平均最大回撤', value: pct(r.AvgDrawdown) },
-    { metric: '平均Alpha', value: pct(r.AvgAlpha) },
-    { metric: '夏普比率', value: 'N/A' },
+    { metric: '总收益率', value: pct(r.TotalReturn) },
+    { metric: '平均持仓(天)', value: r.AvgHoldingDays?.toFixed(1) },
+    { metric: '最大回撤', value: pct(r.MaxDrawdown) },
+    { metric: '夏普比率', value: r.SharpeRatio?.toFixed(2) ?? 'N/A' },
   ]
 })
 
@@ -79,32 +82,24 @@ const metricsColumns = [
   { title: '数值', key: 'value' },
 ]
 
-const ratingColumns = [
-  { title: '信号强度', key: 'rating', width: 120 },
-  { title: '数量', key: 'count', width: 80 },
-  { title: '胜率', key: 'winRate' },
-  { title: '平均收益', key: 'avgReturn' },
-  { title: '平均回撤', key: 'avgDrawdown' },
-]
-
-const ratingData = computed(() => {
-  const r = batchResult.value
-  if (!r || !r.ByRating) return []
-  return Object.entries(r.ByRating).map(([rating, stats]) => ({
-    rating,
-    count: stats.Count,
-    winRate: stats.Count > 0 ? pct(stats.WinCount / stats.Count) : 'N/A',
-    avgReturn: pct(stats.AvgReturn),
-    avgDrawdown: pct(stats.AvgDrawdown),
-  }))
-})
-
 async function runSingle() {
+  if (!singleForm.stockCode) {
+    message.warning('请输入股票代码')
+    return
+  }
   singleLoading.value = true
   singleError.value = ''
   singleResult.value = null
   try {
-    const res = await BacktestRecommend(0, singleForm.holdingDays)
+    const res = await RunSingleBacktest(
+      singleForm.stockCode,
+      fmtDate(singleForm.signalDate),
+      singleForm.entryPrice,
+      singleForm.holdingDays,
+      singleForm.stopLoss,
+      singleForm.stopProfit,
+      singleForm.adjusted,
+    )
     singleResult.value = res
     message.success('单次回测完成')
   } catch (e) {
@@ -120,14 +115,17 @@ async function runBatch() {
   batchError.value = ''
   batchResult.value = null
   try {
-    const res = await BacktestRecommendBatch({
-      startDate: fmtDate(batchForm.startDate),
-      endDate: fmtDate(batchForm.endDate),
-      holdingDays: batchForm.holdingDays,
-      stopLoss: batchForm.stopLoss,
-      stopProfit: batchForm.stopProfit,
-      adjusted: batchForm.adjusted,
-    })
+    const res = await RunBatchBacktest(
+      batchForm.stockCode,
+      fmtDate(batchForm.startDate),
+      fmtDate(batchForm.endDate),
+      batchForm.period,
+      batchForm.adjusted,
+      batchForm.entryPrice,
+      batchForm.holdingDays,
+      batchForm.stopLoss,
+      batchForm.stopProfit,
+    )
     batchResult.value = res
     message.success('批量回测完成')
   } catch (e) {
@@ -253,11 +251,17 @@ async function runBatch() {
           <n-gi :span="8">
             <n-card title="批量设置" size="small">
               <n-form label-placement="left" label-width="100">
+                <n-form-item label="股票代码">
+                  <n-input v-model:value="batchForm.stockCode" placeholder="如 sh600519" />
+                </n-form-item>
                 <n-form-item label="开始日期">
                   <n-date-picker v-model:value="batchForm.startDate" type="date" style="width: 100%" />
                 </n-form-item>
                 <n-form-item label="结束日期">
                   <n-date-picker v-model:value="batchForm.endDate" type="date" style="width: 100%" />
+                </n-form-item>
+                <n-form-item label="入场价格">
+                  <n-input-number v-model:value="batchForm.entryPrice" placeholder="0=信号日收盘价" style="width: 100%" :min="0" />
                 </n-form-item>
                 <n-form-item label="持仓天数">
                   <n-input-number v-model:value="batchForm.holdingDays" :min="1" style="width: 100%" />
@@ -272,7 +276,7 @@ async function runBatch() {
                   <n-switch v-model:value="batchForm.adjusted" />
                 </n-form-item>
               </n-form>
-              <n-button type="primary" @click="runBatch" :loading="batchLoading" style="width: 100%">
+              <n-button type="primary" @click="runBatch" :loading="batchLoading" :disabled="!batchForm.stockCode" style="width: 100%">
                 批量回测
               </n-button>
             </n-card>
@@ -296,17 +300,6 @@ async function runBatch() {
                     :single-line="false"
                     size="small"
                   />
-                  <n-divider v-if="batchResult.ByRating && Object.keys(batchResult.ByRating).length > 0" />
-                  <template v-if="batchResult.ByRating && Object.keys(batchResult.ByRating).length > 0">
-                    <n-text strong depth="2">按信号强度分组</n-text>
-                    <n-data-table
-                      :columns="ratingColumns"
-                      :data="ratingData"
-                      :bordered="true"
-                      size="small"
-                      style="margin-top: 8px"
-                    />
-                  </template>
                 </template>
                 <template v-else>
                   <div style="padding: 40px 0; text-align: center">
