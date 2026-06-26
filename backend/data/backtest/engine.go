@@ -79,6 +79,11 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 		in.Shares = 100
 	}
 
+	// 最小交易单位校验（A 股 1 手 = 100 股）
+	if in.Shares%100 != 0 {
+		return nil, fmt.Errorf("invalid lot size: %d shares (must be multiple of 100)", in.Shares)
+	}
+
 	bars, err := e.store.QueryKLines(ctx, in.StockCode, "day", in.SignalDate, "", in.Adjusted)
 	if err != nil || len(bars) == 0 {
 		router := datasource.GetRouter()
