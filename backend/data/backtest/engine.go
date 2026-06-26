@@ -91,6 +91,8 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 	exitIdx := 0
 	warning := ""
 
+	// T+1 约束：bars[0] 为买入日（信号日），从 i=1 开始检查退出
+	// 确保买入当日不可卖出
 	for i := 1; i < len(bars) && i <= in.HoldingDays; i++ {
 		bar := bars[i]
 		if bar.High > maxPrice {
