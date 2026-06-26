@@ -2,7 +2,9 @@ package backtest
 
 import (
 	"context"
+	"time"
 
+	"go-stock/backend/data/history"
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
@@ -75,5 +77,89 @@ func (s *Service) GetBacktestResults(ctx context.Context, stockCode string, page
 		Page:       page,
 		PageSize:   pageSize,
 		TotalPages: totalPages,
+	}, nil
+}
+
+type syncTaskItem struct {
+	StockCode string `json:"stockCode"`
+	Period    string `json:"period"`
+	Status    string `json:"status"`
+	Progress  int    `json:"progress"`
+	ErrorMsg  string `json:"errorMsg"`
+}
+
+func (s *Service) StartHistoricalSync(ctx context.Context, years int) error {
+	now := time.Now()
+	startDate := now.AddDate(-years, 0, 0).Format("2006-01-02")
+	endDate := now.Format("2006-01-02")
+
+	var infos []models.AllStockInfo
+	if err := db.Dao.WithContext(ctx).
+		Where("secucode LIKE ? OR secucode LIKE ?", "sh%", "sz%").
+		Find(&infos).Error; err != nil {
+		return err
+	}
+
+	for _, info := range infos {
+		if err := history.CreateSyncTask(ctx, info.SECUCODE, "day", startDate, endDate, true); err != nil {
+			logger.SugaredLogger.Errorf("create sync task failed for %s: %v", info.SECUCODE, err)
+			continue
+		}
+	}
+
+	logger.SugaredLogger.Infof("created %d sync tasks for historical data sync (%d years)", len(infos), years)
+	return nil
+}
+
+func (s *Service) GetSyncProgress(ctx context.Context) ([]syncTaskItem, error) {
+	var logs []models.KLineSyncLog
+	if err := db.Dao.WithContext(ctx).Order("updated_at DESC").Find(&logs).Error; err != nil {
+		return nil, err
+	}
+
+	items := make([]syncTaskItem, 0, len(logs))
+	for _, l := range logs {
+		progress := 0
+		if l.ExpectedCount > 0 {
+			progress = l.SyncedCount * 100 / l.ExpectedCount
+		} else if l.Status == history.SyncStatusDone {
+			progress = 100
+		}
+
+		items = append(items, syncTaskItem{
+			StockCode: l.StockCode,
+			Period:    l.Period,
+			Status:    l.Status,
+			Progress:  progress,
+			ErrorMsg:  l.ErrorMsg,
+		})
+	}
+
+	return items, nil
+}
+
+func (s *Service) GetKLineCacheStats(ctx context.Context) (map[string]any, error) {
+	var totalBars int64
+	var uniqueStocks int64
+	var minDate, maxDate string
+	var lastSyncTime string
+
+	db.Dao.WithContext(ctx).Model(&models.KLineBar{}).Select("COUNT(*)").Scan(&totalBars)
+	db.Dao.WithContext(ctx).Model(&models.KLineBar{}).Select("COUNT(DISTINCT stock_code)").Scan(&uniqueStocks)
+	db.Dao.WithContext(ctx).Model(&models.KLineBar{}).Select("MIN(trade_date), MAX(trade_date)").Row().Scan(&minDate, &maxDate)
+
+	var latest models.KLineSyncLog
+	if err := db.Dao.WithContext(ctx).Order("updated_at DESC").First(&latest).Error; err == nil {
+		lastSyncTime = latest.UpdatedAt.Format("2006-01-02 15:04:05")
+	}
+
+	return map[string]any{
+		"totalBars":    totalBars,
+		"uniqueStocks": uniqueStocks,
+		"dateRange": map[string]string{
+			"min": minDate,
+			"max": maxDate,
+		},
+		"lastSyncTime": lastSyncTime,
 	}, nil
 }

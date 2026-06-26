@@ -88,6 +88,7 @@ type KLineBar struct {
 	Low    float64   `json:"low"`
 	Close  float64   `json:"close"`
 	Volume int64     `json:"volume"`
+	Amount float64   `json:"amount"`
 }
 
 type NewsItem struct {

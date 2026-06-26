@@ -10,7 +10,6 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/models"
 
-	"github.com/go-resty/resty/v2"
 	"gorm.io/gorm/clause"
 )
 
@@ -185,6 +184,7 @@ func BarsFromKLineData(code, period, source string, adjusted bool, data *KLineDa
 			Low:       b.Low,
 			Close:     b.Close,
 			Volume:    b.Volume,
+			Amount:    b.Amount,
 			Source:    source,
 		})
 	}

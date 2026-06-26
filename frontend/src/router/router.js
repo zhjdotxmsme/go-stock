@@ -11,6 +11,7 @@ import cronTaskManager from "../components/cron-task-manager.vue"
 import mcpServerManager from "../components/mcp-server-manager.vue"
 import klineAnalysis from "../components/kline-analysis.vue"
 import backtestPanel from "../components/BacktestPanel.vue"
+import dataManager from "../components/DataManager.vue"
 
 const routes = [
     { path: '/', component: stockView,name: 'stock'},
@@ -24,6 +25,7 @@ const routes = [
     { path: '/mcp-servers', component: mcpServerManager,name: 'mcpServers' },
     { path: '/kline-analysis', component: klineAnalysis,name: 'klineAnalysis' },
     { path: '/backtest', component: backtestPanel,name: 'backtest' },
+    { path: '/data-manager', component: dataManager, name: 'data-manager' },
 
 ]
 
