@@ -27,6 +27,19 @@ type DebateResult struct {
 	Disagreements  []string
 }
 
+// PriceZone 表示价格区间
+type PriceZone struct {
+	Low  float64 `json:"low"`
+	High float64 `json:"high"`
+}
+
+// ChecklistItem 表示操作检查项
+type ChecklistItem struct {
+	Action      string `json:"action"`      // 操作描述
+	Priority    string `json:"priority"`    // high / medium / low
+	IsCompleted bool   `json:"is_completed"` // 默认 false
+}
+
 // FinalReport is the output of the synthesis node
 type FinalReport struct {
 	OverallRating      string // strong_buy / buy / hold / sell / strong_sell
@@ -36,6 +49,14 @@ type FinalReport struct {
 	Catalysts          []string
 	MultiTimeframeView map[string]string // short/medium/long term views
 	Conclusion         string
+
+	// 新增结构化字段
+	Score       float64              `json:"score"`        // 1-10 综合评分，0=未评估
+	Trend       string               `json:"trend"`        // up / down / sideways
+	EntryZone   *PriceZone           `json:"entryZone"`    // 买入区间，nil=未提供
+	ExitZone    *PriceZone           `json:"exitZone"`     // 卖出区间，nil=未提供
+	RiskLevel   string               `json:"riskLevel"`    // low / medium / high
+	Checklist   []ChecklistItem      `json:"checklist"`    // 操作检查清单
 }
 
 // PolicyReport is the output of the policy analyst
