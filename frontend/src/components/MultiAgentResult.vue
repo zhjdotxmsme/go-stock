@@ -57,20 +57,11 @@
           {{ ratingLabel(finalReport.overallRating) }}
         </n-tag>
       </div>
+
+      <DecisionDashboard :report="finalReport" />
+
       <div class="final-detail">
         <MdPreview :modelValue="finalReport.conclusion || '分析完成'" />
-      </div>
-      <div v-if="finalReport.catalysts && finalReport.catalysts.length > 0" class="final-catalysts">
-        <h5>📈 催化剂</h5>
-        <ul>
-          <li v-for="(c, i) in finalReport.catalysts" :key="i">{{ c }}</li>
-        </ul>
-      </div>
-      <div v-if="finalReport.riskFactors && finalReport.riskFactors.length > 0" class="final-risks">
-        <h5>⚠️ 风险因素</h5>
-        <ul>
-          <li v-for="(r, i) in finalReport.riskFactors" :key="i">{{ r }}</li>
-        </ul>
       </div>
     </div>
   </div>
@@ -81,6 +72,7 @@ import { computed } from 'vue'
 import { CheckCircle, Circle, Spinner } from '@vicons/fa'
 import { MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
+import DecisionDashboard from './DecisionDashboard.vue'
 
 const props = defineProps({
   state: {
@@ -243,14 +235,5 @@ function truncate(text, max) {
   padding: 8px 12px;
   border-radius: 6px;
   background: var(--n-color);
-}
-.final-catalysts ul,
-.final-risks ul {
-  padding-left: 20px;
-}
-.final-catalysts li,
-.final-risks li {
-  margin: 4px 0;
-  font-size: 13px;
 }
 </style>
