@@ -2,10 +2,12 @@ package multi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"go-stock/backend/logger"
 	"io"
+	"strings"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -116,6 +118,9 @@ func RunSynthesis(ctx context.Context, ac *AgentContext) (*FinalReport, error) {
 		}
 	}
 
+	// 结构化提取：从结论文本中提取结构化字段（轻量 LLM 调用）
+	extractStructuredFields(ctx, ac, report)
+
 	return report, nil
 }
 
@@ -165,4 +170,84 @@ func aggregateRatings(reports []AgentReport) string {
 		return "hold"
 	}
 	return "hold"
+}
+
+// extractStructuredFields 从已生成的 Conclusion 文本中提取结构化字段。
+// 使用轻量 LLM 调用，失败不影响主流程（降级使用默认值）。
+func extractStructuredFields(ctx context.Context, ac *AgentContext, report *FinalReport) {
+	chatModel, err := GetChatModelWithTier(ctx, "struct_extract", LLMTierQuick, ac.AIConfigID)
+	if err != nil {
+		logger.SugaredLogger.Warnf("struct extract LLM unavailable, skipping: %v", err)
+		return
+	}
+
+	messages := []*schema.Message{
+		{Role: schema.System, Content: StructExtractPrompt},
+		{Role: schema.User, Content: report.Conclusion},
+	}
+
+	result, err := chatModel.Generate(ctx, messages)
+	if err != nil {
+		logger.SugaredLogger.Warnf("struct extract LLM error, skipping: %v", err)
+		return
+	}
+
+	content := result.Content
+	if content == "" {
+		return
+	}
+
+	// Try to extract JSON from the response (the LLM should output pure JSON)
+	// Handle the case where the LLM wraps JSON in markdown codeblocks
+	jsonStr := content
+	if idx := strings.Index(content, "```json\n"); idx >= 0 {
+		content = content[idx+8:]
+		if end := strings.Index(content, "\n```"); end >= 0 {
+			jsonStr = content[:end]
+		}
+	} else if idx := strings.Index(content, "```"); idx >= 0 {
+		content = content[idx+3:]
+		if end := strings.Index(content, "```"); end >= 0 {
+			jsonStr = content[:end]
+		}
+	}
+
+	var extracted struct {
+		Score     float64         `json:"score"`
+		Trend     string          `json:"trend"`
+		EntryZone *PriceZone      `json:"entryZone"`
+		ExitZone  *PriceZone      `json:"exitZone"`
+		RiskLevel string          `json:"riskLevel"`
+		Checklist []ChecklistItem `json:"checklist"`
+	}
+
+	if err := json.Unmarshal([]byte(jsonStr), &extracted); err != nil {
+		logger.SugaredLogger.Warnf("struct extract JSON parse error: %v", err)
+		return
+	}
+
+	// Apply extracted values (validate ranges)
+	if extracted.Score >= 1 && extracted.Score <= 10 {
+		report.Score = extracted.Score
+	}
+	switch extracted.Trend {
+	case "up", "down", "sideways":
+		report.Trend = extracted.Trend
+	}
+	if extracted.EntryZone != nil && extracted.EntryZone.Low > 0 && extracted.EntryZone.High > 0 {
+		report.EntryZone = extracted.EntryZone
+	}
+	if extracted.ExitZone != nil && extracted.ExitZone.Low > 0 && extracted.ExitZone.High > 0 {
+		report.ExitZone = extracted.ExitZone
+	}
+	switch extracted.RiskLevel {
+	case "low", "medium", "high":
+		report.RiskLevel = extracted.RiskLevel
+	}
+	if len(extracted.Checklist) > 0 {
+		report.Checklist = extracted.Checklist
+	}
+
+	logger.SugaredLogger.Infof("struct extract successful: score=%.1f trend=%s risk=%s items=%d",
+		report.Score, report.Trend, report.RiskLevel, len(report.Checklist))
 }

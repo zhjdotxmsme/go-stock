@@ -96,3 +96,26 @@ const LockupAnalystPrompt = `你是一位专业的解禁监控师，专注于 A 
 5. **供给冲击评估**：综合评估供给端压力对股价的影响
 
 解禁是 A 股特有的重大供给冲击因素。请给出评价（看多/看空/中性）。`
+
+const StructExtractPrompt = `你是一位结构化数据提取专家。请从以下股票分析结论中提取结构化信息。
+
+请严格按以下 JSON 格式输出，不要包含任何其他文本：
+
+{
+  "score": 0.0,
+  "trend": "",
+  "entryZone": null,
+  "exitZone": null,
+  "riskLevel": "",
+  "checklist": []
+}
+
+字段说明：
+- score: 1-10 的综合评分，精确到 0.5。从结论中推断，找不到证据时给 5.0。0=无法评估。
+- trend: 趋势方向。up=上涨趋势, down=下跌趋势, sideways=横盘震荡。从结论中判断。
+- entryZone: 买入价格区间。如果结论提到了买入价位或支撑位，提取为 {"low": 最低价, "high": 最高价}。未提及则为 null。
+- exitZone: 卖出价格区间。如果结论提到了目标价或压力位，提取为 {"low": 最低价, "high": 最高价}。未提及则为 null。
+- riskLevel: 风险等级。low=低风险, medium=中等风险, high=高风险。从风险因素数量/严重程度判断。
+- checklist: 操作检查清单。从结论中提取最多 5 条具体操作项。[{"action": "操作描述", "priority": "high/medium/low", "is_completed": false}]
+
+分析结论：`
