@@ -347,6 +347,9 @@ func AutoMigrate() {
 	// 初始化默认技能
 	data.InitDefaultSkills()
 
+	// 初始化默认多智能体提示词
+	data.InitDefaultMultiAgentPrompts()
+
 	// 初始化 global_stock_index_cache 定时任务
 	initGlobalStockIndexCacheTask()
 }
@@ -432,9 +435,13 @@ func initStockDataHK(ctx context.Context) {
 func updateBasicInfo() {
 	config := data.GetSettingConfig()
 	if config.UpdateBasicInfoOnStart {
-		//更新基本信息
-		go data.NewStockDataApi().GetStockBaseInfo()
-		go data.NewStockDataApi().GetIndexBasic()
+		if config.TushareToken == "" {
+			log.SugaredLogger.Warn("updateBasicInfo: TushareToken 为空，跳过 Tushare API 调用")
+		} else {
+			//更新基本信息
+			go data.NewStockDataApi().GetStockBaseInfo()
+			go data.NewStockDataApi().GetIndexBasic()
+		}
 	}
 }
 

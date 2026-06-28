@@ -296,6 +296,7 @@ type PromptTemplate struct {
 	Name      string `json:"name"`
 	Content   string `json:"content"`
 	Type      string `json:"type"`
+	RoleKey   string `json:"roleKey" gorm:"uniqueIndex;size:100"` // 多智能体角色键名，如 multi_fundamental
 }
 
 func (p PromptTemplate) TableName() string {
@@ -1324,21 +1325,21 @@ type AllStocksResp struct {
 
 type StockInfo struct {
 	SECUCODE         string `json:"SECUCODE" md:"股票代码" gorm:"index;secucode"`
-	SECURITYCODE     string `json:"SECURITY_CODE" md:"股票代码(精简)" gorm:"index;securitycode"`
-	SECURITYNAMEABBR string `json:"SECURITY_NAME_ABBR" md:"股票名称" gorm:"index;securitynameabbr"`
-	NEWPRICE         any    `json:"NEW_PRICE" md:"最新价" gorm:"newprice"`
-	CHANGERATE       any    `json:"CHANGE_RATE" md:"涨跌幅(%)" gorm:"changerate"`
-	VOLUMERATIO      any    `json:"VOLUME_RATIO" md:"量比" gorm:"volumeratio"`
-	HIGHPRICE        any    `json:"HIGH_PRICE" md:"最高价" gorm:"highprice"`
-	LOWPRICE         any    `json:"LOW_PRICE" md:"最低价" gorm:"lowprice"`
-	PRECLOSEPRICE    any    `json:"PRE_CLOSE_PRICE" md:"前一交易日收盘价" gorm:"precloseprice"`
-	VOLUME           any    `json:"VOLUME" md:"成交量" gorm:"volume"`
-	DEALAMOUNT       any    `json:"DEAL_AMOUNT" md:"成交额（元）" gorm:"dealamount"`
-	TURNOVERRATE     any    `json:"TURNOVERRATE" md:"换手率(%)" gorm:"turnoverrate"`
-	MARKET           string `json:"MARKET" md:"交易所" gorm:"index;market"`
-	CONCEPT          any    `json:"CONCEPT" md:"所属概念" gorm:"index;concept"`
-	INDUSTRY         string `json:"INDUSTRY" md:"所属行业" gorm:"index;industry"`
-	MAXTRADEDATE     string `json:"MAX_TRADE_DATE" md:"数据日期" gorm:"index;maxtradedate"`
+		SECURITYCODE     string `json:"SECURITY_CODE" md:"股票代码(精简)" gorm:"column:sec_uri_tycode;index"`
+		SECURITYNAMEABBR string `json:"SECURITY_NAME_ABBR" md:"股票名称" gorm:"column:sec_uri_tynameabbr;index"`
+		NEWPRICE         any    `json:"NEW_PRICE" md:"最新价" gorm:"column:newprice"`
+		CHANGERATE       any    `json:"CHANGE_RATE" md:"涨跌幅(%)" gorm:"column:changerate"`
+		VOLUMERATIO      any    `json:"VOLUME_RATIO" md:"量比" gorm:"column:volumeratio"`
+		HIGHPRICE        any    `json:"HIGH_PRICE" md:"最高价" gorm:"column:highprice"`
+		LOWPRICE         any    `json:"LOW_PRICE" md:"最低价" gorm:"column:lowprice"`
+		PRECLOSEPRICE    any    `json:"PRE_CLOSE_PRICE" md:"前一交易日收盘价" gorm:"column:precloseprice"`
+		VOLUME           any    `json:"VOLUME" md:"成交量" gorm:"column:volume"`
+		DEALAMOUNT       any    `json:"DEAL_AMOUNT" md:"成交额（元）" gorm:"column:dealamount"`
+		TURNOVERRATE     any    `json:"TURNOVERRATE" md:"换手率(%)" gorm:"column:turnoverrate"`
+		MARKET           string `json:"MARKET" md:"交易所" gorm:"column:market;index"`
+		CONCEPT          any    `json:"CONCEPT" md:"所属概念" gorm:"column:concept;index"`
+		INDUSTRY         string `json:"INDUSTRY" md:"所属行业" gorm:"column:industry;index"`
+		MAXTRADEDATE     string `json:"MAX_TRADE_DATE" md:"数据日期" gorm:"column:maxtradedate;index"`
 }
 
 func (receiver StockInfo) ToAllStockInfo() AllStockInfo {
@@ -1366,21 +1367,21 @@ func (receiver StockInfo) ToAllStockInfo() AllStockInfo {
 type AllStockInfo struct {
 	gorm.Model
 	SECUCODE         string `json:"SECUCODE" md:"股票代码" gorm:"index;secucode"`
-	SECURITYCODE     string `json:"SECURITY_CODE" md:"股票代码(精简)" gorm:"index;securitycode"`
-	SECURITYNAMEABBR string `json:"SECURITY_NAME_ABBR" md:"股票名称" gorm:"index;securitynameabbr"`
-	NEWPRICE         string `json:"NEW_PRICE" md:"最新价" gorm:"newprice"`
-	CHANGERATE       string `json:"CHANGE_RATE" md:"涨跌幅(%)" gorm:"changerate"`
-	VOLUMERATIO      string `json:"VOLUME_RATIO" md:"量比" gorm:"volumeratio"`
-	HIGHPRICE        string `json:"HIGH_PRICE" md:"最高价" gorm:"highprice"`
-	LOWPRICE         string `json:"LOW_PRICE" md:"最低价" gorm:"lowprice"`
-	PRECLOSEPRICE    string `json:"PRE_CLOSE_PRICE" md:"前一交易日收盘价" gorm:"precloseprice"`
-	VOLUME           string `json:"VOLUME" md:"成交量" gorm:"volume"`
-	DEALAMOUNT       string `json:"DEAL_AMOUNT" md:"成交额（元）" gorm:"dealamount"`
-	TURNOVERRATE     string `json:"TURNOVERRATE" md:"换手率(%)" gorm:"turnoverrate"`
-	MARKET           string `json:"MARKET" md:"交易所" gorm:"index;market"`
-	CONCEPT          string `json:"CONCEPT" md:"所属概念" gorm:"index;concept"`
-	INDUSTRY         string `json:"INDUSTRY" md:"所属行业" gorm:"index;industry"`
-	MAXTRADEDATE     string `json:"MAX_TRADE_DATE" md:"数据日期" gorm:"index;maxtradedate"`
+	SECURITYCODE     string `json:"SECURITY_CODE" md:"股票代码(精简)" gorm:"column:sec_uri_tycode;index"`
+	SECURITYNAMEABBR string `json:"SECURITY_NAME_ABBR" md:"股票名称" gorm:"column:sec_uri_tynameabbr;index"`
+	NEWPRICE         string `json:"NEW_PRICE" md:"最新价" gorm:"column:newprice"`
+	CHANGERATE       string `json:"CHANGE_RATE" md:"涨跌幅(%)" gorm:"column:changerate"`
+	VOLUMERATIO      string `json:"VOLUME_RATIO" md:"量比" gorm:"column:volumeratio"`
+	HIGHPRICE        string `json:"HIGH_PRICE" md:"最高价" gorm:"column:highprice"`
+	LOWPRICE         string `json:"LOW_PRICE" md:"最低价" gorm:"column:lowprice"`
+	PRECLOSEPRICE    string `json:"PRE_CLOSE_PRICE" md:"前一交易日收盘价" gorm:"column:precloseprice"`
+	VOLUME           string `json:"VOLUME" md:"成交量" gorm:"column:volume"`
+	DEALAMOUNT       string `json:"DEAL_AMOUNT" md:"成交额（元）" gorm:"column:dealamount"`
+	TURNOVERRATE     string `json:"TURNOVERRATE" md:"换手率(%)" gorm:"column:turnoverrate"`
+	MARKET           string `json:"MARKET" md:"交易所" gorm:"column:market;index"`
+	CONCEPT          string `json:"CONCEPT" md:"所属概念" gorm:"column:concept;index"`
+	INDUSTRY         string `json:"INDUSTRY" md:"所属行业" gorm:"column:industry;index"`
+	MAXTRADEDATE     string `json:"MAX_TRADE_DATE" md:"数据日期" gorm:"column:maxtradedate;index"`
 }
 
 func (s AllStockInfo) TableName() string {
