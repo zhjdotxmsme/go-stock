@@ -1,3 +1,111 @@
+export namespace backtest {
+	
+	export class Result {
+	    StockCode: string;
+	    SignalDate: string;
+	    EntryPrice: number;
+	    ExitPrice: number;
+	    ExitDate: string;
+	    HoldingDays: number;
+	    TotalReturn: number;
+	    MaxDrawdown: number;
+	    BenchmarkReturn: number;
+	    Alpha: number;
+	    Win: boolean;
+	    SlippageWarning: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Result(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.StockCode = source["StockCode"];
+	        this.SignalDate = source["SignalDate"];
+	        this.EntryPrice = source["EntryPrice"];
+	        this.ExitPrice = source["ExitPrice"];
+	        this.ExitDate = source["ExitDate"];
+	        this.HoldingDays = source["HoldingDays"];
+	        this.TotalReturn = source["TotalReturn"];
+	        this.MaxDrawdown = source["MaxDrawdown"];
+	        this.BenchmarkReturn = source["BenchmarkReturn"];
+	        this.Alpha = source["Alpha"];
+	        this.Win = source["Win"];
+	        this.SlippageWarning = source["SlippageWarning"];
+	    }
+	}
+	export class BatchResult {
+	    TotalTrades: number;
+	    WinCount: number;
+	    LossCount: number;
+	    WinRate: number;
+	    AvgReturn: number;
+	    TotalReturn: number;
+	    AvgHoldingDays: number;
+	    MaxDrawdown: number;
+	    SharpeRatio: number;
+	    Results: Result[];
+	
+	    static createFrom(source: any = {}) {
+	        return new BatchResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.TotalTrades = source["TotalTrades"];
+	        this.WinCount = source["WinCount"];
+	        this.LossCount = source["LossCount"];
+	        this.WinRate = source["WinRate"];
+	        this.AvgReturn = source["AvgReturn"];
+	        this.TotalReturn = source["TotalReturn"];
+	        this.AvgHoldingDays = source["AvgHoldingDays"];
+	        this.MaxDrawdown = source["MaxDrawdown"];
+	        this.SharpeRatio = source["SharpeRatio"];
+	        this.Results = this.convertValues(source["Results"], Result);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class syncTaskItem {
+	    stockCode: string;
+	    period: string;
+	    status: string;
+	    progress: number;
+	    errorMsg: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new syncTaskItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stockCode = source["stockCode"];
+	        this.period = source["period"];
+	        this.status = source["status"];
+	        this.progress = source["progress"];
+	        this.errorMsg = source["errorMsg"];
+	    }
+	}
+
+}
+
 export namespace data {
 	
 	export class AIConfig {
@@ -310,8 +418,7 @@ export namespace data {
 	    CreatedAt: any;
 	    // Go type: time
 	    UpdatedAt: any;
-	    // Go type: gorm
-	    DeletedAt: any;
+	    DeletedAt: gorm.DeletedAt;
 	    code: string;
 	    name: string;
 	    fullName: string;
@@ -345,7 +452,7 @@ export namespace data {
 	        this.ID = source["ID"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
-	        this.DeletedAt = this.convertValues(source["DeletedAt"], null);
+	        this.DeletedAt = this.convertValues(source["DeletedAt"], gorm.DeletedAt);
 	        this.code = source["code"];
 	        this.name = source["name"];
 	        this.fullName = source["fullName"];
@@ -395,8 +502,7 @@ export namespace data {
 	    CreatedAt: any;
 	    // Go type: time
 	    UpdatedAt: any;
-	    // Go type: gorm
-	    DeletedAt: any;
+	    DeletedAt: gorm.DeletedAt;
 	    code: string;
 	    name: string;
 	    netUnitValue?: number;
@@ -418,7 +524,7 @@ export namespace data {
 	        this.ID = source["ID"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
-	        this.DeletedAt = this.convertValues(source["DeletedAt"], null);
+	        this.DeletedAt = this.convertValues(source["DeletedAt"], gorm.DeletedAt);
 	        this.code = source["code"];
 	        this.name = source["name"];
 	        this.netUnitValue = source["netUnitValue"];
@@ -494,8 +600,7 @@ export namespace data {
 	    CreatedAt: any;
 	    // Go type: time
 	    UpdatedAt: any;
-	    // Go type: gorm
-	    DeletedAt: any;
+	    DeletedAt: gorm.DeletedAt;
 	    name: string;
 	    sort: number;
 	
@@ -508,7 +613,7 @@ export namespace data {
 	        this.ID = source["ID"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
-	        this.DeletedAt = this.convertValues(source["DeletedAt"], null);
+	        this.DeletedAt = this.convertValues(source["DeletedAt"], gorm.DeletedAt);
 	        this.name = source["name"];
 	        this.sort = source["sort"];
 	    }
@@ -537,8 +642,7 @@ export namespace data {
 	    CreatedAt: any;
 	    // Go type: time
 	    UpdatedAt: any;
-	    // Go type: gorm
-	    DeletedAt: any;
+	    DeletedAt: gorm.DeletedAt;
 	    stockCode: string;
 	    groupId: number;
 	    groupInfo: Group;
@@ -552,7 +656,7 @@ export namespace data {
 	        this.ID = source["ID"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
-	        this.DeletedAt = this.convertValues(source["DeletedAt"], null);
+	        this.DeletedAt = this.convertValues(source["DeletedAt"], gorm.DeletedAt);
 	        this.stockCode = source["stockCode"];
 	        this.groupId = source["groupId"];
 	        this.groupInfo = this.convertValues(source["groupInfo"], Group);
@@ -878,12 +982,24 @@ export namespace data {
 	    CreatedAt: any;
 	    // Go type: time
 	    UpdatedAt: any;
-	    // Go type: gorm
-	    DeletedAt: any;
+	    DeletedAt: gorm.DeletedAt;
 	    tushareToken: string;
 	    localPushEnable: boolean;
 	    dingPushEnable: boolean;
 	    dingRobot: string;
+	    wechatPushEnable: boolean;
+	    wechatRobot: string;
+	    feishuPushEnable: boolean;
+	    feishuRobot: string;
+	    telegramPushEnable: boolean;
+	    telegramBotToken: string;
+	    telegramChatID: string;
+	    emailPushEnable: boolean;
+	    emailSmtpHost: string;
+	    emailSmtpPort: number;
+	    emailSmtpUser: string;
+	    emailSmtpPass: string;
+	    emailTo: string;
 	    updateBasicInfoOnStart: boolean;
 	    refreshInterval: number;
 	    openAiEnable: boolean;
@@ -922,11 +1038,24 @@ export namespace data {
 	        this.ID = source["ID"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
-	        this.DeletedAt = this.convertValues(source["DeletedAt"], null);
+	        this.DeletedAt = this.convertValues(source["DeletedAt"], gorm.DeletedAt);
 	        this.tushareToken = source["tushareToken"];
 	        this.localPushEnable = source["localPushEnable"];
 	        this.dingPushEnable = source["dingPushEnable"];
 	        this.dingRobot = source["dingRobot"];
+	        this.wechatPushEnable = source["wechatPushEnable"];
+	        this.wechatRobot = source["wechatRobot"];
+	        this.feishuPushEnable = source["feishuPushEnable"];
+	        this.feishuRobot = source["feishuRobot"];
+	        this.telegramPushEnable = source["telegramPushEnable"];
+	        this.telegramBotToken = source["telegramBotToken"];
+	        this.telegramChatID = source["telegramChatID"];
+	        this.emailPushEnable = source["emailPushEnable"];
+	        this.emailSmtpHost = source["emailSmtpHost"];
+	        this.emailSmtpPort = source["emailSmtpPort"];
+	        this.emailSmtpUser = source["emailSmtpUser"];
+	        this.emailSmtpPass = source["emailSmtpPass"];
+	        this.emailTo = source["emailTo"];
 	        this.updateBasicInfoOnStart = source["updateBasicInfoOnStart"];
 	        this.refreshInterval = source["refreshInterval"];
 	        this.openAiEnable = source["openAiEnable"];
@@ -981,8 +1110,7 @@ export namespace data {
 	    CreatedAt: any;
 	    // Go type: time
 	    UpdatedAt: any;
-	    // Go type: gorm
-	    DeletedAt: any;
+	    DeletedAt: gorm.DeletedAt;
 	    ts_code: string;
 	    symbol: string;
 	    name: string;
@@ -1012,7 +1140,7 @@ export namespace data {
 	        this.ID = source["ID"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
-	        this.DeletedAt = this.convertValues(source["DeletedAt"], null);
+	        this.DeletedAt = this.convertValues(source["DeletedAt"], gorm.DeletedAt);
 	        this.ts_code = source["ts_code"];
 	        this.symbol = source["symbol"];
 	        this.name = source["name"];
@@ -1124,8 +1252,7 @@ export namespace data {
 	    CreatedAt: any;
 	    // Go type: time
 	    UpdatedAt: any;
-	    // Go type: gorm
-	    DeletedAt: any;
+	    DeletedAt: gorm.DeletedAt;
 	    "日期": string;
 	    "时间": string;
 	    "股票代码": string;
@@ -1186,7 +1313,7 @@ export namespace data {
 	        this.ID = source["ID"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
-	        this.DeletedAt = this.convertValues(source["DeletedAt"], null);
+	        this.DeletedAt = this.convertValues(source["DeletedAt"], gorm.DeletedAt);
 	        this["日期"] = source["日期"];
 	        this["时间"] = source["时间"];
 	        this["股票代码"] = source["股票代码"];
@@ -1649,6 +1776,44 @@ export namespace data {
 
 }
 
+export namespace gorm {
+	
+	export class DeletedAt {
+	    // Go type: time
+	    Time: any;
+	    Valid: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DeletedAt(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Time = this.convertValues(source["Time"], null);
+	        this.Valid = source["Valid"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace lo {
 	
 	export class Tuple2_string_string_ {
@@ -1697,8 +1862,7 @@ export namespace models {
 	    CreatedAt: any;
 	    // Go type: time
 	    UpdatedAt: any;
-	    // Go type: gorm
-	    DeletedAt: any;
+	    DeletedAt: gorm.DeletedAt;
 	    chatId: string;
 	    modelName: string;
 	    stockCode: string;
@@ -1716,7 +1880,7 @@ export namespace models {
 	        this.ID = source["ID"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
-	        this.DeletedAt = this.convertValues(source["DeletedAt"], null);
+	        this.DeletedAt = this.convertValues(source["DeletedAt"], gorm.DeletedAt);
 	        this.chatId = source["chatId"];
 	        this.modelName = source["modelName"];
 	        this.stockCode = source["stockCode"];
@@ -1868,14 +2032,119 @@ export namespace models {
 		    return a;
 		}
 	}
+	export class AiRecommendBacktest {
+	    ID: number;
+	    // Go type: time
+	    CreatedAt: any;
+	    // Go type: time
+	    UpdatedAt: any;
+	    DeletedAt: gorm.DeletedAt;
+	    AiRecommendID: number;
+	    StockCode: string;
+	    StockName: string;
+	    SignalDate: string;
+	    SignalRating: string;
+	    EntryPrice: number;
+	    ExitPrice: number;
+	    ExitDate: string;
+	    HoldingDays: number;
+	    TotalReturn: number;
+	    MaxDrawdown: number;
+	    Csi300Return: number;
+	    Alpha: number;
+	    Win: boolean;
+	    Source: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AiRecommendBacktest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ID = source["ID"];
+	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
+	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
+	        this.DeletedAt = this.convertValues(source["DeletedAt"], gorm.DeletedAt);
+	        this.AiRecommendID = source["AiRecommendID"];
+	        this.StockCode = source["StockCode"];
+	        this.StockName = source["StockName"];
+	        this.SignalDate = source["SignalDate"];
+	        this.SignalRating = source["SignalRating"];
+	        this.EntryPrice = source["EntryPrice"];
+	        this.ExitPrice = source["ExitPrice"];
+	        this.ExitDate = source["ExitDate"];
+	        this.HoldingDays = source["HoldingDays"];
+	        this.TotalReturn = source["TotalReturn"];
+	        this.MaxDrawdown = source["MaxDrawdown"];
+	        this.Csi300Return = source["Csi300Return"];
+	        this.Alpha = source["Alpha"];
+	        this.Win = source["Win"];
+	        this.Source = source["Source"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AiRecommendBacktestPageData {
+	    list: AiRecommendBacktest[];
+	    total: number;
+	    page: number;
+	    pageSize: number;
+	    totalPages: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AiRecommendBacktestPageData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.list = this.convertValues(source["list"], AiRecommendBacktest);
+	        this.total = source["total"];
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.totalPages = source["totalPages"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class AiRecommendStocks {
 	    ID: number;
 	    // Go type: time
 	    CreatedAt: any;
 	    // Go type: time
 	    UpdatedAt: any;
-	    // Go type: gorm
-	    DeletedAt: any;
+	    DeletedAt: gorm.DeletedAt;
 	    // Go type: time
 	    dataTime?: any;
 	    modelName: string;
@@ -1910,7 +2179,7 @@ export namespace models {
 	        this.ID = source["ID"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
-	        this.DeletedAt = this.convertValues(source["DeletedAt"], null);
+	        this.DeletedAt = this.convertValues(source["DeletedAt"], gorm.DeletedAt);
 	        this.dataTime = this.convertValues(source["dataTime"], null);
 	        this.modelName = source["modelName"];
 	        this.rating = source["rating"];
@@ -2028,8 +2297,7 @@ export namespace models {
 	    CreatedAt: any;
 	    // Go type: time
 	    UpdatedAt: any;
-	    // Go type: gorm
-	    DeletedAt: any;
+	    DeletedAt: gorm.DeletedAt;
 	    SECUCODE: string;
 	    SECURITY_CODE: string;
 	    SECURITY_NAME_ABBR: string;
@@ -2056,7 +2324,7 @@ export namespace models {
 	        this.ID = source["ID"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
-	        this.DeletedAt = this.convertValues(source["DeletedAt"], null);
+	        this.DeletedAt = this.convertValues(source["DeletedAt"], gorm.DeletedAt);
 	        this.SECUCODE = source["SECUCODE"];
 	        this.SECURITY_CODE = source["SECURITY_CODE"];
 	        this.SECURITY_NAME_ABBR = source["SECURITY_NAME_ABBR"];
@@ -2456,6 +2724,214 @@ export namespace models {
 	        this.page = source["page"];
 	        this.pageSize = source["pageSize"];
 	        this.name = source["name"];
+	    }
+	}
+	export class DailyPick {
+	    id: number;
+	    // Go type: time
+	    createdAt: any;
+	    // Go type: time
+	    updatedAt: any;
+	    stockCode: string;
+	    stockName: string;
+	    tradeDate: string;
+	    score: number;
+	    rank: number;
+	    volumeFactor: number;
+	    maFactor: number;
+	    rsiFactor: number;
+	    macdFactor: number;
+	    priceFactor: number;
+	    closePrice: number;
+	    openPrice: number;
+	    highPrice: number;
+	    lowPrice: number;
+	    volume: number;
+	    turnoverRate: number;
+	    changePercent: number;
+	    ma5: number;
+	    ma10: number;
+	    ma20: number;
+	    ma60: number;
+	    macd: number;
+	    macdSignal: number;
+	    rsi14: number;
+	    kdjK: number;
+	    kdjD: number;
+	    kdjJ: number;
+	    bollMid: number;
+	    bollUp: number;
+	    bollDown: number;
+	    nextOpen: number;
+	    nextHigh: number;
+	    nextLow: number;
+	    nextClose: number;
+	    nextReturn: number;
+	    nextMaxReturn: number;
+	    nextMaxDrawdown: number;
+	    reviewed: boolean;
+	    reason: string;
+	    remarks: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DailyPick(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	        this.stockCode = source["stockCode"];
+	        this.stockName = source["stockName"];
+	        this.tradeDate = source["tradeDate"];
+	        this.score = source["score"];
+	        this.rank = source["rank"];
+	        this.volumeFactor = source["volumeFactor"];
+	        this.maFactor = source["maFactor"];
+	        this.rsiFactor = source["rsiFactor"];
+	        this.macdFactor = source["macdFactor"];
+	        this.priceFactor = source["priceFactor"];
+	        this.closePrice = source["closePrice"];
+	        this.openPrice = source["openPrice"];
+	        this.highPrice = source["highPrice"];
+	        this.lowPrice = source["lowPrice"];
+	        this.volume = source["volume"];
+	        this.turnoverRate = source["turnoverRate"];
+	        this.changePercent = source["changePercent"];
+	        this.ma5 = source["ma5"];
+	        this.ma10 = source["ma10"];
+	        this.ma20 = source["ma20"];
+	        this.ma60 = source["ma60"];
+	        this.macd = source["macd"];
+	        this.macdSignal = source["macdSignal"];
+	        this.rsi14 = source["rsi14"];
+	        this.kdjK = source["kdjK"];
+	        this.kdjD = source["kdjD"];
+	        this.kdjJ = source["kdjJ"];
+	        this.bollMid = source["bollMid"];
+	        this.bollUp = source["bollUp"];
+	        this.bollDown = source["bollDown"];
+	        this.nextOpen = source["nextOpen"];
+	        this.nextHigh = source["nextHigh"];
+	        this.nextLow = source["nextLow"];
+	        this.nextClose = source["nextClose"];
+	        this.nextReturn = source["nextReturn"];
+	        this.nextMaxReturn = source["nextMaxReturn"];
+	        this.nextMaxDrawdown = source["nextMaxDrawdown"];
+	        this.reviewed = source["reviewed"];
+	        this.reason = source["reason"];
+	        this.remarks = source["remarks"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DailyPickPageData {
+	    list: DailyPick[];
+	    total: number;
+	    page: number;
+	    pageSize: number;
+	    totalPages: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DailyPickPageData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.list = this.convertValues(source["list"], DailyPick);
+	        this.total = source["total"];
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.totalPages = source["totalPages"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DailyPickQuery {
+	    page: number;
+	    pageSize: number;
+	    tradeDate: string;
+	    startDate: string;
+	    endDate: string;
+	    reviewed?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DailyPickQuery(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.tradeDate = source["tradeDate"];
+	        this.startDate = source["startDate"];
+	        this.endDate = source["endDate"];
+	        this.reviewed = source["reviewed"];
+	    }
+	}
+	export class DailyPickStats {
+	    totalPicks: number;
+	    reviewedPicks: number;
+	    winCount: number;
+	    lossCount: number;
+	    winRate: number;
+	    avgReturn: number;
+	    totalReturn: number;
+	    maxReturn: number;
+	    maxDrawdown: number;
+	    avgMaxReturn: number;
+	    avgMaxDrawdown: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DailyPickStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalPicks = source["totalPicks"];
+	        this.reviewedPicks = source["reviewedPicks"];
+	        this.winCount = source["winCount"];
+	        this.lossCount = source["lossCount"];
+	        this.winRate = source["winRate"];
+	        this.avgReturn = source["avgReturn"];
+	        this.totalReturn = source["totalReturn"];
+	        this.maxReturn = source["maxReturn"];
+	        this.maxDrawdown = source["maxDrawdown"];
+	        this.avgMaxReturn = source["avgMaxReturn"];
+	        this.avgMaxDrawdown = source["avgMaxDrawdown"];
 	    }
 	}
 	export class MCPServer {
@@ -3184,8 +3660,7 @@ export namespace models {
 	    CreatedAt: any;
 	    // Go type: time
 	    UpdatedAt: any;
-	    // Go type: gorm
-	    DeletedAt: any;
+	    DeletedAt: gorm.DeletedAt;
 	    version: string;
 	    content: string;
 	    icon: string;
@@ -3205,7 +3680,7 @@ export namespace models {
 	        this.ID = source["ID"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
-	        this.DeletedAt = this.convertValues(source["DeletedAt"], null);
+	        this.DeletedAt = this.convertValues(source["DeletedAt"], gorm.DeletedAt);
 	        this.version = source["version"];
 	        this.content = source["content"];
 	        this.icon = source["icon"];
@@ -3234,6 +3709,35 @@ export namespace models {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace strategy {
+	
+	export class Strategy {
+	    Name: string;
+	    Code: string;
+	    Description: string;
+	    Category: string;
+	    Prompt: string;
+	    DataNeeds: string[];
+	    Enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Strategy(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Name = source["Name"];
+	        this.Code = source["Code"];
+	        this.Description = source["Description"];
+	        this.Category = source["Category"];
+	        this.Prompt = source["Prompt"];
+	        this.DataNeeds = source["DataNeeds"];
+	        this.Enabled = source["Enabled"];
+	    }
 	}
 
 }

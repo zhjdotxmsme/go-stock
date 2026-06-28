@@ -4,6 +4,7 @@ import {models} from '../models';
 import {data} from '../models';
 import {context} from '../models';
 import {main} from '../models';
+import {strategy} from '../models';
 import {lo} from '../models';
 
 export function AbortChatWithAgent():Promise<void>;
@@ -133,6 +134,8 @@ export function GetAllStockInfoById(arg1:number):Promise<models.AllStockInfo>;
 export function GetAllStockInfoList(arg1:data.AllStockInfoQuery):Promise<data.AllStockInfoPageData>;
 
 export function GetAllStocks(arg1:number,arg2:number,arg3:string,arg4:models.TechnicalIndicators):Promise<models.AllStocksResp>;
+
+export function GetAllStrategies():Promise<Array<strategy.Strategy>>;
 
 export function GetBKFundFlowList(arg1:string,arg2:number):Promise<Array<models.BKFundFlowPoint>>;
 
@@ -314,7 +317,7 @@ export function IsUSTradingTime():Promise<boolean>;
 
 export function LongTigerRank(arg1:string):Promise<any>;
 
-export function NewChatStream(arg1:string,arg2:string,arg3:string,arg4:number,arg5:any,arg6:boolean,arg7:boolean,arg8:string):Promise<void>;
+export function NewChatStream(arg1:string,arg2:string,arg3:string,arg4:number,arg5:any,arg6:boolean,arg7:boolean,arg8:string,arg9:string):Promise<void>;
 
 export function NewsPush(arg1:any):Promise<void>;
 
@@ -353,6 +356,8 @@ export function SearchStock(arg1:string):Promise<Record<string, any>>;
 export function SendDingDingMessage(arg1:string,arg2:string):Promise<string>;
 
 export function SendDingDingMessageByType(arg1:string,arg2:string,arg3:number):Promise<string>;
+
+export function SendTestNotification(arg1:string):Promise<string>;
 
 export function SetAlarmChangePercent(arg1:number,arg2:number,arg3:string):Promise<string>;
 

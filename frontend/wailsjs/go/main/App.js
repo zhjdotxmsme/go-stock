@@ -258,6 +258,10 @@ export function GetAllStocks(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GetAllStocks'](arg1, arg2, arg3, arg4);
 }
 
+export function GetAllStrategies() {
+  return window['go']['main']['App']['GetAllStrategies']();
+}
+
 export function GetBKFundFlowList(arg1, arg2) {
   return window['go']['main']['App']['GetBKFundFlowList'](arg1, arg2);
 }
@@ -618,8 +622,8 @@ export function LongTigerRank(arg1) {
   return window['go']['main']['App']['LongTigerRank'](arg1);
 }
 
-export function NewChatStream(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
-  return window['go']['main']['App']['NewChatStream'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+export function NewChatStream(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
+  return window['go']['main']['App']['NewChatStream'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
 }
 
 export function NewsPush(arg1) {
@@ -696,6 +700,10 @@ export function SendDingDingMessage(arg1, arg2) {
 
 export function SendDingDingMessageByType(arg1, arg2, arg3) {
   return window['go']['main']['App']['SendDingDingMessageByType'](arg1, arg2, arg3);
+}
+
+export function SendTestNotification(arg1) {
+  return window['go']['main']['App']['SendTestNotification'](arg1);
 }
 
 export function SetAlarmChangePercent(arg1, arg2, arg3) {
