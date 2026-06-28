@@ -6,13 +6,15 @@ import {
   ExportConfig,
   GetConfig,
   GetPromptTemplates,
+  GetMultiAgentPrompts,
+  UpdateMultiAgentPrompt,
   SendDingDingMessageByType,
   UpdateConfig,
   CheckSponsorCode,
   FetchAiModels,
   FetchAiModelInfo
 } from "../../wailsjs/go/main/App";
-import {NTag, NTooltip, NIcon, useMessage} from "naive-ui";
+import {NButton, NTag, NTooltip, NIcon, useMessage} from "naive-ui";
 import {data, models} from "../../wailsjs/go/models";
 import {EventsEmit} from "../../wailsjs/runtime";
 import {HelpCircleFilledIcon, HelpIcon} from "tdesign-icons-vue-next";
@@ -96,6 +98,7 @@ function addAiConfig() {
     httpProxy:"",
     httpProxyEnabled:false,
     thinking: true,
+    deepModelName: '',
   }));
 }
 
@@ -293,12 +296,12 @@ onMounted(() => {
     formValue.value.promptPlazaApiBase = res.promptPlazaApiBase || '';
     formValue.value.quickThinkModelId = res.quickThinkModelId || null;
     formValue.value.deepThinkModelId = res.deepThinkModelId || null;
-
   })
 
   GetPromptTemplates("", "").then(res => {
     promptTemplates.value = res
   })
+  loadMultiAgentPrompts()
 })
 onBeforeUnmount(() => {
   message.destroyAll()
@@ -542,6 +545,64 @@ function deletePrompt(ID) {
     GetPromptTemplates("", "").then(res => {
       promptTemplates.value = res
     })
+  })
+}
+
+// --- 多智能体提示词管理 ---
+const multiAgentPromptList = ref([])
+const editingPromptRoleKey = ref('')
+const editingPromptContent = ref('')
+
+const multiAgentPromptColumns = [
+  { title: '角色', key: 'name', width: 140 },
+  { title: 'RoleKey', key: 'roleKey', width: 180 },
+  { title: '内容预览', key: 'content',
+    render(row) {
+      const preview = row.content ? row.content.substring(0, 80) + (row.content.length > 80 ? '...' : '') : ''
+      return h('span', { style: 'font-size:12px;color:#666' }, preview)
+    }
+  },
+  { title: '操作', key: 'actions', width: 120,
+    render(row) {
+      return h(NButton, {
+        size: 'tiny',
+        type: 'primary',
+        secondary: true,
+        onClick: () => startEditPrompt(row)
+      }, () => '编辑')
+    }
+  }
+]
+
+function loadMultiAgentPrompts() {
+  GetMultiAgentPrompts().then(res => {
+    multiAgentPromptList.value = res || []
+  }).catch(e => {
+    console.error('loadMultiAgentPrompts error', e)
+  })
+}
+
+function startEditPrompt(row) {
+  editingPromptRoleKey.value = row.roleKey
+  editingPromptContent.value = row.content
+}
+
+function cancelEditPrompt() {
+  editingPromptRoleKey.value = ''
+  editingPromptContent.value = ''
+}
+
+function saveMultiAgentPrompt() {
+  if (!editingPromptRoleKey.value) return
+  const item = multiAgentPromptList.value.find(p => p.roleKey === editingPromptRoleKey.value)
+  const name = item ? item.name : editingPromptRoleKey.value
+  UpdateMultiAgentPrompt(editingPromptRoleKey.value, name, editingPromptContent.value).then(res => {
+    message.success(res)
+    editingPromptRoleKey.value = ''
+    editingPromptContent.value = ''
+    loadMultiAgentPrompts()
+  }).catch(e => {
+    message.error('保存失败: ' + e)
   })
 }
 </script>
@@ -880,6 +941,18 @@ function deletePrompt(ID) {
                           @update:value="(val) => onModelNameChange(aiConfig, val)"
                         />
                       </n-form-item-gi>
+                      <n-form-item-gi :span="8" label="深度模型" :path="`openAI.aiConfigs[${index}].deepModelName`">
+                        <n-select
+                          v-model:value="aiConfig.deepModelName"
+                          :options="aiConfig._modelOptions || []"
+                          filterable
+                          tag
+                          :loading="aiConfig._loadingModels"
+                          clearable
+                          placeholder="留空则使用快速模型(降级)"
+                          @click="fetchAiModels(aiConfig)"
+                        />
+                      </n-form-item-gi>
                       <n-form-item-gi :span="5" label="Temperature" :path="`openAI.aiConfigs[${index}].temperature`">
                         <n-input-number placeholder="temperature" v-model:value="aiConfig.temperature" :step="0.1"/>
                       </n-form-item-gi>
@@ -929,6 +1002,27 @@ function deletePrompt(ID) {
                 </n-space>
                 <n-button type="primary" dashed @click="addAiConfig" style="width: 100%;">+ 添加AI配置</n-button>
               </n-space>
+            </n-gi>
+
+            <n-gi :span="24">
+              <n-collapse arrow-placement="right" :default-expanded-names="[]">
+                <n-collapse-item title="🧠 Agent 提示词管理" name="agent-prompts">
+                  <n-data-table
+                    :columns="multiAgentPromptColumns"
+                    :data="multiAgentPromptList"
+                    :bordered="false"
+                    :single-line="false"
+                    size="small"
+                  />
+                  <n-space v-if="editingPromptRoleKey" style="margin-top: 12px">
+                    <n-input type="textarea" v-model:value="editingPromptContent" :autosize="{ minRows: 6, maxRows: 16 }" style="width: 100%" />
+                    <n-space justify="end">
+                      <n-button size="small" @click="cancelEditPrompt">取消</n-button>
+                      <n-button size="small" type="primary" @click="saveMultiAgentPrompt">保存</n-button>
+                    </n-space>
+                  </n-space>
+                </n-collapse-item>
+              </n-collapse>
             </n-gi>
 
             <n-gi :span="24">
