@@ -63,13 +63,13 @@ func buildLockupData(ctx context.Context, ac *AgentContext) string {
 func RunLockupAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, error) {
 	dataStr := buildLockupData(ctx, ac)
 
-	chatModel, err := GetChatModel(ctx, "lockup", ac.AIConfigID)
+	chatModel, err := GetChatModelWithTier(ctx, "lockup", LLMTierQuick, ac.AIConfigID)
 	if err != nil {
 		return &AgentReport{Role: "lockup", Content: "", Summary: "模型加载失败", Rating: "neutral", Error: err.Error()}, nil
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: LockupAnalystPrompt},
+		{Role: schema.System, Content: GetRolePrompt("multi_lockup", LockupAnalystPrompt)},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的解禁压力\n\n数据:\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 

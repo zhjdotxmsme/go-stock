@@ -97,14 +97,14 @@ func callResearcher(ctx context.Context, ac *AgentContext, side string, userProm
 	var sysPrompt string
 	switch side {
 	case "bull":
-		sysPrompt = BullResearcherPrompt
+		sysPrompt = GetRolePrompt("multi_bull_researcher", BullResearcherPrompt)
 	case "bear":
-		sysPrompt = BearResearcherPrompt
+		sysPrompt = GetRolePrompt("multi_bear_researcher", BearResearcherPrompt)
 	default:
 		sysPrompt = "你是一个中立的分析助手，请客观列出观点。"
 	}
 
-	chatModel, err := GetChatModel(ctx, "researcher_"+side, ac.AIConfigID)
+	chatModel, err := GetChatModelWithTier(ctx, "researcher_"+side, LLMTierDeep, ac.AIConfigID)
 	if err != nil {
 		return "", fmt.Errorf("researcher model: %w", err)
 	}

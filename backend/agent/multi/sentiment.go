@@ -16,13 +16,13 @@ func RunSentimentAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, e
 	dataStr := fmt.Sprintf("股票: %s(%s)\n分析时间: %s\n",
 		ac.StockName, ac.StockCode, time.Now().Format("2006-01-02 15:04:05"))
 
-	chatModel, err := GetChatModel(ctx, "sentiment", ac.AIConfigID)
+	chatModel, err := GetChatModelWithTier(ctx, "sentiment", LLMTierQuick, ac.AIConfigID)
 	if err != nil {
 		return &AgentReport{Role: "sentiment", Content: "", Summary: "模型加载失败", Rating: "neutral", Error: err.Error()}, nil
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: SentimentAnalystPrompt},
+		{Role: schema.System, Content: GetRolePrompt("multi_sentiment", SentimentAnalystPrompt)},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的市场情绪\n\n数据:\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 

@@ -29,13 +29,13 @@ func RunFundamentalAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport,
 		dataStr += "暂无详细财务数据\n"
 	}
 
-	chatModel, err := GetChatModel(ctx, "fundamental", ac.AIConfigID)
+	chatModel, err := GetChatModelWithTier(ctx, "fundamental", LLMTierQuick, ac.AIConfigID)
 	if err != nil {
 		return &AgentReport{Role: "fundamental", Content: "", Summary: "模型加载失败", Rating: "neutral", Error: err.Error()}, nil
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: FundamentalAnalystPrompt},
+		{Role: schema.System, Content: GetRolePrompt("multi_fundamental", FundamentalAnalystPrompt)},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的基本面\n\n数据:\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 

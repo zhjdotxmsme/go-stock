@@ -46,13 +46,13 @@ func RunTechnicalAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, e
 		}
 	}
 
-	chatModel, err := GetChatModel(ctx, "technical", ac.AIConfigID)
+	chatModel, err := GetChatModelWithTier(ctx, "technical", LLMTierQuick, ac.AIConfigID)
 	if err != nil {
 		return &AgentReport{Role: "technical", Content: "", Summary: "模型加载失败", Rating: "neutral", Error: err.Error()}, nil
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: TechnicalAnalystPrompt},
+		{Role: schema.System, Content: GetRolePrompt("multi_technical", TechnicalAnalystPrompt)},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的技术面\n\nK线数据(最近60个交易日):\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 

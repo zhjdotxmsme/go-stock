@@ -59,5 +59,33 @@ const (
 // GetChatModelWithTier creates an LLM client with the specified tier.
 // When deep_think tier is requested but deep config is absent, falls back to quick_think.
 func GetChatModelWithTier(ctx context.Context, role string, tier LLMTier, aiConfigID int) (model.ToolCallingChatModel, error) {
-	return GetChatModel(ctx, role, aiConfigID)
+	cfg := data.GetSettingConfig()
+	if cfg == nil {
+		return nil, fmt.Errorf("settings not loaded")
+	}
+
+	// Find the matching AIConfig by ID
+	var aiCfg *data.AIConfig
+	for _, c := range cfg.AiConfigs {
+		if int(c.ID) == aiConfigID {
+			aiCfg = c
+			break
+		}
+	}
+	if aiCfg == nil {
+		return nil, fmt.Errorf("AI config not found for aiConfigID=%d", aiConfigID)
+	}
+
+	effectiveModelName := aiCfg.ModelName
+	if tier == LLMTierDeep && aiCfg.DeepModelName != "" {
+		effectiveModelName = aiCfg.DeepModelName
+	}
+
+	logger.SugaredLogger.Infof("GetChatModelWithTier role=%q aiConfigID=%d tier=%d model=%q base=%q",
+		role, aiConfigID, tier, effectiveModelName, aiCfg.BaseUrl)
+
+	effectiveCfg := *aiCfg
+	effectiveCfg.ModelName = effectiveModelName
+
+	return agent.CreateChatModel(ctx, effectiveCfg)
 }

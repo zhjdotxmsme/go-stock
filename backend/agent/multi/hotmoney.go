@@ -59,13 +59,13 @@ func buildHotMoneyData(ctx context.Context, ac *AgentContext) string {
 func RunHotMoneyAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, error) {
 	dataStr := buildHotMoneyData(ctx, ac)
 
-	chatModel, err := GetChatModel(ctx, "hotmoney", ac.AIConfigID)
+	chatModel, err := GetChatModelWithTier(ctx, "hotmoney", LLMTierQuick, ac.AIConfigID)
 	if err != nil {
 		return &AgentReport{Role: "hotmoney", Content: "", Summary: "模型加载失败", Rating: "neutral", Error: err.Error()}, nil
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: HotMoneyAnalystPrompt},
+		{Role: schema.System, Content: GetRolePrompt("multi_hot_money", HotMoneyAnalystPrompt)},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的资金面\n\n数据:\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 

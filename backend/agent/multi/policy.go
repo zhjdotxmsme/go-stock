@@ -60,13 +60,13 @@ func buildPolicyData(ctx context.Context, ac *AgentContext) string {
 func RunPolicyAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, error) {
 	dataStr := buildPolicyData(ctx, ac)
 
-	chatModel, err := GetChatModel(ctx, "policy", ac.AIConfigID)
+	chatModel, err := GetChatModelWithTier(ctx, "policy", LLMTierQuick, ac.AIConfigID)
 	if err != nil {
 		return &AgentReport{Role: "policy", Content: "", Summary: "模型加载失败", Rating: "neutral", Error: err.Error()}, nil
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: PolicyAnalystPrompt},
+		{Role: schema.System, Content: GetRolePrompt("multi_policy", PolicyAnalystPrompt)},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的政策面\n\n数据:\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 
