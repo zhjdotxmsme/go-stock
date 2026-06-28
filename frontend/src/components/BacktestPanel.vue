@@ -50,16 +50,15 @@ const batchStockOptions = ref([])
 
 function findStockList(formOptions, query) {
   if (!query || !query.trim()) {
-    formOptions.value = []
+    // 未输入时显示全部股票
+    formOptions.value = buildOptions(stockList.value)
     return
   }
-  const q = query.trim().toLowerCase()
+  const q = query.trim()
   formOptions.value = stockList.value
     .filter(item =>
-      item.name.toLowerCase().includes(q) ||
-      item.ts_code.toLowerCase().includes(q)
+      item.name.includes(q) || item.ts_code.includes(q)
     )
-    .slice(0, 30)
     .map(item => ({
       label: item.name + ' - ' + item.ts_code,
       value: item.ts_code,
@@ -210,9 +209,19 @@ async function loadHistory(page = 1) {
   }
 }
 
+function buildOptions(raw) {
+  return raw.map(item => ({
+    label: item.name + ' - ' + item.ts_code,
+    value: item.ts_code,
+  }))
+}
+
 onMounted(() => {
   GetStockList('').then(result => {
-    stockList.value = result || []
+    const list = result || []
+    stockList.value = list
+    singleStockOptions.value = buildOptions(list)
+    batchStockOptions.value = buildOptions(list)
   }).catch(err => {
     console.error('GetStockList error:', err)
   })
@@ -247,8 +256,9 @@ const historyPagination = computed(() => {
                     :options="singleStockOptions"
                     placeholder="搜索股票名称或代码"
                     clearable
+                    :input-props="{ autocomplete: 'disabled' }"
                     :on-select="(val) => handleSelectStock(singleForm, val)"
-                    @update:value="(val) => findStockList(singleStockOptions, val)"
+                    @update-value="(val) => findStockList(singleStockOptions, val)"
                   />
                 </n-form-item>
                 <n-form-item label="信号日期">
@@ -360,8 +370,9 @@ const historyPagination = computed(() => {
                     :options="batchStockOptions"
                     placeholder="搜索股票名称或代码"
                     clearable
+                    :input-props="{ autocomplete: 'disabled' }"
                     :on-select="(val) => handleSelectStock(batchForm, val)"
-                    @update:value="(val) => findStockList(batchStockOptions, val)"
+                    @update-value="(val) => findStockList(batchStockOptions, val)"
                   />
                 </n-form-item>
                 <n-form-item label="开始日期">
