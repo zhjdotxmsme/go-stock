@@ -73,7 +73,7 @@ def count_existing_bars(conn: sqlite3.Connection) -> dict[str, int]:
 
 def load_stock_codes(conn: sqlite3.Connection) -> list[dict]:
     cursor = conn.execute(
-        "SELECT secucode, security_code, security_name_abbr FROM all_stock_info "
+        "SELECT secucode, sec_uri_tycode, sec_uri_tynameabbr FROM all_stock_info "
         "WHERE (secucode LIKE 'sh%' OR secucode LIKE 'sz%') "
         "AND secucode NOT LIKE '%BJ%' ORDER BY secucode"
     )
@@ -195,7 +195,7 @@ def run(
     errors: list[str] = []
 
     for stock in tqdm(stocks, desc="Downloading", unit="stock"):
-        db_code = stock["secucode"] or stock["security_code"]
+        db_code = stock["secucode"] or stock["sec_uri_tycode"]
         if not db_code:
             skipped += 1
             continue

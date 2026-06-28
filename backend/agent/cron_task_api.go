@@ -354,7 +354,7 @@ func (a *CronTaskApi) executeKLineSync(ctx context.Context, task *models.CronTas
 		params.Years = 1
 	}
 	svc := &backtest.Service{}
-	return svc.StartHistoricalSync(ctx, params.Years)
+	return svc.StartHistoricalSync(params.Years)
 }
 
 func (a *CronTaskApi) executeMarketAnalysis(ctx context.Context, task *models.CronTask) error {
