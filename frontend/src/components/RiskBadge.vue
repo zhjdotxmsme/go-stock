@@ -1,7 +1,7 @@
 <template>
   <div class="risk-badge" :class="level">
     <n-icon size="16">
-      <Warning v-if="level === 'high'" />
+      <ExclamationCircle v-if="level === 'high'" />
       <Info v-else-if="level === 'medium'" />
       <CheckCircle v-else />
     </n-icon>
@@ -11,7 +11,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { Warning, Info, CheckCircle } from '@vicons/fa'
+import { ExclamationCircle, Info, CheckCircle } from '@vicons/fa'
 
 const props = defineProps({
   level: { type: String, default: 'medium' }, // low / medium / high

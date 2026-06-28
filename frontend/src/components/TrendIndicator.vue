@@ -3,7 +3,7 @@
     <n-icon size="28" :color="iconColor">
       <ArrowUp v-if="trend === 'up'" />
       <ArrowDown v-else-if="trend === 'down'" />
-      <Remove v-else />
+      <Minus v-else />
     </n-icon>
     <span class="trend-label" :style="{ color: iconColor }">{{ label }}</span>
   </div>
@@ -11,7 +11,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { ArrowUp, ArrowDown, Remove } from '@vicons/fa'
+import { ArrowUp, ArrowDown, Minus } from '@vicons/fa'
 
 const props = defineProps({
   trend: { type: String, default: 'sideways' }, // up / down / sideways

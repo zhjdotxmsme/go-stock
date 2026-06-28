@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"go-stock/backend/agent"
 	"go-stock/backend/agent/multi"
+	"go-stock/backend/agent/strategy"
 	"go-stock/backend/agent/tools"
 	"go-stock/backend/data"
+	"go-stock/backend/data/notify"
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/machineid"
@@ -804,24 +806,24 @@ func (a *App) domReady(ctx context.Context) {
 			a.setCronEntry("ConceptFundFlowFetchAndSave", idConceptFundFlow)
 		}
 	}()
-	//检查新版本
-	go func() {
-		a.CheckUpdate(0)
-		go a.CheckStockBaseInfo(a.ctx)
-		go syncAllStockInfo(a.ctx)
+	//检查新版本 - 已禁用自动更新
+	// go func() {
+	// 	a.CheckUpdate(0)
+	// 	go a.CheckStockBaseInfo(a.ctx)
+	// 	go syncAllStockInfo(a.ctx)
 
-		a.cron.AddFunc("0 0 2 * * *", func() {
-			logger.SugaredLogger.Errorf("Checking for updates...")
-			a.CheckStockBaseInfo(a.ctx)
-		})
-		a.cron.AddFunc("30 05 8,12,20 * * *", func() {
-			logger.SugaredLogger.Errorf("Checking for updates...")
-			a.CheckUpdate(0)
-		})
-		a.cron.AddFunc("30 05 8,12,20 * * *", func() {
-			syncAllStockInfo(a.ctx)
-		})
-	}()
+	// 	a.cron.AddFunc("0 0 2 * * *", func() {
+	// 		logger.SugaredLogger.Errorf("Checking for updates...")
+	// 		a.CheckStockBaseInfo(a.ctx)
+	// 	})
+	// 	a.cron.AddFunc("30 05 8,12,20 * * *", func() {
+	// 		logger.SugaredLogger.Errorf("Checking for updates...")
+	// 		a.CheckUpdate(0)
+	// 	})
+	// 	a.cron.AddFunc("30 05 8,12,20 * * *", func() {
+	// 		syncAllStockInfo(a.ctx)
+	// 	})
+	// }()
 
 	//检查谷歌浏览器
 	//go func() {
@@ -854,6 +856,44 @@ func (a *App) domReady(ctx context.Context) {
 	}
 	//logger.SugaredLogger.Infof("domReady-cronEntrys:%+v", a.cronEntrys)
 
+	// ---- Daily Pick cron tasks ----
+	// Auto-run daily pick after market close (15:30 weekdays)
+	dailyPickSvc := data.NewDailyPickService()
+	pickEntryID, err := a.cron.AddFunc("0 30 15 * * 1-5", func() {
+		ctx := context.Background()
+		today := time.Now().Format("2006-01-02")
+		logger.SugaredLogger.Infof("daily_pick: auto-run for %s", today)
+		dailyPickSvc.RunDailyPick(ctx, today, 5)
+	})
+	if err != nil {
+		logger.SugaredLogger.Errorf("daily_pick: add auto-run cron failed: %v", err)
+	} else {
+		a.setCronEntry("dailyPickAutoRun", pickEntryID)
+	}
+
+	// Auto-review picks before market open (09:15 weekdays)
+	reviewEntryID, err := a.cron.AddFunc("0 15 9 * * 1-5", func() {
+		ctx := context.Background()
+		today := time.Now().Format("2006-01-02")
+		logger.SugaredLogger.Infof("daily_pick: auto-review for %s", today)
+		dailyPickSvc.RunDailyReview(ctx, today, "")
+	})
+	if err != nil {
+		logger.SugaredLogger.Errorf("daily_pick: add auto-review cron failed: %v", err)
+	} else {
+		a.setCronEntry("dailyPickAutoReview", reviewEntryID)
+	}
+
+	// Check for unreviewed picks on startup
+	go func() {
+		time.Sleep(5 * time.Second) // wait for DB init
+		today := time.Now().Format("2006-01-02")
+		// Only auto-review on weekdays if market hasn't opened yet
+		if isTradingDay(time.Now()) && !isTradingTime(time.Now()) {
+			logger.SugaredLogger.Info("daily_pick: startup review check")
+			dailyPickSvc.RunDailyReview(context.Background(), today, "")
+		}
+	}()
 }
 
 func syncAllStockInfo(ctx context.Context) {
@@ -1828,7 +1868,22 @@ func (a *App) SendDingDingMessageByType(message string, stockCode string, msgTyp
 	return data.NewDingDingAPI().SendDingDingMessage(message)
 }
 
-func (a *App) NewChatStream(stock string, stockCode string, question string, aiConfigId int, sysPromptId *int, enableTools bool, think bool, agentMode string) {
+// SendTestNotification sends a test notification to the specified channel.
+func (a *App) SendTestNotification(channel string) string {
+	manager := notify.NewManager()
+	msg := notify.Message{
+		Title:   "go-stock 测试通知",
+		Content: fmt.Sprintf("这是一条来自 go-stock 的测试通知\n\n渠道: %s\n时间: %s\n\n如果收到此消息，说明推送配置正确。", channel, time.Now().Format("2006-01-02 15:04:05")),
+	}
+	err := manager.SendTo(a.ctx, notify.ChannelType(channel), msg)
+	if err != nil {
+		logger.SugaredLogger.Errorf("SendTestNotification failed: %v", err)
+		return fmt.Sprintf("发送失败: %v", err)
+	}
+	return "测试通知发送成功！"
+}
+
+func (a *App) NewChatStream(stock string, stockCode string, question string, aiConfigId int, sysPromptId *int, enableTools bool, think bool, agentMode string, strategyCode string) {
 	defer func() {
 		if err := recover(); err != nil {
 			logger.SugaredLogger.Errorf("NewChatStream panic: %v", err)
@@ -1841,12 +1896,24 @@ func (a *App) NewChatStream(stock string, stockCode string, question string, aiC
 	}()
 	// Use the multi-agent engine as the primary analysis path
 	engine := multi.NewMultiAgentEngine(aiConfigId)
-	resultCh := engine.Run(a.ctx, stockCode, stock, "", question)
+	resultCh := engine.Run(a.ctx, stockCode, stock, "", question, strategyCode)
 
 	for msg := range resultCh {
 		runtime.EventsEmit(a.ctx, "newChatStream", msg)
 	}
 	runtime.EventsEmit(a.ctx, "newChatStream", "DONE")
+
+	// Send push notification after analysis completes
+	manager := notify.NewManager()
+	manager.SendAll(a.ctx, notify.Message{
+		Title:   fmt.Sprintf("AI分析报告: %s(%s)", stock, stockCode),
+		Content: fmt.Sprintf("股票: %s(%s)\n问题: %s\n\n请打开 go-stock 查看完整分析报告。", stock, stockCode, question),
+		Stock:   stockCode,
+	})
+}
+
+func (a *App) GetAllStrategies() []*strategy.Strategy {
+	return strategy.GetAll()
 }
 
 func (a *App) SaveAIResponseResult(stockCode, stockName, result, chatId, question string, aiConfigId int) {

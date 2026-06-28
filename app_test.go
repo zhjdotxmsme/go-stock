@@ -76,10 +76,6 @@ func TestGetScreenResolution(t *testing.T) {
 
 }
 
-func TestCheckUpdate(t *testing.T) {
-	db.Init("./data/stock.db")
-	NewApp().CheckUpdate(1)
-}
 
 func TestGetAiRecommendStocksList(t *testing.T) {
 	db.Init("./data/stock.db")
