@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go-stock/backend/agent/strategy"
 	"go-stock/backend/logger"
 	"io"
 	"strings"
@@ -69,8 +70,15 @@ func RunSynthesis(ctx context.Context, ac *AgentContext) (*FinalReport, error) {
 		return basicSynthesis(report, ac)
 	}
 
+	synthesisContent := SynthesisPrompt
+	if ac.StrategyCode != "" {
+		if s := strategy.GetByCode(ac.StrategyCode); s != nil {
+			synthesisContent += "\n\n【策略视角】\n" + s.Prompt
+		}
+	}
+
 	messages := []*schema.Message{
-		{Role: schema.System, Content: SynthesisPrompt},
+		{Role: schema.System, Content: synthesisContent},
 		{Role: schema.User, Content: fmt.Sprintf("请基于以下分析数据生成最终投资分析报告:\n\n%s", contextStr)},
 	}
 

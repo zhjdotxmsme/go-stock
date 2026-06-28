@@ -26,24 +26,26 @@ func NewMultiAgentEngine(aiConfigID int) *MultiAgentEngine {
 }
 
 // Run executes the full multi-agent analysis pipeline:
-//   1. Orchestrator: inject stock context
-//   2. 7 parallel analysts (fundamental, technical, sentiment, news, policy, hotmoney, lockup)
-//   3. Bull/Bear researcher debate (2 rounds by default)
-//   4. Synthesis into final report
+//  1. Orchestrator: inject stock context
+//  2. 7 parallel analysts (fundamental, technical, sentiment, news, policy, hotmoney, lockup)
+//  3. Bull/Bear researcher debate (2 rounds by default)
+//  4. Synthesis into final report
+//
 // Returns a channel of streaming *schema.Message for the frontend.
-func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market, userQuery string) chan *schema.Message {
+func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market, userQuery, strategyCode string) chan *schema.Message {
 	ch := make(chan *schema.Message, 1024)
 
 	go func() {
 		defer close(ch)
 
 		ac := &AgentContext{
-			StockCode:  stockCode,
-			StockName:  stockName,
-			Market:     market,
-			UserQuery:  userQuery,
-			AIConfigID: e.aiConfigID,
-			StreamCh:   ch,
+			StockCode:    stockCode,
+			StockName:    stockName,
+			Market:       market,
+			UserQuery:    userQuery,
+			StrategyCode: strategyCode,
+			AIConfigID:   e.aiConfigID,
+			StreamCh:     ch,
 		}
 
 		// Fast path: simple queries skip the full multi-agent pipeline

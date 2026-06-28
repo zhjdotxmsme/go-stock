@@ -6,6 +6,7 @@ import {
   AddStockGroup,
   Follow,
   GetAiConfigs,
+  GetAllStrategies,
   GetAIResponseResult,
   GetConfig,
   GetEffectiveSponsorVip,
@@ -148,6 +149,8 @@ const promptTemplates = ref([])
 const aiConfigs = ref([])
 const sysPromptOptions = ref([])
 const userPromptOptions = ref([])
+const strategyCode = ref('')
+const strategies = ref([])
 const data = reactive({
   modelName: "",
   chatId: "",
@@ -377,6 +380,13 @@ onBeforeMount(() => {
       data.aiConfigId = res[0].ID
     }
   }).catch(err => { console.error("GetAiConfigs error:", err) })
+
+  GetAllStrategies().then(res => {
+    strategies.value = [
+      { label: '📊 全维度分析', value: '' },
+      ...res.map(s => ({ label: `📈 ${s.Name}`, value: s.Code }))
+    ]
+  }).catch(err => { console.error("GetAllStrategies error:", err) })
 
   EventsOn("loadingDone", (data) => {
     message.loading("刷新股票基础数据...")
@@ -1754,6 +1764,15 @@ async function refreshEffectiveVip() {
   }
 }
 
+function goKlineAnalysis(code, name) {
+  const em = toEastMoneyCode(code)
+  if (!em) {
+    message.warning('当前代码暂不支持技术分析')
+    return
+  }
+  router.push({ path: '/kline-analysis', query: { code: em, name: name || '' } })
+}
+
 async function showLightweightKline(code, name) {
   const em = toEastMoneyCode(code)
   if (!em) {
@@ -2010,7 +2029,7 @@ function aiReCheckStock(stock, stockCode) {
   //
 
   //message.info("sysPromptId:"+data.sysPromptId)
-  NewChatStream(stock, stockCode, data.question, data.aiConfigId, data.sysPromptId, enableTools.value,thinkingMode.value)
+  NewChatStream(stock, stockCode, data.question, data.aiConfigId, data.sysPromptId, enableTools.value,thinkingMode.value, '', strategyCode.value)
     .catch(err => {
       data.loading = false
       data.analysisStatus = ""
@@ -2599,6 +2618,9 @@ watch(modalShow6, (newVal) => {
                 <n-button v-if="result['买一报价']>0" size="tiny" type="success"
                           @click="searchStockReport(result['股票代码'])"> 研报
                 </n-button>
+                <n-button size="tiny" type="info"
+                          @click="goKlineAnalysis(result['股票代码'], result['股票名称'])"> 技术分析
+                </n-button>
                 <n-flex justify="right">
                   <n-dropdown trigger="click" :options="groupList" key-field="ID" label-field="name"
                               @select="(groupId) => AddStockGroupInfo(groupId,result['股票代码'],result['股票名称'])">
@@ -2752,6 +2774,9 @@ watch(modalShow6, (newVal) => {
                 </n-button>
                 <n-button v-if="result['买一报价']>0" size="tiny" type="success"
                           @click="searchStockReport(result['股票代码'])"> 研报
+                </n-button>
+                <n-button size="tiny" type="info"
+                          @click="goKlineAnalysis(result['股票代码'], result['股票名称'])"> 技术分析
                 </n-button>
                 <n-flex justify="right">
                   <n-dropdown trigger="click" :options="groupList" key-field="ID" label-field="name"
@@ -2976,6 +3001,10 @@ watch(modalShow6, (newVal) => {
         <n-gradient-text type="error" style="margin-left: 10px">
           *AI函数工具调用可以增强AI获取数据的能力,但会消耗更多tokens。
         </n-gradient-text>
+      </n-flex>
+      <n-flex justify="left" style="margin-bottom: 10px">
+        <n-select style="width: 240px" v-model:value="strategyCode" :options="strategies"
+                  placeholder="选择分析策略（默认全维度）" clearable/>
       </n-flex>
       <n-flex justify="space-between" style="margin-bottom: 10px">
         <n-select style="width: 31%" v-model:value="data.aiConfigId" label-field="name" value-field="ID"
