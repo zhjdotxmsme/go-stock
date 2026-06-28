@@ -26,28 +26,28 @@ export function GetLatestUnreviewedPicks() {
   return window['go']['data']['DailyPickService']['GetLatestUnreviewedPicks']();
 }
 
-export function GetReviewSummary(arg1, arg2) {
-  return window['go']['data']['DailyPickService']['GetReviewSummary'](arg1, arg2);
+export function GetReviewSummary(arg1) {
+  return window['go']['data']['DailyPickService']['GetReviewSummary'](arg1);
 }
 
 export function GetReviewTrend(arg1) {
   return window['go']['data']['DailyPickService']['GetReviewTrend'](arg1);
 }
 
-export function ReviewAllUnreviewed(arg1) {
-  return window['go']['data']['DailyPickService']['ReviewAllUnreviewed'](arg1);
+export function ReviewAllUnreviewed() {
+  return window['go']['data']['DailyPickService']['ReviewAllUnreviewed']();
 }
 
-export function RunDailyPick(arg1, arg2, arg3) {
-  return window['go']['data']['DailyPickService']['RunDailyPick'](arg1, arg2, arg3);
+export function RunDailyPick(arg1, arg2) {
+  return window['go']['data']['DailyPickService']['RunDailyPick'](arg1, arg2);
 }
 
 export function RunDailyPickAsync(arg1, arg2) {
   return window['go']['data']['DailyPickService']['RunDailyPickAsync'](arg1, arg2);
 }
 
-export function RunDailyReview(arg1, arg2, arg3) {
-  return window['go']['data']['DailyPickService']['RunDailyReview'](arg1, arg2, arg3);
+export function RunDailyReview(arg1, arg2) {
+  return window['go']['data']['DailyPickService']['RunDailyReview'](arg1, arg2);
 }
 
 export function UpdateDailyPickRemarks(arg1, arg2) {
