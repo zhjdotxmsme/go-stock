@@ -26,13 +26,14 @@ func NewDailyPickService() *DailyPickService {
 
 // RunDailyPick executes the daily pick flow and returns the top picks.
 // Called from frontend or cron. tradeDate is "YYYY-MM-DD".
-func (s *DailyPickService) RunDailyPick(ctx context.Context, tradeDate string, topN int) []models.DailyPick {
+func (s *DailyPickService) RunDailyPick(tradeDate string, topN int) ([]models.DailyPick, error) {
+	ctx := context.Background()
 	picks, err := s.engine.RunDailyPick(ctx, tradeDate, topN)
 	if err != nil {
 		logger.SugaredLogger.Errorf("daily_pick: RunDailyPick failed: %v", err)
-		return nil
+		return nil, err
 	}
-	return picks
+	return picks, nil
 }
 
 // RunDailyPickAsync kicks off the pick in a goroutine and returns immediately.
@@ -50,17 +51,20 @@ func (s *DailyPickService) RunDailyPickAsync(tradeDate string, topN int) {
 // RunDailyReview performs next-day review for picks from the previous trading day.
 // reviewDate is the date with closing data (e.g. T+1). If pickDate is empty,
 // it reviews the most recent unreviewed date. Returns count of reviewed picks.
-func (s *DailyPickService) RunDailyReview(ctx context.Context, reviewDate string, pickDate string) int {
+func (s *DailyPickService) RunDailyReview(reviewDate string, pickDate string) int {
+	ctx := context.Background()
 	return s.review.RunDailyReview(ctx, reviewDate, pickDate)
 }
 
 // ReviewAllUnreviewed reviews all unreviewed picks up to today.
-func (s *DailyPickService) ReviewAllUnreviewed(ctx context.Context) int {
+func (s *DailyPickService) ReviewAllUnreviewed() int {
+	ctx := context.Background()
 	return s.review.ReviewAllUnreviewed(ctx)
 }
 
 // GetReviewSummary returns a summary of review results for a given trade date.
-func (s *DailyPickService) GetReviewSummary(ctx context.Context, tradeDate string) map[string]interface{} {
+func (s *DailyPickService) GetReviewSummary(tradeDate string) map[string]interface{} {
+	ctx := context.Background()
 	return s.review.GetReviewSummary(ctx, tradeDate)
 }
 

@@ -16,6 +16,9 @@ import (
 	"go-stock/backend/models"
 )
 
+// seed log output directory
+var seedLogDir = filepath.Join("data", "logs")
+
 // seedImportOutput stores the last seed import run output (non-persistent).
 var seedImportOutput string
 
@@ -28,7 +31,8 @@ func NewService() *Service {
 }
 
 // RunSingleBacktest runs a single backtest for a stock on a given signal date.
-func (s *Service) RunSingleBacktest(ctx context.Context, stockCode, signalDate string, entryPrice float64, holdingDays int, stopLoss, stopProfit float64, adjusted bool) (*Result, error) {
+func (s *Service) RunSingleBacktest(stockCode, signalDate string, entryPrice float64, holdingDays int, stopLoss, stopProfit float64, adjusted bool) (*Result, error) {
+	ctx := context.Background()
 	engine := NewEngine()
 	result, err := engine.Run(ctx, Input{
 		StockCode:   stockCode,
@@ -48,7 +52,8 @@ func (s *Service) RunSingleBacktest(ctx context.Context, stockCode, signalDate s
 }
 
 // RunBatchBacktest runs batch backtests for all trading days in a date range.
-func (s *Service) RunBatchBacktest(ctx context.Context, stockCode, startDate, endDate, period string, adjusted bool, entryPrice float64, holdingDays int, stopLoss, stopProfit float64) (*BatchResult, error) {
+func (s *Service) RunBatchBacktest(stockCode, startDate, endDate, period string, adjusted bool, entryPrice float64, holdingDays int, stopLoss, stopProfit float64) (*BatchResult, error) {
+	ctx := context.Background()
 	if period == "" {
 		period = "day"
 	}
@@ -62,7 +67,8 @@ func (s *Service) RunBatchBacktest(ctx context.Context, stockCode, startDate, en
 }
 
 // GetBacktestResults queries persisted backtest results with pagination.
-func (s *Service) GetBacktestResults(ctx context.Context, stockCode string, page, pageSize int) (*models.AiRecommendBacktestPageData, error) {
+func (s *Service) GetBacktestResults(stockCode string, page, pageSize int) (*models.AiRecommendBacktestPageData, error) {
+	ctx := context.Background()
 	if page <= 0 {
 		page = 1
 	}
@@ -97,7 +103,8 @@ type syncTaskItem struct {
 	ErrorMsg  string `json:"errorMsg"`
 }
 
-func (s *Service) StartHistoricalSync(ctx context.Context, years int) error {
+func (s *Service) StartHistoricalSync(years int) error {
+	ctx := context.Background()
 	now := time.Now()
 	startDate := now.AddDate(-years, 0, 0).Format("2006-01-02")
 	endDate := now.Format("2006-01-02")
@@ -120,7 +127,8 @@ func (s *Service) StartHistoricalSync(ctx context.Context, years int) error {
 	return nil
 }
 
-func (s *Service) GetSyncProgress(ctx context.Context) ([]syncTaskItem, error) {
+func (s *Service) GetSyncProgress() ([]syncTaskItem, error) {
+	ctx := context.Background()
 	var logs []models.KLineSyncLog
 	if err := db.Dao.WithContext(ctx).Order("updated_at DESC").Find(&logs).Error; err != nil {
 		return nil, err
@@ -149,7 +157,8 @@ func (s *Service) GetSyncProgress(ctx context.Context) ([]syncTaskItem, error) {
 
 // GetSeedImportStatus returns information about seed data availability
 // and environment readiness for running the baostock seed script.
-func (s *Service) GetSeedImportStatus(ctx context.Context) (map[string]any, error) {
+func (s *Service) GetSeedImportStatus() (map[string]any, error) {
+	ctx := context.Background()
 	result := map[string]any{
 		"seedBars":       int64(0),
 		"seedStocks":     int64(0),
@@ -217,8 +226,9 @@ func (s *Service) GetSeedImportStatus(ctx context.Context) (map[string]any, erro
 // endDate: optional end date YYYYMMDD (empty = default yesterday)
 // limit: optional max stocks to process (0 = all)
 // Returns the combined stdout+stderr output of the script.
-func (s *Service) RunSeedImport(ctx context.Context, pythonPath, startDate, endDate string, limit int) (string, error) {
-	status, err := s.GetSeedImportStatus(ctx)
+func (s *Service) RunSeedImport(pythonPath, startDate, endDate string, limit int) (string, error) {
+	ctx := context.Background()
+	status, err := s.GetSeedImportStatus()
 	if err != nil {
 		return "", fmt.Errorf("检查环境失败: %w", err)
 	}
@@ -256,25 +266,34 @@ func (s *Service) RunSeedImport(ctx context.Context, pythonPath, startDate, endD
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	// Write full log to file regardless of success/failure
+	logFile := filepath.Join(seedLogDir, fmt.Sprintf("seed_import_%s.log", time.Now().Format("20060102_150405")))
+	_ = os.MkdirAll(seedLogDir, 0755)
+
 	if err := cmd.Run(); err != nil {
 		errMsg := stderr.String()
+		fullLog := fmt.Sprintf("STDERR:\n%s\n\nSTDOUT:\n%s", errMsg, stdout.String())
+		_ = os.WriteFile(logFile, []byte(fullLog), 0644)
+
 		logger.SugaredLogger.Errorf("seed import failed: %v\n%s", err, errMsg)
 		seedImportOutput = errMsg
-		return errMsg, fmt.Errorf("种子导入失败: %w\n%s", err, errMsg)
+		return errMsg, fmt.Errorf("种子导入失败，详细日志: %s\n%w\n%s", logFile, err, errMsg)
 	}
 
 	output := stdout.String()
+	_ = os.WriteFile(logFile, []byte(output), 0644)
 	seedImportOutput = output
-	logger.SugaredLogger.Info("seed import completed successfully")
+	logger.SugaredLogger.Infof("seed import completed successfully, log: %s", logFile)
 	return output, nil
 }
 
 // GetLastSeedImportOutput returns the output from the most recent seed import run.
-func (s *Service) GetLastSeedImportOutput(ctx context.Context) (string, error) {
+func (s *Service) GetLastSeedImportOutput() (string, error) {
 	return seedImportOutput, nil
 }
 
-func (s *Service) GetKLineCacheStats(ctx context.Context) (map[string]any, error) {
+func (s *Service) GetKLineCacheStats() (map[string]any, error) {
+	ctx := context.Background()
 	var totalBars int64
 	var uniqueStocks int64
 	var minDate, maxDate string

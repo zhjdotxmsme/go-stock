@@ -141,8 +141,8 @@ func (e *DailyPickEngine) getCandidateStocks(ctx context.Context, tradeDate stri
 		Where("secucode NOT LIKE ?", "sh4%").      // exclude 北交所 sh4
 		Where("secucode NOT LIKE ?", "sh8%").      // exclude 北交所 sh8
 		Where("secucode NOT LIKE ?", "sz8%").      // exclude 北交所 sz8
-		Where("security_name_abbr NOT LIKE ?", "%ST%").   // exclude ST
-		Where("security_name_abbr NOT LIKE ?", "%退%").
+		Where("sec_uri_tynameabbr NOT LIKE ?", "%ST%").   // exclude ST
+		Where("sec_uri_tynameabbr NOT LIKE ?", "%退%").
 		Find(&infos).Error
 
 	if err != nil {
