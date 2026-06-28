@@ -462,22 +462,28 @@ func (f *FundApi) searchFundOnline(key string) {
 	}
 	var result struct {
 		Datas []struct {
-			Code string `json:"Code"`
-			Name string `json:"Name"`
-			Type string `json:"FundBaseInfo"`
+			Code         string `json:"CODE"`
+			Name         string `json:"NAME"`
+			FundBaseInfo *struct {
+				FTYPE string `json:"FTYPE"`
+			} `json:"FundBaseInfo"`
 		} `json:"Datas"`
 	}
 	if err := json.Unmarshal(resp.Body(), &result); err != nil {
 		return
 	}
 	for _, item := range result.Datas {
+		ftype := ""
+		if item.FundBaseInfo != nil {
+			ftype = item.FundBaseInfo.FTYPE
+		}
 		var count int64
 		db.Dao.Model(&FundBasic{}).Where("code=?", item.Code).Count(&count)
 		if count == 0 {
 			fund := &FundBasic{
 				Code: item.Code,
 				Name: item.Name,
-				Type: item.Type,
+				Type: ftype,
 			}
 			db.Dao.Create(fund)
 		}
