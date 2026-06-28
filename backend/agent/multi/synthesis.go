@@ -70,7 +70,7 @@ func RunSynthesis(ctx context.Context, ac *AgentContext) (*FinalReport, error) {
 		return basicSynthesis(report, ac)
 	}
 
-	synthesisContent := SynthesisPrompt
+	synthesisContent := GetRolePrompt("multi_synthesis", SynthesisPrompt)
 	if ac.StrategyCode != "" {
 		if s := strategy.GetByCode(ac.StrategyCode); s != nil {
 			synthesisContent += "\n\n【策略视角】\n" + s.Prompt
@@ -190,7 +190,7 @@ func extractStructuredFields(ctx context.Context, ac *AgentContext, report *Fina
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: StructExtractPrompt},
+		{Role: schema.System, Content: GetRolePrompt("multi_struct_extract", StructExtractPrompt)},
 		{Role: schema.User, Content: report.Conclusion},
 	}
 

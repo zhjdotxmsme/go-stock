@@ -608,20 +608,20 @@ func (a *App) domReady(ctx context.Context) {
 		}()
 	}()
 
-	//if stocksBin != nil && len(stocksBin) > 0 {
-	//	go runtime.EventsEmit(a.ctx, "loadingMsg", "检查A股基础信息...")
-	//	go initStockData(a.ctx)
-	//}
-	//
-	//if stocksBinHK != nil && len(stocksBinHK) > 0 {
-	//	go runtime.EventsEmit(a.ctx, "loadingMsg", "检查港股基础信息...")
-	//	go initStockDataHK(a.ctx)
-	//}
-	//
-	//if stocksBinUS != nil && len(stocksBinUS) > 0 {
-	//	go runtime.EventsEmit(a.ctx, "loadingMsg", "检查美股基础信息...")
-	//	go initStockDataUS(a.ctx)
-	//}
+	if stocksBin != nil && len(stocksBin) > 0 {
+		go runtime.EventsEmit(a.ctx, "loadingMsg", "检查A股基础信息...")
+		go initStockData(a.ctx)
+	}
+
+	if stocksBinHK != nil && len(stocksBinHK) > 0 {
+		go runtime.EventsEmit(a.ctx, "loadingMsg", "检查港股基础信息...")
+		go initStockDataHK(a.ctx)
+	}
+
+	if stocksBinUS != nil && len(stocksBinUS) > 0 {
+		go runtime.EventsEmit(a.ctx, "loadingMsg", "检查美股基础信息...")
+		go initStockDataUS(a.ctx)
+	}
 	updateBasicInfo()
 
 	// Add your action here
@@ -806,24 +806,17 @@ func (a *App) domReady(ctx context.Context) {
 			a.setCronEntry("ConceptFundFlowFetchAndSave", idConceptFundFlow)
 		}
 	}()
-	//检查新版本 - 已禁用自动更新
-	// go func() {
-	// 	a.CheckUpdate(0)
-	// 	go a.CheckStockBaseInfo(a.ctx)
-	// 	go syncAllStockInfo(a.ctx)
-
-	// 	a.cron.AddFunc("0 0 2 * * *", func() {
-	// 		logger.SugaredLogger.Errorf("Checking for updates...")
-	// 		a.CheckStockBaseInfo(a.ctx)
-	// 	})
-	// 	a.cron.AddFunc("30 05 8,12,20 * * *", func() {
-	// 		logger.SugaredLogger.Errorf("Checking for updates...")
-	// 		a.CheckUpdate(0)
-	// 	})
-	// 	a.cron.AddFunc("30 05 8,12,20 * * *", func() {
-	// 		syncAllStockInfo(a.ctx)
-	// 	})
-	// }()
+	// 启动时同步一次 all_stock_info（用于 daily_pick 和增强搜索），
+	// 并在交易时段定时刷新。
+	go func() {
+		time.Sleep(10 * time.Second) // 等 DB 和基础数据初始化完成
+		logger.SugaredLogger.Info("syncAllStockInfo: initial sync on startup")
+		syncAllStockInfo(a.ctx)
+	}()
+	a.cron.AddFunc("0 30 10,14,20 * * 1-5", func() {
+		logger.SugaredLogger.Info("syncAllStockInfo: cron sync")
+		syncAllStockInfo(a.ctx)
+	})
 
 	//检查谷歌浏览器
 	//go func() {
@@ -860,10 +853,11 @@ func (a *App) domReady(ctx context.Context) {
 	// Auto-run daily pick after market close (15:30 weekdays)
 	dailyPickSvc := data.NewDailyPickService()
 	pickEntryID, err := a.cron.AddFunc("0 30 15 * * 1-5", func() {
-		ctx := context.Background()
 		today := time.Now().Format("2006-01-02")
 		logger.SugaredLogger.Infof("daily_pick: auto-run for %s", today)
-		dailyPickSvc.RunDailyPick(ctx, today, 5)
+		if _, err := dailyPickSvc.RunDailyPick(today, 5); err != nil {
+			logger.SugaredLogger.Errorf("daily_pick: auto-run failed: %v", err)
+		}
 	})
 	if err != nil {
 		logger.SugaredLogger.Errorf("daily_pick: add auto-run cron failed: %v", err)
@@ -873,10 +867,9 @@ func (a *App) domReady(ctx context.Context) {
 
 	// Auto-review picks before market open (09:15 weekdays)
 	reviewEntryID, err := a.cron.AddFunc("0 15 9 * * 1-5", func() {
-		ctx := context.Background()
 		today := time.Now().Format("2006-01-02")
 		logger.SugaredLogger.Infof("daily_pick: auto-review for %s", today)
-		dailyPickSvc.RunDailyReview(ctx, today, "")
+		dailyPickSvc.RunDailyReview(today, "")
 	})
 	if err != nil {
 		logger.SugaredLogger.Errorf("daily_pick: add auto-review cron failed: %v", err)
@@ -891,7 +884,7 @@ func (a *App) domReady(ctx context.Context) {
 		// Only auto-review on weekdays if market hasn't opened yet
 		if isTradingDay(time.Now()) && !isTradingTime(time.Now()) {
 			logger.SugaredLogger.Info("daily_pick: startup review check")
-			dailyPickSvc.RunDailyReview(context.Background(), today, "")
+			dailyPickSvc.RunDailyReview(today, "")
 		}
 	}()
 }
@@ -901,17 +894,29 @@ func syncAllStockInfo(ctx context.Context) {
 	defer func() {
 		go runtime.EventsEmit(ctx, "loadingMsg", "done")
 	}()
-	db.Dao.Unscoped().Model(&models.AllStockInfo{}).Where("1=1").Delete(&models.AllStockInfo{})
+
+	// Fetch all pages first before deleting, so a partial API failure doesn't wipe the table.
+	var allDatas []models.AllStockInfo
 	for page := 1; page < 3; page++ {
 		res := data.NewStockDataApi().GetAllStocks(page, 3000, "", models.TechnicalIndicators{})
-		var datas []models.AllStockInfo
-		for _, data := range (*res).Result.Data {
-			datas = append(datas, data.ToAllStockInfo())
+		if res == nil {
+			logger.SugaredLogger.Errorf("syncAllStockInfo: GetAllStocks page %d returned nil", page)
+			return
 		}
-		err := db.Dao.CreateInBatches(&datas, 1000).Error
-		if err != nil {
-			logger.SugaredLogger.Errorf("db.Dao.CreateInBatches error:%s", err.Error())
+		for _, data := range res.Result.Data {
+			allDatas = append(allDatas, data.ToAllStockInfo())
 		}
+	}
+	if len(allDatas) == 0 {
+		logger.SugaredLogger.Errorf("syncAllStockInfo: no data fetched from any page, skipping delete+insert")
+		return
+	}
+
+	logger.SugaredLogger.Infof("syncAllStockInfo: fetched %d records, replacing all_stock_info table", len(allDatas))
+	db.Dao.Unscoped().Model(&models.AllStockInfo{}).Where("1=1").Delete(&models.AllStockInfo{})
+	err := db.Dao.CreateInBatches(&allDatas, 1000).Error
+	if err != nil {
+		logger.SugaredLogger.Errorf("syncAllStockInfo: CreateInBatches error: %s", err.Error())
 	}
 }
 func (a *App) CheckStockBaseInfo(ctx context.Context) {
@@ -2199,6 +2204,16 @@ func (a *App) AddPrompt(prompt models.Prompt) string {
 }
 func (a *App) DelPrompt(id uint) string {
 	return data.NewPromptTemplateApi().DelPrompt(id)
+}
+func (a *App) GetMultiAgentPrompts() []models.PromptTemplate {
+	return data.GetAllMultiAgentPrompts()
+}
+func (a *App) UpdateMultiAgentPrompt(roleKey, name, content string) string {
+	err := data.UpsertPromptByRoleKey(roleKey, name, content, "multi_agent")
+	if err != nil {
+		return "更新失败: " + err.Error()
+	}
+	return "更新成功"
 }
 func (a *App) SetStockAICron(cronText, stockCode string) {
 	data.NewStockDataApi().SetStockAICron(cronText, stockCode)

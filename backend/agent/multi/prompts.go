@@ -1,5 +1,17 @@
 package multi
 
+import (
+	"go-stock/backend/data"
+)
+
+// GetRolePrompt loads the prompt for a role key from DB, falling back to the hardcoded constant.
+func GetRolePrompt(roleKey string, fallback string) string {
+	if p := data.GetPromptByRoleKey(roleKey); p != "" {
+		return p
+	}
+	return fallback
+}
+
 const FundamentalAnalystPrompt = `你是一位资深的基本面分析师，拥有20年证券研究经验。请基于提供的股票数据，从以下维度进行分析：
 
 1. **财务健康度**：ROE、资产负债率、流动比率、现金流状况
