@@ -13,10 +13,27 @@ import (
 
 type Settings struct {
 	gorm.Model
-	TushareToken           string `json:"tushareToken"`
-	LocalPushEnable        bool   `json:"localPushEnable"`
-	DingPushEnable         bool   `json:"dingPushEnable"`
-	DingRobot              string `json:"dingRobot"`
+	TushareToken    string `json:"tushareToken"`
+	LocalPushEnable bool   `json:"localPushEnable"`
+	DingPushEnable  bool   `json:"dingPushEnable"`
+	DingRobot       string `json:"dingRobot"`
+	// 企业微信推送
+	WechatPushEnable bool   `json:"wechatPushEnable"`
+	WechatRobot      string `json:"wechatRobot"`
+	// 飞书推送
+	FeishuPushEnable bool   `json:"feishuPushEnable"`
+	FeishuRobot      string `json:"feishuRobot"`
+	// Telegram 推送
+	TelegramPushEnable bool   `json:"telegramPushEnable"`
+	TelegramBotToken   string `json:"telegramBotToken"`
+	TelegramChatID     string `json:"telegramChatID"`
+	// 邮件推送
+	EmailPushEnable        bool   `json:"emailPushEnable"`
+	EmailSmtpHost          string `json:"emailSmtpHost"`
+	EmailSmtpPort          int    `json:"emailSmtpPort"`
+	EmailSmtpUser          string `json:"emailSmtpUser"`
+	EmailSmtpPass          string `json:"emailSmtpPass"`
+	EmailTo                string `json:"emailTo"`
 	UpdateBasicInfoOnStart bool   `json:"updateBasicInfoOnStart"`
 	RefreshInterval        int64  `json:"refreshInterval"`
 	OpenAiEnable           bool   `json:"openAiEnable"`
@@ -111,9 +128,26 @@ func UpdateConfig(s *SettingConfig) string {
 	db.Dao.Model(&Settings{}).Count(&count)
 	if count > 0 {
 		result := db.Dao.Model(&Settings{}).Where("id=?", s.ID).Updates(map[string]any{
-			"local_push_enable":          s.LocalPushEnable,
-			"ding_push_enable":           s.DingPushEnable,
-			"ding_robot":                 s.DingRobot,
+			"local_push_enable": s.LocalPushEnable,
+			"ding_push_enable":  s.DingPushEnable,
+			"ding_robot":        s.DingRobot,
+			// 企业微信推送
+			"wechat_push_enable": s.WechatPushEnable,
+			"wechat_robot":       s.WechatRobot,
+			// 飞书推送
+			"feishu_push_enable": s.FeishuPushEnable,
+			"feishu_robot":       s.FeishuRobot,
+			// Telegram 推送
+			"telegram_push_enable": s.TelegramPushEnable,
+			"telegram_bot_token":   s.TelegramBotToken,
+			"telegram_chat_id":     s.TelegramChatID,
+			// 邮件推送
+			"email_push_enable":          s.EmailPushEnable,
+			"email_smtp_host":            s.EmailSmtpHost,
+			"email_smtp_port":            s.EmailSmtpPort,
+			"email_smtp_user":            s.EmailSmtpUser,
+			"email_smtp_pass":            s.EmailSmtpPass,
+			"email_to":                   s.EmailTo,
 			"update_basic_info_on_start": s.UpdateBasicInfoOnStart,
 			"refresh_interval":           s.RefreshInterval,
 			"open_ai_enable":             s.OpenAiEnable,

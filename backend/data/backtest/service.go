@@ -1,7 +1,13 @@
 package backtest
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"go-stock/backend/data/history"
@@ -9,6 +15,9 @@ import (
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 )
+
+// seedImportOutput stores the last seed import run output (non-persistent).
+var seedImportOutput string
 
 // Service is a Wails-bindable wrapper around backtest operations.
 type Service struct{}
@@ -136,6 +145,133 @@ func (s *Service) GetSyncProgress(ctx context.Context) ([]syncTaskItem, error) {
 	}
 
 	return items, nil
+}
+
+// GetSeedImportStatus returns information about seed data availability
+// and environment readiness for running the baostock seed script.
+func (s *Service) GetSeedImportStatus(ctx context.Context) (map[string]any, error) {
+	result := map[string]any{
+		"seedBars":       int64(0),
+		"seedStocks":     int64(0),
+		"dbPath":         "",
+		"scriptPath":     "",
+		"pythonFound":    false,
+		"pythonPath":     "",
+		"hasSeedData":    false,
+	}
+
+	// Count existing seed records
+	var seedBars int64
+	var seedStocks int64
+	db.Dao.WithContext(ctx).Model(&models.KLineBar{}).
+		Where("source = ?", "seed").Select("COUNT(*)").Scan(&seedBars)
+	db.Dao.WithContext(ctx).Model(&models.KLineBar{}).
+		Where("source = ?", "seed").Select("COUNT(DISTINCT stock_code)").Scan(&seedStocks)
+	result["seedBars"] = seedBars
+	result["seedStocks"] = seedStocks
+	result["hasSeedData"] = seedBars > 0
+
+	// Resolve DB path from the active connection
+	var dbPath string
+	row := db.Dao.WithContext(ctx).Raw("SELECT file FROM pragma_database_list WHERE name='main'").Row()
+	if row != nil {
+		row.Scan(&dbPath)
+	}
+	if dbPath == "" {
+		dbPath = "data/stock.db"
+	}
+	result["dbPath"] = dbPath
+
+	// Find seed script relative to executable
+	exe, err := os.Executable()
+	if err == nil {
+		candidates := []string{
+			filepath.Join(filepath.Dir(exe), "scripts", "history_seed", "baostock_seed.py"),
+			filepath.Join(filepath.Dir(exe), "..", "scripts", "history_seed", "baostock_seed.py"),
+			"scripts/history_seed/baostock_seed.py",
+			"../scripts/history_seed/baostock_seed.py",
+		}
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				result["scriptPath"] = c
+				break
+			}
+		}
+	}
+
+	// Try to find Python
+	for _, name := range []string{"python3", "python"} {
+		if path, err := exec.LookPath(name); err == nil {
+			result["pythonFound"] = true
+			result["pythonPath"] = path
+			break
+		}
+	}
+
+	return result, nil
+}
+
+// RunSeedImport executes the baostock seed Python script as a subprocess.
+// pythonPath: optional path to Python interpreter (empty = auto-detect)
+// startDate: optional start date YYYYMMDD (empty = default 20100101)
+// endDate: optional end date YYYYMMDD (empty = default yesterday)
+// limit: optional max stocks to process (0 = all)
+// Returns the combined stdout+stderr output of the script.
+func (s *Service) RunSeedImport(ctx context.Context, pythonPath, startDate, endDate string, limit int) (string, error) {
+	status, err := s.GetSeedImportStatus(ctx)
+	if err != nil {
+		return "", fmt.Errorf("检查环境失败: %w", err)
+	}
+
+	scriptPath, _ := status["scriptPath"].(string)
+	if scriptPath == "" {
+		return "", fmt.Errorf("未找到种子脚本 baostock_seed.py，请确认 scripts/history_seed/ 目录存在")
+	}
+
+	python, _ := status["pythonPath"].(string)
+	if pythonPath != "" {
+		python = pythonPath
+	}
+	if python == "" {
+		return "", fmt.Errorf("未找到 Python 解释器，请安装 Python 3 并确保在 PATH 中")
+	}
+
+	dbPath, _ := status["dbPath"].(string)
+
+	args := []string{scriptPath, "--db-path", dbPath}
+	if startDate != "" {
+		args = append(args, "--start-date", startDate)
+	}
+	if endDate != "" {
+		args = append(args, "--end-date", endDate)
+	}
+	if limit > 0 {
+		args = append(args, "--limit", fmt.Sprintf("%d", limit))
+	}
+
+	logger.SugaredLogger.Infof("running seed import: %s %s", python, strings.Join(args, " "))
+
+	cmd := exec.CommandContext(ctx, python, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		errMsg := stderr.String()
+		logger.SugaredLogger.Errorf("seed import failed: %v\n%s", err, errMsg)
+		seedImportOutput = errMsg
+		return errMsg, fmt.Errorf("种子导入失败: %w\n%s", err, errMsg)
+	}
+
+	output := stdout.String()
+	seedImportOutput = output
+	logger.SugaredLogger.Info("seed import completed successfully")
+	return output, nil
+}
+
+// GetLastSeedImportOutput returns the output from the most recent seed import run.
+func (s *Service) GetLastSeedImportOutput(ctx context.Context) (string, error) {
+	return seedImportOutput, nil
 }
 
 func (s *Service) GetKLineCacheStats(ctx context.Context) (map[string]any, error) {

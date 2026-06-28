@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-stock/backend/data"
+	"go-stock/backend/data/backtest"
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
@@ -135,6 +136,7 @@ func (a *CronTaskApi) GetTaskTypes() []lo.Tuple2[string, string] {
 		{A: "market_analysis", B: "市场分析"},
 		{A: "global_stock_index_cache", B: "全球指数缓存"},
 		{A: "stock_change_save", B: "异动数据保存"},
+		{A: "kline_sync", B: "K线数据同步"},
 	}
 }
 
@@ -214,6 +216,8 @@ func (a *CronTaskApi) executeTaskByType(ctx context.Context, task *models.CronTa
 		return a.executeStockMonitor(ctx, task)
 	case "stock_change_save":
 		return a.executeStockChangeSave(ctx, task)
+	case "kline_sync":
+		return a.executeKLineSync(ctx, task)
 	case "custom":
 		return a.executeCustomTask(ctx, task)
 	default:
@@ -332,6 +336,25 @@ func (a *CronTaskApi) executeStockMonitor(ctx context.Context, task *models.Cron
 func (a *CronTaskApi) executeCustomTask(ctx context.Context, task *models.CronTask) error {
 	logger.SugaredLogger.Infof("执行自定义任务：%s", task.Name)
 	return nil
+}
+
+func (a *CronTaskApi) executeKLineSync(ctx context.Context, task *models.CronTask) error {
+	logger.SugaredLogger.Infof("执行K线数据同步任务：%s", task.Name)
+	var params struct {
+		Years int `json:"years"`
+	}
+	if task.Params != "" {
+		err := json.Unmarshal([]byte(task.Params), &params)
+		if err != nil {
+			logger.SugaredLogger.Errorf("解析任务参数失败：%v", err)
+			return err
+		}
+	}
+	if params.Years <= 0 {
+		params.Years = 1
+	}
+	svc := &backtest.Service{}
+	return svc.StartHistoricalSync(ctx, params.Years)
 }
 
 func (a *CronTaskApi) executeMarketAnalysis(ctx context.Context, task *models.CronTask) error {

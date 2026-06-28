@@ -3,10 +3,12 @@ package datasource
 import (
 	"context"
 	"fmt"
-	"go-stock/backend/logger"
 	"sort"
 	"sync"
 	"time"
+
+	"go-stock/backend/db"
+	"go-stock/backend/logger"
 )
 
 // Router manages data source providers per data type, routing to the highest-priority
@@ -147,6 +149,9 @@ func (r *Router) GetKLine(ctx context.Context, code string, period string, count
 				bars := BarsFromKLineData(code, period, p.Name(), true, data)
 				if len(bars) > 0 {
 					go func() {
+						if db.Dao == nil {
+							return
+						}
 						if err := globalKLineStore.UpsertKLines(context.Background(), bars); err != nil {
 							logger.SugaredLogger.Warnf("failed to persist klines: stock=%s error=%v", code, err)
 						}
