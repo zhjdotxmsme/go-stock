@@ -68,7 +68,7 @@ func (receiver Settings) TableName() string {
 }
 
 type AIConfig struct {
-	ID               uint `gorm:"primarykey"`
+	ID               uint    `gorm:"primarykey"`
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	Name             string  `json:"name"`
@@ -82,6 +82,7 @@ type AIConfig struct {
 	HttpProxyEnabled bool    `json:"httpProxyEnabled"`
 	SessionId        string  `json:"sessionId" gorm:"index;size:64"`
 	Thinking         bool    `json:"thinking"`
+	DeepModelName    string  `json:"deepModelName"`  // 深度推理模型名称（quick/deep 分层时使用）
 }
 
 func (AIConfig) TableName() string {
@@ -242,18 +243,19 @@ func updateAiConfigs(aiConfigs []*AIConfig) error {
 		} else {
 			notDeleteIds = append(notDeleteIds, item.ID)
 			e = db.Dao.Model(&AIConfig{}).Where("id=?", item.ID).Updates(map[string]interface{}{
-				"name":               item.Name,
-				"base_url":           item.BaseUrl,
-				"api_key":            item.ApiKey,
-				"model_name":         item.ModelName,
-				"max_tokens":         item.MaxTokens,
-				"temperature":        item.Temperature,
-				"time_out":           item.TimeOut,
-				"http_proxy":         item.HttpProxy,
-				"http_proxy_enabled": item.HttpProxyEnabled,
-				"session_id":         item.SessionId,
-				"thinking":           item.Thinking,
-			}).Error
+					"name":               item.Name,
+					"base_url":           item.BaseUrl,
+					"api_key":            item.ApiKey,
+					"model_name":         item.ModelName,
+					"max_tokens":         item.MaxTokens,
+					"temperature":        item.Temperature,
+					"time_out":           item.TimeOut,
+					"http_proxy":         item.HttpProxy,
+					"http_proxy_enabled": item.HttpProxyEnabled,
+					"session_id":         item.SessionId,
+					"thinking":           item.Thinking,
+					"deep_model_name":    item.DeepModelName,
+				}).Error
 			if e != nil {
 				return
 			}
@@ -292,6 +294,23 @@ func GetSettingConfig() *SettingConfig {
 					item.TimeOut = 60 * 5
 				}
 			})
+		} else {
+			// 首次启动：自动创建默认 DeepSeek 配置
+			defaultConfig := &AIConfig{
+				Name:             "DeepSeek 默认",
+				BaseUrl:          "https://api.deepseek.com",
+				ModelName:        "deepseek-chat",
+				MaxTokens:        8192,
+				Temperature:      0.7,
+				TimeOut:          300,
+				HttpProxyEnabled: false,
+			}
+			if err := db.Dao.Create(defaultConfig).Error; err != nil {
+				logger.SugaredLogger.Errorf("创建默认 DeepSeek 配置失败: %v", err)
+			} else {
+				aiConfigs = append(aiConfigs, defaultConfig)
+				logger.SugaredLogger.Info("已创建默认 DeepSeek AI 配置")
+			}
 		}
 		if settings.CrawlTimeOut <= 0 {
 			settings.CrawlTimeOut = 60

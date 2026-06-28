@@ -414,6 +414,10 @@ export function GetMoneyRankSina(arg1) {
   return window['go']['main']['App']['GetMoneyRankSina'](arg1);
 }
 
+export function GetMultiAgentPrompts() {
+  return window['go']['main']['App']['GetMultiAgentPrompts']();
+}
+
 export function GetPromptTemplateList(arg1) {
   return window['go']['main']['App']['GetPromptTemplateList'](arg1);
 }
@@ -780,6 +784,10 @@ export function UpdateGroupSort(arg1, arg2) {
 
 export function UpdateMCPServer(arg1) {
   return window['go']['main']['App']['UpdateMCPServer'](arg1);
+}
+
+export function UpdateMultiAgentPrompt(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UpdateMultiAgentPrompt'](arg1, arg2, arg3);
 }
 
 export function UpdatePromptTemplate(arg1) {

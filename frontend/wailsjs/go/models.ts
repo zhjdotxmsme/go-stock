@@ -125,6 +125,7 @@ export namespace data {
 	    httpProxyEnabled: boolean;
 	    sessionId: string;
 	    thinking: boolean;
+	    deepModelName: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AIConfig(source);
@@ -146,6 +147,7 @@ export namespace data {
 	        this.httpProxyEnabled = source["httpProxyEnabled"];
 	        this.sessionId = source["sessionId"];
 	        this.thinking = source["thinking"];
+	        this.deepModelName = source["deepModelName"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -3176,6 +3178,7 @@ export namespace models {
 	    name: string;
 	    content: string;
 	    type: string;
+	    roleKey: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PromptTemplate(source);
@@ -3189,6 +3192,7 @@ export namespace models {
 	        this.name = source["name"];
 	        this.content = source["content"];
 	        this.type = source["type"];
+	        this.roleKey = source["roleKey"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

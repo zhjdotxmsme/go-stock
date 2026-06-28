@@ -213,6 +213,8 @@ export function GetMarketStatisticByDate(arg1:string):Promise<Array<models.Marke
 
 export function GetMoneyRankSina(arg1:string):Promise<Array<Record<string, any>>>;
 
+export function GetMultiAgentPrompts():Promise<Array<models.PromptTemplate>>;
+
 export function GetPromptTemplateList(arg1:models.PromptTemplateQuery):Promise<models.PromptTemplatePageData>;
 
 export function GetPromptTemplates(arg1:string,arg2:string):Promise<any>;
@@ -396,6 +398,8 @@ export function UpdateCronTask(arg1:models.CronTask):Promise<string>;
 export function UpdateGroupSort(arg1:number,arg2:number):Promise<boolean>;
 
 export function UpdateMCPServer(arg1:models.MCPServer):Promise<string>;
+
+export function UpdateMultiAgentPrompt(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function UpdatePromptTemplate(arg1:models.PromptTemplate):Promise<string>;
 
