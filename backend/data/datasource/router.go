@@ -134,10 +134,13 @@ func (r *Router) GetKLine(ctx context.Context, code string, period string, count
 		}
 	}
 
+	var triedProviders []string
 	for _, p := range providers {
 		if !p.Available(ctx) {
+			triedProviders = append(triedProviders, fmt.Sprintf("%s(unavailable)", p.Name()))
 			continue
 		}
+		triedProviders = append(triedProviders, p.Name())
 		data, err := p.GetKLine(ctx, code, period, count)
 		if err == nil {
 			if r.cache != nil {
@@ -162,6 +165,7 @@ func (r *Router) GetKLine(ctx context.Context, code string, period string, count
 		}
 		logger.SugaredLogger.Warnf("datasource: kline %s from %s failed: %v, trying next", code, p.Name(), err)
 	}
+	logger.SugaredLogger.Errorf("datasource: K线数据全部失败 %s — 尝试了 %d 个源: %v", code, len(triedProviders), triedProviders)
 	return nil, fmt.Errorf("GetKLine(%s): %w", code, ErrAllSourcesFailed)
 }
 

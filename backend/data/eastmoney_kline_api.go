@@ -330,7 +330,7 @@ func (receiver *EastMoneyKLineApi) GetKLineDataBefore(stockCode, kLineType, adju
 	}
 
 	if response.Rc != 0 {
-		logger.SugaredLogger.Errorf("API error: rc=%d code=%d message=%s", response.Rc, response.Code, response.Message)
+		logger.SugaredLogger.Errorf("东财K线API错误 stock=%s rc=%d code=%d message=%s secid=%s", stockCode, response.Rc, response.Code, response.Message, secid)
 		return kLines
 	}
 	if response.Code != 0 {

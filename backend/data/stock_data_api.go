@@ -478,8 +478,12 @@ func (receiver StockDataApi) GetStockCodeRealTimeData(StockCodes ...string) (*[]
 func (receiver StockDataApi) Follow(stockCode string) string {
 	//logger.SugaredLogger.Infof("Follow %s", stockCode)
 	stockInfos, err := receiver.GetStockCodeRealTimeData(stockCode)
-	if err != nil || len(*stockInfos) == 0 {
-		logger.SugaredLogger.Error(err)
+	if err != nil {
+		logger.SugaredLogger.Errorf("关注股票 %s 获取实时数据失败: %v", stockCode, err)
+		return "关注失败"
+	}
+	if len(*stockInfos) == 0 {
+		logger.SugaredLogger.Errorf("关注股票 %s 获取实时数据为空（无匹配行情）", stockCode)
 		return "关注失败"
 	}
 	if strings.HasPrefix(stockCode, "us") {
@@ -2304,15 +2308,17 @@ func (receiver StockDataApi) GetAllStocks(page int, pageSize int, name string, t
 		//logger.SugaredLogger.Errorf("err:%s", err.Error())
 		return &models.AllStocksResp{}
 	}
-	//for _, info := range data.Result.Data {
-	//	toAllStockInfo := info.ToAllStockInfo()
-	//	oldInfo := NewStockDataApi().GetStockInfoByCode(info.SECUCODE)
-	//	toAllStockInfo.ID = oldInfo.ID
-	//	err := NewStockDataApi().AddAllStockInfo(toAllStockInfo)
-	//	if err != nil {
-	//		logger.SugaredLogger.Errorf("err:%s", err.Error())
-	//	}
-	//}
+	// Save to local DB in background
+	go func() {
+		for _, info := range data.Result.Data {
+			toAllStockInfo := info.ToAllStockInfo()
+			oldInfo := NewStockDataApi().GetStockInfoByCode(info.SECUCODE)
+			toAllStockInfo.ID = oldInfo.ID
+			if err := NewStockDataApi().AddAllStockInfo(toAllStockInfo); err != nil {
+				logger.SugaredLogger.Errorf("AddAllStockInfo err: %v", err)
+			}
+		}
+	}()
 	return &data
 }
 

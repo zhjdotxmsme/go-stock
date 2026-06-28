@@ -322,22 +322,25 @@ func (m MarketNewsApi) GetSinaNews(crawlTimeOut uint) *[]models.Telegraph {
 	vm := otto.New()
 	_, err := vm.Run(js)
 	if err != nil {
-		logger.SugaredLogger.Error(err)
+		logger.SugaredLogger.Errorf("新浪财经JS执行失败: %v | 响应体前200字符: %q", err, strutil.Substring(string(response.Body()), 0, 200))
 	}
-	vm.Run("var result = data.result;")
-	//vm.Run("var resultStr =JSON.stringify(data);")
+	if _, errt := vm.Run("var result = data.result;"); errt != nil {
+		logger.SugaredLogger.Errorf("新浪财经JS result未定义: %v", errt)
+	}
 	vm.Run("var resultData = result.data;")
 	vm.Run("var feed = resultData.feed;")
 	vm.Run("var feedStr = JSON.stringify(feed);")
 
 	value, _ := vm.Get("feedStr")
-	//resultStr, _ := vm.Get("resultStr")
+	rawStr := value.String()
+	if len(rawStr) > 200 {
+		rawStr = rawStr[:200]
+	}
 
-	//logger.SugaredLogger.Info(resultStr)
 	feed := make(map[string]any)
 	err = json.Unmarshal([]byte(value.String()), &feed)
 	if err != nil {
-		logger.SugaredLogger.Errorf("json.Unmarshal error:%v", err.Error())
+		logger.SugaredLogger.Errorf("新浪财经JSON解析失败: %v | 原始数据前200字符: %q", err, rawStr)
 	}
 	var telegraphs []models.Telegraph
 
@@ -761,6 +764,10 @@ func (m MarketNewsApi) LongTiger(date string) *[]models.LongTigerRankData {
 	value, err := vm.Get("data")
 	//logger.SugaredLogger.Infof("resp-json:%s", value.String())
 	data := gjson.Get(value.String(), "result.data")
+	if !data.Exists() || data.String() == "" || data.String() == "null" {
+		logger.SugaredLogger.Error("LongTigerRank: result.data is empty or null in response")
+		return ranks
+	}
 	//logger.SugaredLogger.Infof("resp:%v", data)
 	err = json.Unmarshal([]byte(data.String()), ranks)
 	if err != nil {
