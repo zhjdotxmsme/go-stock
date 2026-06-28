@@ -1,13 +1,15 @@
 <script setup>
-import { computed, ref, reactive } from 'vue'
-import { RunSingleBacktest, RunBatchBacktest } from '../../wailsjs/go/backtest/Service'
+import { computed, ref, reactive, h, onMounted } from 'vue'
+import { RunSingleBacktest, RunBatchBacktest, GetBacktestResults } from '../../wailsjs/go/backtest/Service'
+import { GetStockList } from '../../wailsjs/go/main/App'
 import {
-  NAlert, NButton, NCard, NDataTable, NDatePicker, NDivider,
+  NAutoComplete, NAlert, NButton, NCard, NDataTable, NDatePicker, NDivider,
   NFlex, NForm, NFormItem, NGi, NGradientText, NGrid,
-  NInput, NInputNumber, NNumberAnimation, NSpin, NStatistic,
-  NSwitch, NTabPane, NTabs, NTag, NText
+  NIcon, NInput, NInputNumber, NNumberAnimation, NSpin, NStatistic,
+  NSwitch, NTabPane, NTabs, NTag, NText, NPagination
 } from 'naive-ui'
 import { useMessage } from 'naive-ui'
+import { SearchOutline } from '@vicons/ionicons5'
 
 const message = useMessage()
 const activeTab = ref('single')
@@ -40,6 +42,33 @@ const batchForm = reactive({
   stopProfit: 0.1,
   adjusted: true,
 })
+
+// ── 股票搜索自动补全 ──
+const stockList = ref([])
+const singleStockOptions = ref([])
+const batchStockOptions = ref([])
+
+function findStockList(formOptions, query) {
+  if (!query || !query.trim()) {
+    formOptions.value = []
+    return
+  }
+  const q = query.trim().toLowerCase()
+  formOptions.value = stockList.value
+    .filter(item =>
+      item.name.toLowerCase().includes(q) ||
+      item.ts_code.toLowerCase().includes(q)
+    )
+    .slice(0, 30)
+    .map(item => ({
+      label: item.name + ' - ' + item.ts_code,
+      value: item.ts_code,
+    }))
+}
+
+function handleSelectStock(form, val) {
+  form.stockCode = val
+}
 
 function fmtDate(ts) {
   if (!ts) return ''
@@ -135,6 +164,73 @@ async function runBatch() {
     batchLoading.value = false
   }
 }
+
+// ── 历史记录 ──
+const historyLoading = ref(false)
+const historySearchCode = ref('')
+const historyData = ref(null)
+const historyPage = ref(1)
+const historyPageSize = ref(15)
+
+const historyColumns = [
+  { title: '股票代码', key: 'StockCode', width: 110 },
+  { title: '股票名称', key: 'StockName', width: 110 },
+  { title: '信号日期', key: 'SignalDate', width: 100 },
+  { title: '入场价格', key: 'EntryPrice', width: 95, render: (r) => r.EntryPrice?.toFixed(2) },
+  { title: '出场价格', key: 'ExitPrice', width: 95, render: (r) => r.ExitPrice?.toFixed(2) },
+  { title: '总收益率', key: 'TotalReturn', width: 105,
+    render: (r) => {
+      const v = (r.TotalReturn * 100).toFixed(2)
+      return h(NText, { type: r.TotalReturn >= 0 ? 'success' : 'error' }, { default: () => `${v}%` })
+    }
+  },
+  { title: '持仓天数', key: 'HoldingDays', width: 80 },
+  { title: '最大回撤', key: 'MaxDrawdown', width: 105,
+    render: (r) => (r.MaxDrawdown * 100).toFixed(2) + '%'
+  },
+  { title: 'Alpha', key: 'Alpha', width: 95,
+    render: (r) => (r.Alpha * 100).toFixed(2) + '%'
+  },
+  { title: '结果', key: 'Win', width: 70,
+    render: (r) => h(NTag, { type: r.Win ? 'success' : 'error', size: 'small' }, { default: () => r.Win ? '盈利' : '亏损' })
+  },
+]
+
+async function loadHistory(page = 1) {
+  historyLoading.value = true
+  historyPage.value = page
+  try {
+    const res = await GetBacktestResults(historySearchCode.value || '', page, historyPageSize.value)
+    historyData.value = res
+  } catch (e) {
+    message.error('加载回测历史失败: ' + String(e))
+    historyData.value = null
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+onMounted(() => {
+  GetStockList('').then(result => {
+    stockList.value = result || []
+  }).catch(err => {
+    console.error('GetStockList error:', err)
+  })
+})
+
+const historyPagination = computed(() => {
+  const d = historyData.value
+  if (!d) return false
+  return {
+    page: d.page,
+    pageSize: d.pageSize,
+    itemCount: d.total,
+    showSizePicker: true,
+    pageSizes: [10, 15, 30, 50],
+    onUpdatePage: (p) => loadHistory(p),
+    onUpdatePageSize: (s) => { historyPageSize.value = s; loadHistory(1) },
+  }
+})
 </script>
 
 <template>
@@ -146,7 +242,14 @@ async function runBatch() {
             <n-card title="回测参数" size="small">
               <n-form label-placement="left" label-width="100">
                 <n-form-item label="股票代码">
-                  <n-input v-model:value="singleForm.stockCode" placeholder="如 sh600519" />
+                  <n-auto-complete
+                    v-model:value="singleForm.stockCode"
+                    :options="singleStockOptions"
+                    placeholder="搜索股票名称或代码"
+                    clearable
+                    :on-select="(val) => handleSelectStock(singleForm, val)"
+                    @update:value="(val) => findStockList(singleStockOptions, val)"
+                  />
                 </n-form-item>
                 <n-form-item label="信号日期">
                   <n-date-picker v-model:value="singleForm.signalDate" type="date" style="width: 100%" />
@@ -252,7 +355,14 @@ async function runBatch() {
             <n-card title="批量设置" size="small">
               <n-form label-placement="left" label-width="100">
                 <n-form-item label="股票代码">
-                  <n-input v-model:value="batchForm.stockCode" placeholder="如 sh600519" />
+                  <n-auto-complete
+                    v-model:value="batchForm.stockCode"
+                    :options="batchStockOptions"
+                    placeholder="搜索股票名称或代码"
+                    clearable
+                    :on-select="(val) => handleSelectStock(batchForm, val)"
+                    @update:value="(val) => findStockList(batchStockOptions, val)"
+                  />
                 </n-form-item>
                 <n-form-item label="开始日期">
                   <n-date-picker v-model:value="batchForm.startDate" type="date" style="width: 100%" />
@@ -310,6 +420,50 @@ async function runBatch() {
             </n-card>
           </n-gi>
         </n-grid>
+      </n-tab-pane>
+
+      <n-tab-pane name="history" tab="历史记录">
+        <n-flex vertical :size="12">
+          <n-flex align="center" :size="8">
+            <n-input
+              v-model:value="historySearchCode"
+              placeholder="按股票代码筛选（留空=全部）"
+              clearable
+              style="width: 260px"
+              @keyup.enter="loadHistory(1)"
+            >
+              <template #prefix>
+                <n-icon :component="SearchOutline" />
+              </template>
+            </n-input>
+            <n-button type="primary" size="small" @click="loadHistory(1)" :loading="historyLoading">查询</n-button>
+          </n-flex>
+          <n-data-table
+            :columns="historyColumns"
+            :data="historyData?.list || []"
+            :loading="historyLoading"
+            :bordered="true"
+            :single-line="false"
+            size="small"
+            :max-height="560"
+            virtual-scroll
+          />
+          <n-flex v-if="historyData && historyData.total > historyData.pageSize" justify="flex-end">
+            <n-pagination
+              :page="historyData.page"
+              :page-size="historyData.pageSize"
+              :item-count="historyData.total"
+              :page-slot="7"
+              show-size-picker
+              :page-sizes="[10, 15, 30, 50]"
+              @update:page="loadHistory"
+              @update:page-size="(s) => { historyPageSize = s; loadHistory(1) }"
+            />
+          </n-flex>
+          <n-text v-if="!historyLoading && (!historyData || historyData.list.length === 0)" depth="3" style="text-align: center; padding: 40px 0">
+            暂无回测历史记录
+          </n-text>
+        </n-flex>
       </n-tab-pane>
     </n-tabs>
   </div>

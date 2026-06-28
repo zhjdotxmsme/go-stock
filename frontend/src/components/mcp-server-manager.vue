@@ -82,8 +82,44 @@
         />
       </n-form-item>
 
+      <n-form-item label="连接类型" path="type">
+        <n-select
+          v-model:value="formData.type"
+          :options="typeOptions"
+          placeholder="选择服务器连接类型"
+        />
+      </n-form-item>
+
+      <n-form-item label="命令" path="command">
+        <n-input
+          v-model:value="formData.command"
+          placeholder="例如：npx -y @modelcontextprotocol/server-filesystem"
+          clearable
+        />
+      </n-form-item>
+
+      <n-form-item label="启动参数" path="args">
+        <n-input
+          v-model:value="formData.args"
+          type="textarea"
+          :rows="2"
+          placeholder='JSON 数组格式，例如：["/path/to/allowed/dir"]'
+          show-count
+        />
+      </n-form-item>
+
       <n-form-item label="URL" path="url">
         <n-input v-model:value="formData.url" placeholder="例如：http://localhost:8080 或 SSE 端点地址" clearable />
+      </n-form-item>
+
+      <n-form-item label="自定义请求头" path="headers">
+        <n-input
+          v-model:value="formData.headers"
+          type="textarea"
+          :rows="2"
+          placeholder='JSON 对象格式，例如：{"Authorization": "Bearer xxx"}'
+          show-count
+        />
       </n-form-item>
 
       <n-form-item label="环境变量" path="env">
@@ -177,6 +213,7 @@ import {
   NDataTable,
   NCollapse,
   NCollapseItem,
+  NSelect,
   useMessage
 } from 'naive-ui'
 import VueJsonPretty from 'vue-json-pretty'
@@ -223,14 +260,21 @@ const total = ref(0)
 const expandedKeys = ref([])
 const currentTool = ref(null)
 
+const typeOptions = [
+  { label: 'Streamable HTTP', value: 'streamable-http' },
+  { label: 'SSE (Server-Sent Events)', value: 'sse' }
+]
+
 const formData = reactive({
   id: null,
   name: '',
   description: '',
+  type: 'streamable-http',
   url: '',
   command: '',
   args: '',
   env: '',
+  headers: '',
   enable: true,
   status: 'untested'
 })
@@ -466,6 +510,16 @@ const columns = [
     ellipsis: { tooltip: { style: { maxWidth: '400px', wordBreak: 'break-all' } } }
   },
   {
+    title: '类型',
+    key: 'type',
+    width: 120,
+    render(row) {
+      if (!row.type) return h(NTag, { size: 'small', type: 'default' }, { default: () => 'streamable-http' })
+      const typeColor = row.type === 'sse' ? 'warning' : 'info'
+      return h(NTag, { size: 'small', type: typeColor }, { default: () => row.type })
+    }
+  },
+  {
     title: 'URL',
     key: 'url',
     width: 180,
@@ -509,6 +563,17 @@ const columns = [
       if (!row.testResult) return h(NText, { depth: 3 }, { default: () => '-' })
       const isSuccess = row.status === 'available'
       return h(NText, { type: isSuccess ? 'success' : 'error' }, { default: () => row.testResult })
+    }
+  },
+  {
+    title: '创建时间',
+    key: 'createdAt',
+    width: 120,
+    render(row) {
+      if (!row.createdAt) return h(NText, { depth: 3 }, { default: () => '-' })
+      const d = new Date(row.createdAt)
+      const formatted = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      return h(NText, { depth: 2 }, { default: () => formatted })
     }
   },
   {
@@ -684,10 +749,12 @@ const handleEdit = async (row) => {
       formData.id = server.id
       formData.name = server.name
       formData.description = server.description
+      formData.type = server.type || 'streamable-http'
       formData.url = server.url
       formData.command = server.command
       formData.args = server.args
       formData.env = server.env
+      formData.headers = server.headers || ''
       formData.enable = server.enable
       formData.status = server.status
       showCreateModal.value = true
@@ -746,12 +813,14 @@ const resetForm = () => {
     id: null,
     name: '',
     description: '',
+    type: 'streamable-http',
     url: '',
     command: '',
     args: '',
     env: '',
+    headers: '',
     enable: true,
-    status: 'stopped'
+    status: 'untested'
   })
   if (formRef.value) {
     formRef.value.restoreValidation()

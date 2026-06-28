@@ -29,6 +29,27 @@ const formValue = ref({
     enable: false,
     dingRobot: ''
   },
+  wechatPush: {
+    enable: false,
+    robot: ''
+  },
+  feishuPush: {
+    enable: false,
+    robot: ''
+  },
+  telegramPush: {
+    enable: false,
+    botToken: '',
+    chatID: ''
+  },
+  emailPush: {
+    enable: false,
+    smtpHost: '',
+    smtpPort: 587,
+    smtpUser: '',
+    smtpPass: '',
+    to: ''
+  },
   localPush: {
     enable: true,
   },
@@ -217,6 +238,27 @@ onMounted(() => {
       enable: res.dingPushEnable,
       dingRobot: res.dingRobot
     }
+    formValue.value.wechatPush = {
+      enable: res.wechatPushEnable,
+      robot: res.wechatRobot
+    }
+    formValue.value.feishuPush = {
+      enable: res.feishuPushEnable,
+      robot: res.feishuRobot
+    }
+    formValue.value.telegramPush = {
+      enable: res.telegramPushEnable,
+      botToken: res.telegramBotToken,
+      chatID: res.telegramChatID
+    }
+    formValue.value.emailPush = {
+      enable: res.emailPushEnable,
+      smtpHost: res.emailSmtpHost,
+      smtpPort: res.emailSmtpPort || 587,
+      smtpUser: res.emailSmtpUser,
+      smtpPass: res.emailSmtpPass,
+      to: res.emailTo
+    }
     formValue.value.localPush = {
       enable: res.localPushEnable,
     }
@@ -269,6 +311,19 @@ function saveConfig() {
     ID: formValue.value.ID,
     dingPushEnable: formValue.value.dingPush.enable,
     dingRobot: formValue.value.dingPush.dingRobot,
+    wechatPushEnable: formValue.value.wechatPush.enable,
+    wechatRobot: formValue.value.wechatPush.robot,
+    feishuPushEnable: formValue.value.feishuPush.enable,
+    feishuRobot: formValue.value.feishuPush.robot,
+    telegramPushEnable: formValue.value.telegramPush.enable,
+    telegramBotToken: formValue.value.telegramPush.botToken,
+    telegramChatID: formValue.value.telegramPush.chatID,
+    emailPushEnable: formValue.value.emailPush.enable,
+    emailSmtpHost: formValue.value.emailPush.smtpHost,
+    emailSmtpPort: formValue.value.emailPush.smtpPort,
+    emailSmtpUser: formValue.value.emailPush.smtpUser,
+    emailSmtpPass: formValue.value.emailPush.smtpPass,
+    emailTo: formValue.value.emailPush.to,
     localPushEnable: formValue.value.localPush.enable,
     updateBasicInfoOnStart: formValue.value.updateBasicInfoOnStart,
     refreshInterval: formValue.value.refreshInterval,
@@ -341,6 +396,19 @@ function sendTestNotice() {
   })
 }
 
+function sendTestNotification(channel) {
+  const fn = window['go']?.['main']?.['App']?.['SendTestNotification']
+  if (typeof fn !== 'function') {
+    message.warning('测试通知接口尚未绑定，请重新生成 Wails 绑定后重试')
+    return
+  }
+  fn(channel).then(res => {
+    message.info(res)
+  }).catch(err => {
+    message.error('发送测试通知失败: ' + err)
+  })
+}
+
 function exportConfig() {
   ExportConfig().then(res => {
     message.info(res)
@@ -363,6 +431,27 @@ function importConfig() {
       formValue.value.dingPush = {
         enable: config.dingPushEnable,
         dingRobot: config.dingRobot
+      }
+      formValue.value.wechatPush = {
+        enable: config.wechatPushEnable,
+        robot: config.wechatRobot
+      }
+      formValue.value.feishuPush = {
+        enable: config.feishuPushEnable,
+        robot: config.feishuRobot
+      }
+      formValue.value.telegramPush = {
+        enable: config.telegramPushEnable,
+        botToken: config.telegramBotToken,
+        chatID: config.telegramChatID
+      }
+      formValue.value.emailPush = {
+        enable: config.emailPushEnable,
+        smtpHost: config.emailSmtpHost,
+        smtpPort: config.emailSmtpPort || 587,
+        smtpUser: config.emailSmtpUser,
+        smtpPass: config.emailSmtpPass,
+        to: config.emailTo
       }
       formValue.value.localPush = {
         enable: config.localPushEnable,
@@ -477,7 +566,8 @@ function deletePrompt(ID) {
             <n-form-item-gi :span="6" label="暗黑主题：" path="darkTheme">
               <n-switch v-model:value="formValue.darkTheme"/>
             </n-form-item-gi>
-            <n-form-item-gi :span="8" label="更新通道：" path="updateChannel">
+            <!-- 更新通道（自动更新已禁用） -->
+            <!-- <n-form-item-gi :span="8" label="更新通道：" path="updateChannel">
               <n-select v-model:value="formValue.updateChannel" :options="updateChannelOptions" />
               <n-tooltip placement="top">
                 <template #trigger>
@@ -496,7 +586,7 @@ function deletePrompt(ID) {
                   </n-gradient-text>
                 </template>
               </n-tooltip>
-            </n-form-item-gi>
+            </n-form-item-gi> -->
             <n-form-item-gi :span="10" label="浏览器安装路径：" path="browserPath">
               <n-input type="text" placeholder="浏览器安装路径" v-model:value="formValue.browserPath" clearable/>
             </n-form-item-gi>
@@ -641,6 +731,63 @@ function deletePrompt(ID) {
                             path="dingPush.dingRobot">
               <n-input placeholder="请输入钉钉机器人接口地址" v-model:value="formValue.dingPush.dingRobot"/>
               <n-button type="primary" @click="sendTestNotice">发送测试通知</n-button>
+            </n-form-item-gi>
+
+            <n-form-item-gi :span="3" label="企业微信推送：" path="wechatPush.enable">
+              <n-switch v-model:value="formValue.wechatPush.enable"/>
+            </n-form-item-gi>
+            <n-form-item-gi :span="22" v-if="formValue.wechatPush.enable" label="企业微信机器人 Webhook："
+                            path="wechatPush.robot">
+              <n-input placeholder="企业微信机器人 Webhook 地址" v-model:value="formValue.wechatPush.robot"/>
+              <n-button type="primary" @click="sendTestNotification('wechat')">发送测试</n-button>
+            </n-form-item-gi>
+
+            <n-form-item-gi :span="3" label="飞书推送：" path="feishuPush.enable">
+              <n-switch v-model:value="formValue.feishuPush.enable"/>
+            </n-form-item-gi>
+            <n-form-item-gi :span="22" v-if="formValue.feishuPush.enable" label="飞书机器人 Webhook："
+                            path="feishuPush.robot">
+              <n-input placeholder="飞书机器人 Webhook 地址" v-model:value="formValue.feishuPush.robot"/>
+              <n-button type="primary" @click="sendTestNotification('feishu')">发送测试</n-button>
+            </n-form-item-gi>
+
+            <n-form-item-gi :span="3" label="Telegram 推送：" path="telegramPush.enable">
+              <n-switch v-model:value="formValue.telegramPush.enable"/>
+            </n-form-item-gi>
+            <n-form-item-gi :span="11" v-if="formValue.telegramPush.enable" label="Bot Token："
+                            path="telegramPush.botToken">
+              <n-input placeholder="Telegram Bot Token" v-model:value="formValue.telegramPush.botToken"/>
+            </n-form-item-gi>
+            <n-form-item-gi :span="11" v-if="formValue.telegramPush.enable" label="Chat ID："
+                            path="telegramPush.chatID">
+              <n-input placeholder="Telegram Chat ID" v-model:value="formValue.telegramPush.chatID"/>
+              <n-button type="primary" @click="sendTestNotification('telegram')">发送测试</n-button>
+            </n-form-item-gi>
+
+            <n-form-item-gi :span="3" label="邮件推送：" path="emailPush.enable">
+              <n-switch v-model:value="formValue.emailPush.enable"/>
+            </n-form-item-gi>
+            <n-form-item-gi :span="11" v-if="formValue.emailPush.enable" label="SMTP 服务器："
+                            path="emailPush.smtpHost">
+              <n-input placeholder="SMTP Host" v-model:value="formValue.emailPush.smtpHost"/>
+            </n-form-item-gi>
+            <n-form-item-gi :span="5" v-if="formValue.emailPush.enable" label="SMTP 端口："
+                            path="emailPush.smtpPort">
+              <n-input-number v-model:value="formValue.emailPush.smtpPort" placeholder="587"/>
+            </n-form-item-gi>
+            <n-form-item-gi :span="11" v-if="formValue.emailPush.enable" label="SMTP 用户名："
+                            path="emailPush.smtpUser">
+              <n-input placeholder="SMTP 用户名" v-model:value="formValue.emailPush.smtpUser"/>
+            </n-form-item-gi>
+            <n-form-item-gi :span="11" v-if="formValue.emailPush.enable" label="SMTP 密码："
+                            path="emailPush.smtpPass">
+              <n-input type="password" placeholder="SMTP 密码" v-model:value="formValue.emailPush.smtpPass"
+                       show-password-on="click"/>
+            </n-form-item-gi>
+            <n-form-item-gi :span="22" v-if="formValue.emailPush.enable" label="收件人邮箱："
+                            path="emailPush.to">
+              <n-input placeholder="收件人邮箱地址" v-model:value="formValue.emailPush.to"/>
+              <n-button type="primary" @click="sendTestNotification('email')">发送测试</n-button>
             </n-form-item-gi>
 
           </n-grid>

@@ -294,6 +294,22 @@
             </n-space>
           </n-card>
           
+          <!-- K线数据同步任务的参数配置 UI -->
+          <n-card v-else-if="formData.taskType === 'kline_sync'" size="small" style="width: 100%">
+            <n-space :vertical="true" :size="12">
+              <n-grid :cols="2" :x-gap="12">
+                <n-gi>
+                  <n-form-item label-width="90px" label="同步年数:">
+                    <n-input-number v-model:value="klineSyncParamsData.years" :min="1" :max="10" style="width: 120px" />
+                  </n-form-item>
+                </n-gi>
+                <n-gi>
+                  <n-text depth="3" style="font-size: 12px; line-height: 32px;">建议设置 1~5 年，年数越多数据越全但耗时更长</n-text>
+                </n-gi>
+              </n-grid>
+            </n-space>
+          </n-card>
+          
           <!-- 其他任务类型仍使用文本输入框 -->
           <n-input
             v-else
@@ -594,6 +610,11 @@ const generatedParamsJson = computed(() => {
       agentMode: marketAnalysisParamsData.agentMode
     }, null, 2)
   }
+  if(formData.taskType==='kline_sync'){
+    return JSON.stringify({
+      years: klineSyncParamsData.years
+    }, null, 2)
+  }
 
 })
 
@@ -812,11 +833,14 @@ const stockAnalysisParamsData = reactive({
   agentMode: ''
 })
 const marketAnalysisParamsData= reactive({
-  promptId: 0,
-  aiConfigId: 0,
-  sysPromptId: 0,
-  thinking: true,
-  agentMode: ''
+	promptId: 0,
+	aiConfigId: 0,
+	sysPromptId: 0,
+	thinking: true,
+	agentMode: ''
+})
+const klineSyncParamsData = reactive({
+	years: 5
 })
 
 
@@ -1272,6 +1296,16 @@ const handleEdit = async (row) => {
         }
       }
       
+      // 如果是K线同步任务，解析参数到表单
+      if (task.taskType === 'kline_sync' && task.params) {
+        try {
+          const parsed = JSON.parse(task.params)
+          klineSyncParamsData.years = parsed.years || 5
+        } catch (e) {
+          console.error('解析参数失败:', e)
+        }
+      }
+      
       showCreateModal.value = true
     }
   } catch (error) {
@@ -1419,6 +1453,9 @@ const resetForm = () => {
     thinking: true,
     agentMode: ''
   })
+  Object.assign(klineSyncParamsData, {
+    years: 5
+  })
   // 重置 Cron 配置器
   Object.assign(cronSecond, { type: '*', start: 0, end: 0, loopStart: 0, loopStep: 1, appoint: [] })
   Object.assign(cronMinute, { type: '*', start: 0, end: 0, loopStart: 0, loopStep: 1, appoint: [] })
@@ -1449,6 +1486,15 @@ watch(() => formData.taskType, (newType) => {
         stockAnalysisParamsData.stockCode = parsed.stockCode || ''
         stockAnalysisParamsData.stockName = parsed.stockName || ''
         stockAnalysisParamsData.agentMode = parsed.agentMode || ''
+      } catch (e) {
+        console.error('解析参数失败:', e)
+      }
+    }
+  } else if (newType === 'kline_sync') {
+    if (formData.params) {
+      try {
+        const parsed = JSON.parse(formData.params)
+        klineSyncParamsData.years = parsed.years || 5
       } catch (e) {
         console.error('解析参数失败:', e)
       }
