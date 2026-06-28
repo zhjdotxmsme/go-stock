@@ -111,7 +111,7 @@ func (s *Service) StartHistoricalSync(years int) error {
 
 	var infos []models.AllStockInfo
 	if err := db.Dao.WithContext(ctx).
-		Where("secucode LIKE ? OR secucode LIKE ?", "sh%", "sz%").
+		Where("secucode LIKE ? OR secucode LIKE ?", "%.SH", "%.SZ").
 		Find(&infos).Error; err != nil {
 		return err
 	}

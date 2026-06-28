@@ -908,8 +908,24 @@ func syncAllStockInfo(ctx context.Context) {
 		}
 	}
 	if len(allDatas) == 0 {
-		logger.SugaredLogger.Errorf("syncAllStockInfo: no data fetched from any page, skipping delete+insert")
-		return
+		logger.SugaredLogger.Warn("syncAllStockInfo: East Money API returned no data, fallback to StockBasic table")
+		var basics []data.StockBasic
+		db.Dao.Model(&data.StockBasic{}).Find(&basics)
+		for _, b := range basics {
+			if !strings.HasSuffix(b.TsCode, ".SH") && !strings.HasSuffix(b.TsCode, ".SZ") && !strings.HasSuffix(b.TsCode, ".BJ") {
+				continue
+			}
+			allDatas = append(allDatas, models.AllStockInfo{
+				SECUCODE:         b.TsCode,
+				SECURITYCODE:     b.Symbol,
+				SECURITYNAMEABBR: b.Name,
+			})
+		}
+		if len(allDatas) == 0 {
+			logger.SugaredLogger.Error("syncAllStockInfo: StockBasic table also empty, giving up")
+			return
+		}
+		logger.SugaredLogger.Infof("syncAllStockInfo: fallback generated %d records from StockBasic", len(allDatas))
 	}
 
 	logger.SugaredLogger.Infof("syncAllStockInfo: fetched %d records, replacing all_stock_info table", len(allDatas))

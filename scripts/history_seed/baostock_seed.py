@@ -57,10 +57,17 @@ def resolve_db_path(cli_path: str | None) -> str:
 
 
 def baostock_code(db_code: str) -> str:
+    # db_code is "601916.SH" or "000800.SZ" → baostock wants "sh.601916"
+    if "." in db_code:
+        sym, exch = db_code.split(".", 1)
+        return exch.lower() + "." + sym
     return db_code[:2] + "." + db_code[2:]
 
 
 def go_stock_code(bs_code: str) -> str:
+    # bs_code is "sh.601916" → go-stock wants "601916"
+    if "." in bs_code:
+        return bs_code.split(".")[1]
     return bs_code.replace(".", "")
 
 
@@ -74,11 +81,16 @@ def count_existing_bars(conn: sqlite3.Connection) -> dict[str, int]:
 def load_stock_codes(conn: sqlite3.Connection) -> list[dict]:
     cursor = conn.execute(
         "SELECT secucode, sec_uri_tycode, sec_uri_tynameabbr FROM all_stock_info "
-        "WHERE (secucode LIKE 'sh%' OR secucode LIKE 'sz%') "
-        "AND secucode NOT LIKE '%BJ%' ORDER BY secucode"
+        "WHERE (secucode LIKE '%.SH' OR secucode LIKE '%.SZ') "
+        "ORDER BY secucode"
     )
     cols = [desc[0] for desc in cursor.description]
     return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+
+def _fmt_date(d: str) -> str:
+    d = d.replace("-", "")
+    return f"{d[:4]}-{d[4:6]}-{d[6:8]}"
 
 
 def download_kline(
@@ -87,12 +99,14 @@ def download_kline(
     params = {
         "code": code,
         "fields": "date,code,open,high,low,close,preclose,volume,amount,pctChg",
-        "start_date": start_date,
-        "end_date": end_date,
+        "start_date": _fmt_date(start_date),
+        "end_date": _fmt_date(end_date),
         "frequency": "d",
         "adjustflag": "2",
     }
     rs = bs.query_history_k_data_plus(**params)
+    if rs is None:
+        raise RuntimeError(f"Baostock query {code} returned None (invalid params?)")
     if rs.error_code != "0":
         raise RuntimeError(f"Baostock query {code} failed: {rs.error_msg}")
     rows = []

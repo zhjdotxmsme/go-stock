@@ -2299,13 +2299,14 @@ func (receiver StockDataApi) GetAllStocks(page int, pageSize int, name string, t
 		SetHeader("Host", "data.eastmoney.com").
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0").
 		Get(url)
-	if err != nil {
-		//logger.SugaredLogger.Errorf("err:%s", err.Error())
+	if err != nil || resp == nil {
+		logger.SugaredLogger.Errorf("GetAllStocks HTTP error: %v, resp nil=%v", err, resp == nil)
+		return &models.AllStocksResp{}
 	}
 	data := models.AllStocksResp{}
 	err = json.Unmarshal(resp.Body(), &data)
 	if err != nil {
-		//logger.SugaredLogger.Errorf("err:%s", err.Error())
+		logger.SugaredLogger.Errorf("GetAllStocks JSON unmarshal error: %v", err)
 		return &models.AllStocksResp{}
 	}
 	// Save to local DB in background

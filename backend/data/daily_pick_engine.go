@@ -134,14 +134,11 @@ type stockCandidate struct {
 func (e *DailyPickEngine) getCandidateStocks(ctx context.Context, tradeDate string) []stockCandidate {
 	var infos []models.AllStockInfo
 
-	// Query A-share stocks: sh/sz exchanges, non-ST, active
+	// Query A-share stocks: SH/SZ exchanges, non-ST, active
 	err := db.Dao.WithContext(ctx).
-		Where("(secucode LIKE ? OR secucode LIKE ?)", "sh%", "sz%").
-		Where("secucode NOT LIKE ?", "sh688%").   // exclude 科创板
-		Where("secucode NOT LIKE ?", "sh4%").      // exclude 北交所 sh4
-		Where("secucode NOT LIKE ?", "sh8%").      // exclude 北交所 sh8
-		Where("secucode NOT LIKE ?", "sz8%").      // exclude 北交所 sz8
-		Where("sec_uri_tynameabbr NOT LIKE ?", "%ST%").   // exclude ST
+		Where("(secucode LIKE ? OR secucode LIKE ?)", "%.SH", "%.SZ").
+		Where("secucode NOT LIKE ?", "688%").      // exclude 科创板
+		Where("sec_uri_tynameabbr NOT LIKE ?", "%ST%").
 		Where("sec_uri_tynameabbr NOT LIKE ?", "%退%").
 		Find(&infos).Error
 
