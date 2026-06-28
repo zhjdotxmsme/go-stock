@@ -123,7 +123,7 @@ async function searchStocks() {
   stockLoading.value = true
   stockError.value = ''
   try {
-    const res = await GetAllStockInfoList({ keyword: stockSearch.value, page: 1, pageSize: 50 })
+    const res = await GetAllStockInfoList({ searchKeyWord: stockSearch.value, page: 1, pageSize: 50 })
     stockList.value = res?.list || []
   } catch (e) {
     stockError.value = String(e)
