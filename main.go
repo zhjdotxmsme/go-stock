@@ -236,6 +236,7 @@ func main() {
 		Bind: []interface{}{
 			app,
 			backtestService.NewService(),
+			data.NewDailyPickService(),
 		},
 		// Windows platform specific options
 		Windows: &windows.Options{
@@ -339,6 +340,7 @@ func AutoMigrate() {
 	db.Dao.AutoMigrate(&models.KLineBar{})
 	db.Dao.AutoMigrate(&models.KLineSyncLog{})
 	db.Dao.AutoMigrate(&models.AiRecommendBacktest{})
+	db.Dao.AutoMigrate(&models.DailyPick{})
 
 	//updateMultipleModel()
 

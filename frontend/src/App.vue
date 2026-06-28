@@ -489,6 +489,57 @@ const menuOptions = ref([
             RouterLink,
             {
               to: {
+                name: 'backtest',
+              },
+              onClick: () => {
+                activeKey.value = 'backtest'
+              },
+            },
+            {default: () => '回测验证'}
+        ),
+    key: 'backtest',
+    icon: renderIcon(AlarmOutline),
+  },
+  {
+    label: () =>
+        h(
+            RouterLink,
+            {
+              to: {
+                name: 'dailyPick',
+              },
+              onClick: () => {
+                activeKey.value = 'dailyPick'
+              },
+            },
+            {default: () => '每日选股'}
+        ),
+    key: 'dailyPick',
+    icon: renderIcon(TrendingUp),
+  },
+  {
+    label: () =>
+        h(
+            RouterLink,
+            {
+              to: {
+                name: 'data-manager',
+              },
+              onClick: () => {
+                activeKey.value = 'data-manager'
+              },
+            },
+            {default: () => '数据管理'}
+        ),
+    key: 'data-manager',
+    icon: renderIcon(DiamondOutline),
+  },
+  {
+    label: () =>
+        h(
+            RouterLink,
+            {
+              to: {
                 name: 'fund',
                 query: {
                   name: '基金自选',
