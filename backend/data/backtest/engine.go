@@ -97,9 +97,33 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 		if data == nil || len(data.Bars) == 0 {
 			return nil, fmt.Errorf("no kline data for %s from %s", in.StockCode, in.SignalDate)
 		}
-		bars = datasource.BarsFromKLineData(in.StockCode, "day", "backtest", in.Adjusted, data)
-		if len(bars) == 0 {
+		allBars := datasource.BarsFromKLineData(in.StockCode, "day", "backtest", in.Adjusted, data)
+		if len(allBars) == 0 {
 			return nil, fmt.Errorf("no kline data for %s from %s after conversion", in.StockCode, in.SignalDate)
+		}
+		// 回退路径获取了 500 条 bars（从最早期开始），需过滤到 signalDate 之后
+		startIdx := 0
+		for i, bar := range allBars {
+			if bar.TradeDate >= in.SignalDate {
+				startIdx = i
+				break
+			}
+		}
+		// 在过滤前保存前一条 bar 的收盘价，用于填充 signal bar 的 PrevClose
+		if startIdx > 0 && allBars[startIdx].PrevClose == 0 && allBars[startIdx-1].Close > 0 {
+			allBars[startIdx].PrevClose = allBars[startIdx-1].Close
+		}
+		bars = allBars[startIdx:]
+		if len(bars) == 0 {
+			return nil, fmt.Errorf("no kline data for %s from %s after filtering", in.StockCode, in.SignalDate)
+		}
+	}
+
+	// DB 路径：如果第一条 bar 没有 PrevClose，尝试查询前一日记录补充
+	if len(bars) > 0 && bars[0].PrevClose == 0 {
+		prevBars, _ := e.store.QueryKLines(ctx, in.StockCode, "day", "1900-01-01", in.SignalDate, in.Adjusted)
+		if len(prevBars) >= 2 {
+			bars[0].PrevClose = prevBars[len(prevBars)-2].Close
 		}
 	}
 
