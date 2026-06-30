@@ -136,6 +136,7 @@ func (p *TencentKLineProvider) Available(ctx context.Context) bool { return true
 
 func (p *TencentKLineProvider) GetKLine(ctx context.Context, code string, period string, count int) (*datasource.KLineData, error) {
 	tencentCode := toTencentCode(code)
+	period = datasource.NormalizePeriod(period)
 	url := fmt.Sprintf("http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,%s,,,%d,qfq", tencentCode, period, count)
 	resp, err := data.SharedHTTPClient.SetTimeout(15*time.Second).R().
 		SetHeader("Host", "web.ifzq.gtimg.cn").
@@ -195,11 +196,12 @@ func (p *MootdxKLineProvider) Priority() int                     { return 5 }
 func (p *MootdxKLineProvider) Available(ctx context.Context) bool { return true }
 
 func (p *MootdxKLineProvider) GetKLine(ctx context.Context, code string, period string, count int) (*datasource.KLineData, error) {
-	tdx := data.NewTdxKLineApi()
-	if tdx == nil {
-		return nil, fmt.Errorf("mootdx kline api not available")
-	}
-	kLines := tdx.GetKLineData(code, period, count)
+		tdx := data.NewTdxKLineApi()
+		if tdx == nil {
+			return nil, fmt.Errorf("mootdx kline api not available")
+		}
+		period = datasource.NormalizePeriod(period)
+		kLines := tdx.GetKLineData(code, period, count)
 	if kLines == nil || len(*kLines) == 0 {
 		return nil, fmt.Errorf("mootdx kline: empty for %s", code)
 	}

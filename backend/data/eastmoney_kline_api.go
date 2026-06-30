@@ -3,11 +3,14 @@ package data
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"go-stock/backend/logger"
 	"io"
 	"math/rand"
+	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -17,6 +20,31 @@ import (
 	"github.com/go-resty/resty/v2"
 	uaFake "github.com/lib4u/fake-useragent"
 )
+
+// newEastMoneyHTTPClient 创建专用 HTTP/1.1 客户端，解决东财 HTTP/2 EOF。
+func newEastMoneyHTTPClient(timeout time.Duration) *resty.Client {
+	transport := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   15 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSClientConfig: &tls.Config{
+			ServerName: "push2his.eastmoney.com",
+		},
+		DisableCompression:  true,
+		MaxIdleConns:        20,
+		MaxIdleConnsPerHost: 4,
+		IdleConnTimeout:     90 * time.Second,
+		ForceAttemptHTTP2:   false,
+	}
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   timeout,
+	}
+	return resty.NewWithClient(httpClient).
+		SetTimeout(timeout).
+		SetRetryCount(0)
+}
 
 // 模拟 Windows 上 Chrome 从 quote.eastmoney.com 请求 push2his 行情接口（与 DevTools Network 常见字段对齐）。
 // 不显式设置 Accept-Encoding：由 net/http 默认协商 gzip 并自动解压；若声明 br/zstd 而 Transport 不解压会导致乱码/失败。
@@ -207,47 +235,11 @@ type CallAuctionData struct {
 
 // NewEastMoneyKLineApi 创建东方财富 K 线 API 实例
 func NewEastMoneyKLineApi(config *SettingConfig) *EastMoneyKLineApi {
-	client := SharedHTTPClient
-
-	//// 配置强制 IPv4 优先的 Transport，解决 IPv6 连接问题
-	//dialer := &net.Dialer{
-	//	Timeout:       10 * time.Second,
-	//	KeepAlive:     30 * time.Second,
-	//	DualStack:     false, // 禁用双栈
-	//	FallbackDelay: -1,    // 禁用 Happy Eyeballs
-	//}
-	//
-	//client.SetTransport(&http.Transport{
-	//	DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-	//		// 强制只使用 IPv4
-	//		host, port, err := net.SplitHostPort(addr)
-	//		if err != nil {
-	//			return nil, err
-	//		}
-	//		// 解析 A 记录（IPv4）
-	//		ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", host)
-	//		if err != nil {
-	//			return nil, err
-	//		}
-	//		if len(ips) == 0 {
-	//			return nil, fmt.Errorf("no IPv4 address found for %s", host)
-	//		}
-	//		ipv4 := ips[0].String()
-	//		return dialer.DialContext(ctx, "tcp4", net.JoinHostPort(ipv4, port))
-	//	},
-	//	TLSClientConfig: &tls.Config{
-	//		MinVersion: tls.VersionTLS12,
-	//		ServerName: "push2his.eastmoney.com",
-	//	},
-	//	DisableCompression:  true, // 禁用自动压缩，手动处理 gzip
-	//	MaxIdleConns:        100,
-	//	MaxIdleConnsPerHost: 10,
-	//	IdleConnTimeout:     90 * time.Second,
-	//	ForceAttemptHTTP2:   false, // 强制使用 HTTP/1.1
-	//})
-	//
-	//client.SetTimeout(time.Duration(config.CrawlTimeOut) * time.Second)
-
+	timeout := 30 * time.Second
+	if config != nil && config.CrawlTimeOut > 0 {
+		timeout = time.Duration(config.CrawlTimeOut) * time.Second
+	}
+	client := newEastMoneyHTTPClient(timeout)
 	return &EastMoneyKLineApi{
 		client: client,
 		config: config,

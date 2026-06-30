@@ -116,6 +116,37 @@ type SectorData struct {
 	FlowAmount float64 `json:"flowAmount"`
 }
 
+// --- Period normalization ---
+
+// NormalizePeriod maps common named periods to numeric codes used by data sources.
+// Passes through numeric codes unchanged.
+func NormalizePeriod(period string) string {
+	switch period {
+	case "day":
+		return "101"
+	case "week":
+		return "102"
+	case "month":
+		return "103"
+	case "quarter":
+		return "104"
+	case "year", "annual":
+		return "105"
+	case "1min", "1m":
+		return "1"
+	case "5min", "5m":
+		return "5"
+	case "15min", "15m":
+		return "15"
+	case "30min", "30m":
+		return "30"
+	case "60min", "60m":
+		return "60"
+	default:
+		return period
+	}
+}
+
 // --- Error types ---
 
 var (

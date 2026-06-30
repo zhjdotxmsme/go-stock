@@ -18,11 +18,12 @@ func (p *TDXKLineProvider) Priority() int                     { return 10 }
 func (p *TDXKLineProvider) Available(ctx context.Context) bool { return true }
 
 func (p *TDXKLineProvider) GetKLine(ctx context.Context, code string, period string, count int) (*datasource.KLineData, error) {
-	tdx := data.NewTdxKLineApi()
-	if tdx == nil {
-		return nil, fmt.Errorf("tdx kline api not available")
-	}
-	kLines := tdx.GetKLineData(code, period, count)
+		tdx := data.NewTdxKLineApi()
+		if tdx == nil {
+			return nil, fmt.Errorf("tdx kline api not available")
+		}
+		period = datasource.NormalizePeriod(period)
+		kLines := tdx.GetKLineData(code, period, count)
 	if kLines == nil || len(*kLines) == 0 {
 		return nil, fmt.Errorf("tdx kline: empty result for %s", code)
 	}
@@ -42,9 +43,9 @@ func (p *EastMoneyKLineProvider) GetKLine(ctx context.Context, code string, peri
 	if em == nil {
 		return nil, fmt.Errorf("eastmoney kline api not available")
 	}
-	// Map period: "101"=日K, "102"=周K, "103"=月K
-	adjustFlag := "1" // 前复权
-	kLines := em.GetKLineData(code, period, adjustFlag, count)
+		period = datasource.NormalizePeriod(period)
+		adjustFlag := "1" // 前复权
+		kLines := em.GetKLineData(code, period, adjustFlag, count)
 	if kLines == nil || len(*kLines) == 0 {
 		// Try without adjust
 		kLines = em.GetKLineData(code, period, "", count)
