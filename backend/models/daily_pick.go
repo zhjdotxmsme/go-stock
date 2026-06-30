@@ -111,3 +111,18 @@ type DailyPickStats struct {
 	AvgMaxReturn    float64 `json:"avgMaxReturn"`    // 平均最大收益
 	AvgMaxDrawdown  float64 `json:"avgMaxDrawdown"`  // 平均最大回撤
 }
+
+// StrategyConfig AI 配置选股的策略配置
+type StrategyConfig struct {
+	EnabledStrategies []string            `json:"enabled_strategies"`          // 空=全部启用
+	StrategyWeights   map[string]float64  `json:"strategy_weights,omitempty"`  // 策略权重覆盖
+	StrategyParams    map[string]float64  `json:"strategy_params,omitempty"`   // 参数覆盖
+	Filters           []FilterCondition   `json:"filters,omitempty"`            // 后置过滤
+	TopN              int                 `json:"top_n"`                        // 返回数量
+}
+
+type FilterCondition struct {
+	Field string  `json:"field"` // rsi14|score|price|volume|turnover|macd
+	Op    string  `json:"op"`    // >|<|>=|<=|==
+	Value float64 `json:"value"`
+}
