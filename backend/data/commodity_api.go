@@ -71,15 +71,13 @@ func (c *CommodityApi) getSpotQuote(asset *models.CommodityAsset) (*datasource.Q
 }
 
 func (c *CommodityApi) getFuturesQuote(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
-	// Try Sina Finance API first, fallback to EastMoney K-line
-	quote, err := c.getFuturesQuoteFromSina(asset)
-	if err == nil {
-		return quote, nil
-	}
-	return c.getFuturesQuoteFromEMKLine(asset)
+	// Sina Finance is the only supported source for domestic futures quotes.
+	// EastMoney push2his K-line API does NOT support futures secids (113.AU0 etc).
+	return c.getFuturesQuoteFromSina(asset)
 }
 
 func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
+	// Sina real-time futures quote: hq.sinajs.cn/list=NF_AU0 (上海期货黄金主力连续)
 	sinaSymbol := "NF_" + asset.Code + "0"
 	url := fmt.Sprintf("http://hq.sinajs.cn/list=%s", sinaSymbol)
 
@@ -88,23 +86,30 @@ func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*d
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
 		Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("sina futures quote: %w", err)
+		return nil, fmt.Errorf("sina futures quote request: %w", err)
 	}
 
 	body := GB18030ToUTF8(resp.Body())
-	// Response: var hq_str_NF_AU0="name,open,lastSettle,current,high,low,...";
+	// Response format: var hq_str_NF_AU0="沪金0,571.98,572.78,571.52,572.90,570.26,2024-01-15,0,...";
+	if !strings.HasPrefix(body, "var hq_str_") {
+		return nil, fmt.Errorf("sina futures quote: unexpected response format for %s: %s", asset.Code, truncateStr(body, 120))
+	}
 	startIdx := strings.Index(body, "\"")
 	if startIdx < 0 {
-		return nil, fmt.Errorf("sina futures quote: unexpected response for %s", asset.Symbol)
+		return nil, fmt.Errorf("sina futures quote: no quote data for %s", asset.Code)
 	}
 	endIdx := strings.LastIndex(body, "\"")
 	if endIdx <= startIdx {
-		return nil, fmt.Errorf("sina futures quote: unexpected response for %s", asset.Symbol)
+		return nil, fmt.Errorf("sina futures quote: malformed response for %s", asset.Code)
 	}
 	content := body[startIdx+1 : endIdx]
+	if content == "" {
+		return nil, fmt.Errorf("sina futures quote: empty data for %s (symbol may be delisted)", asset.Code)
+	}
 	parts := strings.Split(content, ",")
+	// Fields: 0=name,1=open,2=lastSettle,3=current,4=high,5=low,6=date,...
 	if len(parts) < 10 {
-		return nil, fmt.Errorf("sina futures quote: insufficient fields for %s", asset.Symbol)
+		return nil, fmt.Errorf("sina futures quote: %d fields, need >=10 for %s", len(parts), asset.Code)
 	}
 
 	name := parts[0]
@@ -129,33 +134,6 @@ func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*d
 		High:      high,
 		Low:       low,
 		Open:      open,
-		Time:      time.Now(),
-	}, nil
-}
-
-func (c *CommodityApi) getFuturesQuoteFromEMKLine(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
-	// Fallback: derive spot quote from EastMoney K-line (adjustFlag="0" = unadjusted)
-	kLines := c.emClient.GetKLineData(asset.Symbol, "101", "0", 1)
-	if kLines == nil || len(*kLines) == 0 {
-		return nil, fmt.Errorf("获取 %s 行情失败（Sina + EastMoney 均无数据）", asset.Symbol)
-	}
-	k := (*kLines)[0]
-	closeVal, _ := parseFloatToFloat(k.Close)
-	openVal, _ := parseFloatToFloat(k.Open)
-	highVal, _ := parseFloatToFloat(k.High)
-	lowVal, _ := parseFloatToFloat(k.Low)
-	changeVal, _ := parseFloatToFloat(k.ChangeValue)
-	changePctVal, _ := parseFloatToFloat(k.ChangePercent)
-
-	return &datasource.QuoteData{
-		Code:      asset.Code,
-		Name:      asset.Name,
-		Price:     closeVal,
-		Change:    changeVal,
-		ChangePct: changePctVal,
-		High:      highVal,
-		Low:       lowVal,
-		Open:      openVal,
 		Time:      time.Now(),
 	}, nil
 }
