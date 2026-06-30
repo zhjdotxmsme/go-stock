@@ -22,11 +22,12 @@ type DailyPick struct {
 	Rank  int     `json:"rank"`               // 当日排名
 
 	// 因子得分明细
-	VolumeFactor float64 `json:"volumeFactor"` // 成交量放大因子 (0-1)
-	MaFactor     float64 `json:"maFactor"`     // 均线形态因子 (0-1)
-	RsiFactor    float64 `json:"rsiFactor"`    // RSI 因子 (0-1)
-	MacdFactor   float64 `json:"macdFactor"`   // MACD 因子 (0-1)
-	PriceFactor  float64 `json:"priceFactor"`  // 价格位置因子 (0-1)
+	VolumeFactor   float64 `json:"volumeFactor"`   // 成交量放大因子 (0-1)
+	MaFactor       float64 `json:"maFactor"`       // 均线形态因子 (0-1)
+	RsiFactor      float64 `json:"rsiFactor"`      // RSI 因子 (0-1)
+	MacdFactor     float64 `json:"macdFactor"`     // MACD 因子 (0-1)
+	PriceFactor    float64 `json:"priceFactor"`    // 价格位置因子 (0-1)
+	TurnoverFactor float64 `json:"turnoverFactor"` // 换手率因子 (0-1)
 
 	// 推荐日行情快照
 	ClosePrice    float64 `json:"closePrice"`

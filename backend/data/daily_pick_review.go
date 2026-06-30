@@ -68,8 +68,8 @@ func (r *DailyPickReview) RunDailyReview(ctx context.Context, reviewDate string,
 func (r *DailyPickReview) reviewOne(ctx context.Context, pick *models.DailyPick, reviewDate string) bool {
 	apiCode := normalizeCode(pick.StockCode)
 
-	// Fetch K-line data for the review date - need at least the most recent daily bar
-	klineData := NewStockDataApi().GetKLineData(apiCode, "101", 5)
+	// Fetch K-line data via Sina API (scale=240 = daily)
+	klineData := NewStockDataApi().GetKLineData(apiCode, "240", 5)
 	if klineData == nil || len(*klineData) == 0 {
 		logger.SugaredLogger.Warnf("daily_review: no kline data for %s", pick.StockCode)
 		return false

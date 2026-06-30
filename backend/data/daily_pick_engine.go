@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
@@ -229,18 +228,10 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 	// Normalize stock code for API call
 	apiCode := normalizeCode(candidate.Code)
 
-	// Fetch K-line data (60 daily bars for indicator computation)
-	var klineData *[]KLineData
-	todayStr := time.Now().Format("2006-01-02")
-	if tradeDate != "" && tradeDate < todayStr {
-		// 指定历史日期：使用东方财富 API 获取该日期之前的 K 线
-		endDate := strings.ReplaceAll(tradeDate, "-", "") // "2024-01-01" → "20240101"
-		emAPI := NewEastMoneyKLineApi(GetSettingConfig())
-		klineData = emAPI.GetKLineDataBefore(candidate.Code, "101", "1", 60, endDate)
-	} else {
-		// 默认行为：获取最新 60 根 K 线
-		klineData = NewStockDataApi().GetKLineData(apiCode, "101", 60)
-	}
+	// Fetch K-line data via Sina API (scale=240 = daily).
+	// Historical date path (EastMoney K-line) is removed because
+	// EastMoney push API is blocked from this network.
+	klineData := NewStockDataApi().GetKLineData(apiCode, "240", 60)
 	if klineData == nil || len(*klineData) < 20 {
 		return pick, fmt.Errorf("insufficient kline data: %d bars", lenPtr(klineData))
 	}
@@ -319,13 +310,15 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 	pick.RsiFactor = scoreRSIFactor(pick.Rsi14)
 	pick.MacdFactor = scoreMACDFactor(pick.Macd, pick.MacdSignal)
 	pick.PriceFactor = scorePriceFactor(pick.ClosePrice, pick.BollMid, pick.BollUp, pick.BollDown)
-	// Composite score
+	pick.TurnoverFactor = scoreTurnoverFactor(pick.TurnoverRate)
+	// Composite score (all weights sum to 1.0)
 	pick.Score = math.Round(
 		(pick.VolumeFactor*WeightVolume+
 			pick.MaFactor*WeightMA+
 			pick.RsiFactor*WeightRSI+
 			pick.MacdFactor*WeightMACD+
-			pick.PriceFactor*WeightPrice)*100*100) / 100
+			pick.PriceFactor*WeightPrice+
+			pick.TurnoverFactor*WeightTurn)*100*100) / 100
 
 	// Generate reason
 	pick.Reason = buildReason(pick)
@@ -420,6 +413,27 @@ func scoreMACDFactor(macd, signal float64) float64 {
 	}
 }
 
+// scoreTurnoverFactor: turnover rate score — ideal range 3%-15%
+func scoreTurnoverFactor(turnoverRate float64) float64 {
+	if turnoverRate <= 0 {
+		return 0
+	}
+	switch {
+	case turnoverRate >= 3 && turnoverRate <= 10:
+		return 1.0
+	case turnoverRate >= 1.5 && turnoverRate < 3:
+		return 0.7
+	case turnoverRate > 10 && turnoverRate <= 20:
+		return 0.6
+	case turnoverRate > 20 && turnoverRate <= 30:
+		return 0.3
+	case turnoverRate < 1.5:
+		return 0.1
+	default:
+		return 0
+	}
+}
+
 // scorePriceFactor: price position relative to BOLL bands
 func scorePriceFactor(price, bollMid, bollUp, bollDown float64) float64 {
 	if bollMid <= 0 || price <= 0 {
@@ -439,15 +453,20 @@ func scorePriceFactor(price, bollMid, bollUp, bollDown float64) float64 {
 
 // ---- Helpers ----
 
-// normalizeCode converts stock codes to the format expected by the Sina API.
-// e.g., "sh600519" -> "sh600519", "600519" is used as-is
+// normalizeCode converts stock codes to Sina API format.
+// "600519.SH" → "sh600519", "000001.SZ" → "sz000001", "sh600519" → "sh600519"
 func normalizeCode(code string) string {
 	code = strings.ToLower(code)
 	if strings.HasPrefix(code, "sh") || strings.HasPrefix(code, "sz") {
 		return code
 	}
-	// Remove possible suffixes like .SH, .SZ
-	code = strings.Split(code, ".")[0]
+	if strings.Contains(code, ".") {
+		parts := strings.SplitN(code, ".", 2)
+		if parts[1] == "sh" || parts[1] == "sz" {
+			return parts[1] + parts[0]
+		}
+		return parts[0]
+	}
 	return code
 }
 
