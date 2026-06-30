@@ -152,6 +152,7 @@ var WSCNProdCodes = map[string]string{
 	"USDJPY.OTC": "美元/日元",
 	"USDCNH.OTC": "离岸人民币",
 	"XAUUSD.OTC": "现货黄金",
+	"XAGUSD.OTC": "现货白银",
 	"USCL.OTC":   "WTI原油",
 	"515250.SS":  "智能汽车ETF富国",
 	"510300.SS":  "沪深300ETF",

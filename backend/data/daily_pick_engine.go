@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
@@ -30,6 +31,12 @@ const (
 type DailyPickEngine struct {
 	maxWorkers int
 	strategies []ScoringStrategy
+
+	// Pre-fetched data (populated once per RunDailyPick)
+	macroScore        float64               // 0-1 macro environment score
+	industryRankMap   map[string]float64    // industryName → score (0-1)
+	stockIndustryMap  map[string]string     // stockCode → industryName
+	researchReportMap map[string]int        // stockCode → report count (pre-fetched)
 }
 
 // NewDailyPickEngine creates a new engine instance with default strategies.
@@ -42,6 +49,9 @@ func NewDailyPickEngine() *DailyPickEngine {
 			&MomentumStrategy{},
 			&ChannelBreakoutStrategy{},
 			&KDJShortStrategy{},
+			&IndustryStrengthStrategy{},
+			&ResearchReportStrategy{},
+			&MacroEnvironmentStrategy{},
 		},
 	}
 }
@@ -74,6 +84,11 @@ func (e *DailyPickEngine) RunDailyPick(ctx context.Context, tradeDate string, to
 		return nil, fmt.Errorf("daily_pick: no candidate stocks found for %s", tradeDate)
 	}
 	logger.SugaredLogger.Infof("daily_pick: %d candidates to score", len(candidates))
+
+	// Pre-fetch macro, industry, and research data
+	e.prefetchMacroData()
+	e.prefetchIndustryRankings(ctx)
+	e.prefetchResearchData(ctx, candidates)
 
 	// Step 2: Parallel score computation
 	type scored struct {
@@ -334,26 +349,53 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 			pick.TurnoverFactor*WeightTurn)*100*100) / 100
 
 	// Multi-strategy scoring: run all registered strategies and pick the best
+	// Look up industry and research data from pre-fetched maps
+	industryName := e.stockIndustryMap[candidate.Code]
+	industryRankScore := e.lookupIndustryRankScore(industryName)
+	researchCount := e.researchReportMap[candidate.Code]
+
 	strategyCtx := &StrategyContext{
-		KLines:    klines,
-		CloseP:    closeP,
-		HighP:     highP,
-		LowP:      lowP,
-		Volume:    volume,
-		StockCode: candidate.Code,
-		StockName: candidate.Name,
-		TradeDate: tradeDate,
+		KLines:              klines,
+		CloseP:              closeP,
+		HighP:               highP,
+		LowP:                lowP,
+		Volume:              volume,
+		StockCode:           candidate.Code,
+		StockName:           candidate.Name,
+		TradeDate:           tradeDate,
+		IndustryCode:        industryName,
+		IndustryRankScore:   industryRankScore,
+		MacroScore:          e.macroScore,
+		ResearchReportCount: researchCount,
 	}
 
 	pick.Score = baselineScore
 	pick.Reason = buildReason(pick)
+	pick.IndustryScore = industryRankScore
+	pick.ResearchScore = float64(researchCount)
+	pick.MacroScore = e.macroScore
+
+	// Fundamental/industry/macro strategies add bonus on top of technical score,
+	// while existing technical strategies compete for highest score.
 	for _, s := range e.strategies {
 		r := s.Score(strategyCtx)
-		if r.Score > pick.Score {
-			pick.Score = r.Score
-			pick.StrategyCode = s.Code()
-			pick.StrategyName = s.Name()
-			pick.Reason = fmt.Sprintf("[%s] %s", s.Name(), r.Signal)
+		switch s.Code() {
+		case "industry_strength", "research_report", "macro_environment":
+			// Bonus overlay: add 0-20% of the fundamental score to the technical baseline
+			bonus := r.Score * 0.15
+			newScore := pick.Score + bonus
+			if newScore > pick.Score {
+				pick.Score = newScore
+				pick.Reason = fmt.Sprintf("%s +%s加分", pick.Reason, s.Name())
+			}
+		default:
+			// Technical strategies compete for highest score (existing behavior)
+			if r.Score > pick.Score {
+				pick.Score = r.Score
+				pick.StrategyCode = s.Code()
+				pick.StrategyName = s.Name()
+				pick.Reason = fmt.Sprintf("[%s] %s", s.Name(), r.Signal)
+			}
 		}
 	}
 
@@ -537,5 +579,165 @@ func buildReason(pick models.DailyPick) string {
 		parts = append(parts, "综合技术面评分入选")
 	}
 	return strings.Join(parts, "，")
+}
+
+// prefetchMacroData fetches PMI/CPI/GDP data and computes a macro environment score (0-1).
+// Called once per RunDailyPick before parallel scoring.
+func (e *DailyPickEngine) prefetchMacroData() {
+	api := NewMarketNewsApi()
+	score := 0.5 // neutral baseline
+
+	defer func() {
+		if score < 0 {
+			score = 0
+		}
+		if score > 1 {
+			score = 1
+		}
+		e.macroScore = score
+		logger.SugaredLogger.Infof("daily_pick: macro score computed = %.2f", score)
+	}()
+
+	pmiResp := api.GetPMI()
+	if pmiResp != nil && len(pmiResp.PMIResult.Data) > 0 {
+		pmi := pmiResp.PMIResult.Data[0].MAKEINDEX
+		switch {
+		case pmi > 52:
+			score += 0.3
+		case pmi > 50:
+			score += 0.2
+		case pmi < 48:
+			score -= 0.2
+		}
+	}
+
+	cpiResp := api.GetCPI()
+	if cpiResp != nil && len(cpiResp.CPIResult.Data) > 0 {
+		cpi := cpiResp.CPIResult.Data[0].NATIONALSAME
+		if cpi >= 1 && cpi <= 3 {
+			score += 0.15
+		} else if cpi > 4 {
+			score -= 0.1
+		}
+	}
+
+	gdpResp := api.GetGDP()
+	if gdpResp != nil && len(gdpResp.GDPResult.Data) > 0 {
+		gdp := gdpResp.GDPResult.Data[0].SUMSAME
+		switch {
+		case gdp >= 5:
+			score += 0.2
+		case gdp >= 4:
+			score += 0.1
+		case gdp < 3:
+			score -= 0.1
+		}
+	}
+
+	logger.SugaredLogger.Infof("daily_pick: macro score computed = %.2f", e.macroScore)
+}
+
+// prefetchIndustryRankings fetches industry money-flow rankings and builds:
+//   - industryRankMap: industryName → score (0-1)
+//   - stockIndustryMap: stockCode → industryName
+//
+// Called once per RunDailyPick before parallel scoring.
+func (e *DailyPickEngine) prefetchIndustryRankings(ctx context.Context) {
+	// Build stockIndustryMap from database
+	var infos []struct {
+		SECUCODE  string
+		INDUSTRY  string
+	}
+	err := db.Dao.WithContext(ctx).
+		Model(&models.AllStockInfo{}).
+		Where("secucode IS NOT NULL AND industry IS NOT NULL AND industry != ''").
+		Select("secucode, industry").
+		Find(&infos).Error
+	if err != nil {
+		logger.SugaredLogger.Errorf("daily_pick: query stock industry error: %v", err)
+		e.stockIndustryMap = make(map[string]string)
+		e.industryRankMap = make(map[string]float64)
+		return
+	}
+	e.stockIndustryMap = make(map[string]string, len(infos))
+	for _, row := range infos {
+		e.stockIndustryMap[row.SECUCODE] = row.INDUSTRY
+	}
+
+	// Fetch industry rankings from Sina
+	ranks := NewMarketNewsApi().GetIndustryMoneyRankSina("0", "netamount")
+	e.industryRankMap = make(map[string]float64, len(ranks))
+	for i, r := range ranks {
+		name := convertor.ToString(r["name"])
+		if name == "" {
+			continue
+		}
+		score := 1.0 - float64(i)/float64(len(ranks))
+		e.industryRankMap[name] = score
+	}
+	logger.SugaredLogger.Infof("daily_pick: %d industry rankings loaded", len(e.industryRankMap))
+}
+
+// prefetchResearchData batches research report fetching for all candidates.
+// Called once per RunDailyPick before parallel scoring.
+func (e *DailyPickEngine) prefetchResearchData(ctx context.Context, candidates []stockCandidate) {
+	e.researchReportMap = make(map[string]int, len(candidates))
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, e.maxWorkers)
+
+	for _, c := range candidates {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(code string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			done := make(chan int, 1)
+			go func() {
+				reports := NewMarketNewsApi().StockResearchReport(code, 30)
+				if reports != nil {
+					done <- len(reports)
+				} else {
+					done <- 0
+				}
+			}()
+
+			var count int
+			select {
+			case count = <-done:
+			case <-time.After(12 * time.Second):
+				logger.SugaredLogger.Warnf("daily_pick: research report timeout for %s", code)
+				count = 0
+			case <-ctx.Done():
+				count = 0
+			}
+
+			mu.Lock()
+			e.researchReportMap[code] = count
+			mu.Unlock()
+		}(c.Code)
+	}
+	wg.Wait()
+	logger.SugaredLogger.Infof("daily_pick: research reports pre-fetched for %d stocks", len(e.researchReportMap))
+}
+
+// lookupIndustryRankScore finds the rank score for an industry name.
+// Tries exact match first, then substring fallback.
+func (e *DailyPickEngine) lookupIndustryRankScore(industryName string) float64 {
+	if industryName == "" || len(e.industryRankMap) == 0 {
+		return 0
+	}
+	if score, ok := e.industryRankMap[industryName]; ok {
+		return score
+	}
+	// Fallback: check if any key contains or is contained by the target name
+	for key, score := range e.industryRankMap {
+		if strings.Contains(industryName, key) || strings.Contains(key, industryName) {
+			return score
+		}
+	}
+	return 0
 }
 

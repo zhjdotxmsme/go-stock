@@ -31,6 +31,9 @@ type DailyPick struct {
 	MacdFactor     float64 `json:"macdFactor"`     // MACD 因子 (0-1)
 	PriceFactor    float64 `json:"priceFactor"`    // 价格位置因子 (0-1)
 	TurnoverFactor float64 `json:"turnoverFactor"` // 换手率因子 (0-1)
+	IndustryScore  float64 `json:"industryScore"`  // 行业强度 (0-1)
+	ResearchScore  float64 `json:"researchScore"`  // 研报热度 (原始研报数量)
+	MacroScore     float64 `json:"macroScore"`     // 宏观环境 (0-1)
 
 	// 推荐日行情快照
 	ClosePrice    float64 `json:"closePrice"`

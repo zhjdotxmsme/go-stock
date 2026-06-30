@@ -12,7 +12,7 @@ type ScoringStrategy interface {
 	Score(ctx *StrategyContext) *StrategyResult
 }
 
-// StrategyContext holds pre-extracted K-line data for scoring.
+// StrategyContext holds pre-extracted K-line data and other scoring context.
 type StrategyContext struct {
 	KLines    []KLineData
 	CloseP    []float64
@@ -22,6 +22,12 @@ type StrategyContext struct {
 	StockCode string
 	StockName string
 	TradeDate string
+
+	// Fundamental / industry context (pre-fetched, shared across all candidates)
+	IndustryCode        string  // stock's industry name
+	IndustryRankScore   float64 // industry strength score (0-1), from industry money-flow rank
+	MacroScore          float64 // macro environment score (0-1), from PMI/CPI/GDP
+	ResearchReportCount int     // number of research reports in last 30 days
 }
 
 // StrategyResult holds the scoring output.
