@@ -8,6 +8,8 @@ import {strategy} from '../models';
 import {datasource} from '../models';
 import {lo} from '../models';
 
+export function AIConfiguredStockPick(arg1:string,arg2:number):Promise<Array<models.DailyPick>>;
+
 export function AbortChatWithAgent():Promise<void>;
 
 export function AbortSummaryStockNews():Promise<void>;
