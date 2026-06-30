@@ -1660,12 +1660,31 @@ type Skill struct {
 	Examples        string    `json:"examples" gorm:"type:text"`
 	TriggerKeywords string    `json:"triggerKeywords" gorm:"size:500"`
 	MCPServerIDs    string    `json:"mcpServerIds" gorm:"size:500"`
-	Enable          bool      `json:"enable" gorm:"default:true"`
-	SortOrder       int       `json:"sortOrder" gorm:"default:0"`
-}
+		Enable          bool      `json:"enable" gorm:"default:true"`
+		SortOrder       int       `json:"sortOrder" gorm:"default:0"`
+		UsageCount      int       `json:"usageCount" gorm:"default:0"`
+		AvgScore        float64   `json:"avgScore" gorm:"default:0"`
+		Source          string    `json:"source" gorm:"default:user"`
+		Version         int       `json:"version" gorm:"default:1"`
+		Confidence      float64   `json:"confidence" gorm:"default:1"`
+	}
 
 func (Skill) TableName() string {
 	return "skills"
+}
+
+type SkillUsageRecord struct {
+	gorm.Model
+	SkillID     uint    `json:"skillId" gorm:"index"`
+	Query       string  `json:"query" gorm:"type:text"`
+	SessionID   string  `json:"sessionId" gorm:"index"`
+	Matched     bool    `json:"matched"`
+	Triggered   bool    `json:"triggered"`
+	MCPUsed     bool    `json:"mcpUsed"`
+	OutputScore float64 `json:"outputScore"`
+	UserRating  int     `json:"userRating"`
+	TokenCost   int     `json:"tokenCost"`
+	ErrorMsg    string  `json:"errorMsg"`
 }
 
 type SkillQuery struct {
