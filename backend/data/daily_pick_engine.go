@@ -723,6 +723,205 @@ func (e *DailyPickEngine) prefetchResearchData(ctx context.Context, candidates [
 	logger.SugaredLogger.Infof("daily_pick: research reports pre-fetched for %d stocks", len(e.researchReportMap))
 }
 
+// RunWithConfig runs the daily pick engine with an AI-generated StrategyConfig.
+// It filters enabled strategies, injects parameter overrides, applies config weights,
+// and runs post-scoring filters before returning.
+func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, config *models.StrategyConfig) ([]models.DailyPick, error) {
+	if config == nil {
+		return e.RunDailyPick(ctx, tradeDate, 10)
+	}
+
+	topN := config.TopN
+	if topN <= 0 {
+		topN = 10
+	}
+
+	// Step 1: Get candidate stocks (same as RunDailyPick)
+	candidates := e.getCandidateStocks(ctx, tradeDate)
+	if len(candidates) == 0 {
+		candidates = e.getCandidatesFromEastMoney(ctx)
+	}
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("daily_pick: no candidate stocks found for %s", tradeDate)
+	}
+	logger.SugaredLogger.Infof("daily_pick: %d candidates to score (AI config)", len(candidates))
+
+	// Step 2: Pre-fetch data
+	e.prefetchMacroData()
+	e.prefetchIndustryRankings(ctx)
+	e.prefetchResearchData(ctx, candidates)
+
+	// Step 3: Filter strategies by config
+	if len(config.EnabledStrategies) > 0 {
+		enabled := make(map[string]bool, len(config.EnabledStrategies))
+		for _, code := range config.EnabledStrategies {
+			enabled[code] = true
+		}
+		filtered := make([]ScoringStrategy, 0, len(config.EnabledStrategies))
+		for _, s := range e.strategies {
+			if enabled[s.Code()] {
+				filtered = append(filtered, s)
+			}
+		}
+		e.strategies = filtered
+	}
+
+	// Step 4: Parallel score computation (same pattern as RunDailyPick)
+	type scored struct {
+		pick models.DailyPick
+		err  error
+	}
+
+	var (
+		mu     sync.Mutex
+		wg     sync.WaitGroup
+		sem    = make(chan struct{}, e.maxWorkers)
+		result []scored
+	)
+
+	for _, c := range candidates {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(candidate stockCandidate) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			p, err := e.scoreStockWithConfig(ctx, candidate, tradeDate, config)
+			mu.Lock()
+			result = append(result, scored{pick: p, err: err})
+			mu.Unlock()
+		}(c)
+	}
+	wg.Wait()
+
+	// Step 5: Filter, sort, apply post-filters
+	var picks []models.DailyPick
+	for _, r := range result {
+		if r.err != nil {
+			logger.SugaredLogger.Debugf("daily_pick: skip %s: %v", r.pick.StockCode, r.err)
+			continue
+		}
+		if r.pick.Score > 0 {
+			picks = append(picks, r.pick)
+		}
+	}
+
+	// Apply post-scoring filters
+	if len(config.Filters) > 0 {
+		picks = applyFilters(picks, config.Filters)
+	}
+
+	sort.Slice(picks, func(i, j int) bool {
+		return picks[i].Score > picks[j].Score
+	})
+
+	if len(picks) > topN {
+		picks = picks[:topN]
+	}
+	for i := range picks {
+		picks[i].Rank = i + 1
+	}
+
+	logger.SugaredLogger.Infof("daily_pick(AI): %d picks generated for %s", len(picks), tradeDate)
+
+	// Step 6: Persist
+	for i := range picks {
+		if err := db.Dao.WithContext(ctx).Create(&picks[i]).Error; err != nil {
+			logger.SugaredLogger.Errorf("daily_pick: failed to save pick %s: %v", picks[i].StockCode, err)
+		}
+	}
+
+	return picks, nil
+}
+
+// scoreStockWithConfig is like scoreStock but injects config overrides and weights.
+func (e *DailyPickEngine) scoreStockWithConfig(ctx context.Context, candidate stockCandidate, tradeDate string, config *models.StrategyConfig) (models.DailyPick, error) {
+	pick, err := e.scoreStock(ctx, candidate, tradeDate)
+	if err != nil {
+		return pick, err
+	}
+
+	// Apply strategy weights from config (overrides the normal competition/bonus logic)
+	if len(config.StrategyWeights) > 0 {
+		var weightedScore float64
+		var totalWeight float64
+		for code, weight := range config.StrategyWeights {
+			if weight <= 0 {
+				continue
+			}
+			// Find the score for this strategy from the pick
+			switch code {
+			case "ma_trend":
+				weightedScore += pick.MaFactor * 100 * weight
+			case "momentum":
+				weightedScore += pick.MacdFactor * 100 * weight
+			default:
+				weightedScore += pick.Score * weight
+			}
+			totalWeight += weight
+		}
+		if totalWeight > 0 {
+			pick.Score = math.Round(weightedScore/totalWeight*100) / 100
+		}
+	}
+
+	return pick, nil
+}
+
+// applyFilters applies post-scoring filter conditions to the picks list.
+func applyFilters(picks []models.DailyPick, filters []models.FilterCondition) []models.DailyPick {
+	for _, f := range filters {
+		filtered := make([]models.DailyPick, 0, len(picks))
+		for _, p := range picks {
+			val := getFilterFieldValue(p, f.Field)
+			if compareValues(val, f.Op, f.Value) {
+				filtered = append(filtered, p)
+			}
+		}
+		picks = filtered
+		if len(picks) == 0 {
+			break
+		}
+	}
+	return picks
+}
+
+func getFilterFieldValue(p models.DailyPick, field string) float64 {
+	switch field {
+	case "score":
+		return p.Score
+	case "price":
+		return p.ClosePrice
+	case "volume":
+		return float64(p.Volume)
+	case "turnover":
+		return p.TurnoverFactor
+	case "rsi14":
+		return p.Rsi14
+	case "macd":
+		return p.Macd
+	default:
+		return 0
+	}
+}
+
+func compareValues(val float64, op string, target float64) bool {
+	switch op {
+	case ">":
+		return val > target
+	case "<":
+		return val < target
+	case ">=":
+		return val >= target
+	case "<=":
+		return val <= target
+	case "==":
+		return val >= target-0.0001 && val <= target+0.0001
+	default:
+		return true
+	}
+}
+
 // lookupIndustryRankScore finds the rank score for an industry name.
 // Tries exact match first, then substring fallback.
 func (e *DailyPickEngine) lookupIndustryRankScore(industryName string) float64 {
