@@ -1,57 +1,99 @@
 <template>
-  <n-space vertical style="margin-bottom: 12px">
-    <n-space>
+  <n-tabs type="line" default-value="list">
+    <n-tab-pane name="list" tab="技能列表">
+      <n-space vertical style="margin-bottom: 12px">
+        <n-space>
+          <n-input
+            v-model:value="searchKeyword"
+            placeholder="搜索技能名称..."
+            style="width: 200px"
+            clearable
+            @keyup.enter="handleSearch"
+          >
+            <template #prefix>
+              <n-icon :component="SearchOutline" />
+            </template>
+          </n-input>
+
+          <n-select
+            v-model:value="filterCategory"
+            :options="categoryOptions"
+            placeholder="技能分类"
+            style="width: 120px"
+            clearable
+            filterable
+          />
+
+          <n-select
+            v-model:value="filterEnable"
+            :options="enableOptions"
+            placeholder="启用状态"
+            style="width: 100px"
+            clearable
+          />
+
+          <n-button type="primary" @click="handleSearch">
+            搜索
+          </n-button>
+
+          <n-button type="warning" @click="handleCreate">
+            <template #icon>
+              <n-icon :component="AddOutline" />
+            </template>
+            添加技能
+          </n-button>
+
+          <n-button type="info" @click="showUrlModal = true">
+            <template #icon>
+              <n-icon :component="LinkOutline" />
+            </template>
+            从URL生成
+          </n-button>
+        </n-space>
+
+        <n-data-table
+          remote
+          :columns="columns"
+          :data="tableData"
+          :pagination="pagination"
+          :loading="loading"
+          :row-key="row => row.id"
+          @update:page="handlePageChange"
+        />
+      </n-space>
+    </n-tab-pane>
+
+    <n-tab-pane name="analysis" tab="技能分析">
+      <SkillRecommend />
+    </n-tab-pane>
+  </n-tabs>
+
+  <!-- URL Generation Modal -->
+  <n-modal
+    v-model:show="showUrlModal"
+    preset="card"
+    title="从URL生成技能"
+    style="width: 600px"
+    :mask-closable="false"
+  >
+    <n-space vertical>
       <n-input
-        v-model:value="searchKeyword"
-        placeholder="搜索技能名称..."
-        style="width: 200px"
-        clearable
-        @keyup.enter="handleSearch"
-      >
-        <template #prefix>
-          <n-icon :component="SearchOutline" />
-        </template>
-      </n-input>
-
-      <n-select
-        v-model:value="filterCategory"
-        :options="categoryOptions"
-        placeholder="技能分类"
-        style="width: 120px"
-        clearable
-        filterable
+        v-model:value="urlInput"
+        type="textarea"
+        :autosize="{ minRows: 2, maxRows: 4 }"
+        placeholder="请输入网页URL，例如：https://github.com/org/repo 或 技术文档页面"
       />
-
-      <n-select
-        v-model:value="filterEnable"
-        :options="enableOptions"
-        placeholder="启用状态"
-        style="width: 100px"
-        clearable
-      />
-
-      <n-button type="primary" @click="handleSearch">
-        搜索
-      </n-button>
-
-      <n-button type="warning" @click="handleCreate">
-        <template #icon>
-          <n-icon :component="AddOutline" />
-        </template>
-        添加技能
-      </n-button>
+      <n-space justify="end">
+        <n-button @click="showUrlModal = false">取消</n-button>
+        <n-button type="primary" :loading="urlGenerating" @click="handleGenerateFromURL">
+          开始生成
+        </n-button>
+      </n-space>
+      <n-alert v-if="urlResult" :type="urlResultType" closable @close="urlResult = ''">
+        <span style="white-space: pre-line">{{ urlResult }}</span>
+      </n-alert>
     </n-space>
-
-    <n-data-table
-      remote
-      :columns="columns"
-      :data="tableData"
-      :pagination="pagination"
-      :loading="loading"
-      :row-key="row => row.id"
-      @update:page="handlePageChange"
-    />
-  </n-space>
+  </n-modal>
 
   <n-modal
     v-model:show="showCreateModal"
@@ -164,12 +206,13 @@
 import { ref, reactive, h, onMounted } from 'vue'
 import {
   NButton, NSpace, NInput, NDataTable, NModal, NForm, NFormItem,
-  NFormItemGi, NGrid, NTag, NSwitch, NIcon, NSelect, NInputNumber, NPopconfirm, NScrollbar, useMessage
+  NFormItemGi, NGrid, NTag, NSwitch, NIcon, NSelect, NInputNumber, NPopconfirm, NScrollbar, NAlert, useMessage
 } from 'naive-ui'
-import { SearchOutline, AddOutline, TrashOutline, CreateOutline, FlashOutline } from '@vicons/ionicons5'
+import { SearchOutline, AddOutline, TrashOutline, CreateOutline, FlashOutline, LinkOutline } from '@vicons/ionicons5'
+import SkillRecommend from './skill-recommend.vue'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
-import { CreateSkill, UpdateSkill, DeleteSkill, GetSkillList, EnableSkill, GetSkillByID, GetAllSkills } from '../../wailsjs/go/main/App.js'
+import { CreateSkill, UpdateSkill, DeleteSkill, GetSkillList, EnableSkill, GetSkillByID, GetAllSkills, GenerateSkillFromURL } from '../../wailsjs/go/main/App.js'
 import { GetMCPServerList, GetConfig } from '../../wailsjs/go/main/App.js'
 
 const message = useMessage()
@@ -185,6 +228,11 @@ const tableData = ref([])
 const mcpServerOptions = ref([])
 const editorTheme = ref('light')
 
+const showUrlModal = ref(false)
+const urlInput = ref('')
+const urlGenerating = ref(false)
+const urlResult = ref('')
+const urlResultType = ref('info')
 
 const currentPage = ref(1)
 const pageSize = ref(10)
@@ -435,6 +483,29 @@ const handleEnable = async (row, enable) => {
     }
   } catch (error) {
     message.error('操作失败: ' + error)
+  }
+}
+
+async function handleGenerateFromURL() {
+  if (!urlInput.value.trim()) {
+    message.warning('请输入URL')
+    return
+  }
+  urlGenerating.value = true
+  urlResult.value = ''
+  try {
+    const result = await GenerateSkillFromURL(urlInput.value.trim())
+    urlResult.value = result
+    urlResultType.value = result.includes('成功') ? 'success' : 'error'
+    if (result.includes('成功')) {
+      urlInput.value = ''
+      loadData()
+    }
+  } catch (e) {
+    urlResult.value = '操作失败: ' + e
+    urlResultType.value = 'error'
+  } finally {
+    urlGenerating.value = false
   }
 }
 

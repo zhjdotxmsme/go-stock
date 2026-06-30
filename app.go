@@ -11,6 +11,7 @@ import (
 	"go-stock/backend/agent"
 	"go-stock/backend/agent/multi"
 	"go-stock/backend/agent/strategy"
+	"go-stock/backend/agent/skill_analysis"
 	"go-stock/backend/agent/tools"
 	"go-stock/backend/data"
 	"go-stock/backend/data/notify"
@@ -29,6 +30,8 @@ import (
 	"github.com/samber/lo"
 	"golang.org/x/exp/slices"
 
+	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 	"github.com/coocood/freecache"
 	"github.com/duke-git/lancet/v2/convertor"
 	"github.com/duke-git/lancet/v2/mathutil"
@@ -3383,4 +3386,64 @@ func (a *App) GetMCPToolsByServerID(serverID uint) []models.MCPServerTool {
 
 func (a *App) GetAllMCPTools() []models.MCPServerTool {
 	return data.NewMCPServerApi().GetAllTools()
+}
+
+type einoLLMClient struct {
+	model model.ChatModel
+}
+
+func (c *einoLLMClient) Complete(ctx context.Context, prompt string) (string, error) {
+	msg, err := c.model.Generate(ctx, []*schema.Message{
+		{Role: schema.User, Content: prompt},
+	})
+	if err != nil {
+		return "", err
+	}
+	if msg == nil {
+		return "", fmt.Errorf("no response from LLM")
+	}
+	return msg.Content, nil
+}
+
+func (a *App) GenerateSkillFromURL(url string) string {
+	configs := data.GetSettingConfig().AiConfigs
+	if len(configs) == 0 {
+		return "请先配置 AI 模型"
+	}
+	cfg := configs[0]
+	chatModel, err := agent.CreateChatModel(a.ctx, *cfg)
+	if err != nil {
+		return "创建 AI 模型失败: " + err.Error()
+	}
+	llm := &einoLLMClient{model: chatModel}
+	skill, confidence, err := skill_analysis.GenerateSkillFromURL(a.ctx, url, llm)
+	if err != nil {
+		return "生成失败: " + err.Error()
+	}
+	if skill == nil {
+		return "生成失败：未获取到有效结果"
+	}
+	err = data.NewSkillApi().Create(skill)
+	if err != nil {
+		return "保存技能失败: " + err.Error()
+	}
+	return fmt.Sprintf("技能草稿生成成功（置信度: %.2f），请前往技能管理查看并启用。\n名称: %s\n分类: %s\n描述: %s\n触发关键词: %s",
+		confidence, skill.Name, skill.Category, skill.Description, skill.TriggerKeywords)
+}
+
+func (a *App) AnalyzeSkillEffectiveness(id uint) string {
+	skill, err := data.NewSkillApi().GetByID(id)
+	if err != nil {
+		return "未找到指定技能"
+	}
+	var totalUsage int64
+	db.Dao.Model(&models.SkillUsageRecord{}).Where("skill_id = ?", id).Count(&totalUsage)
+	return fmt.Sprintf(`技能: %s
+分类: %s
+总使用次数: %d
+平均分: %.2f
+置信度: %.2f
+来源: %s
+版本: %d`,
+		skill.Name, skill.Category, totalUsage, skill.AvgScore, skill.Confidence, skill.Source, skill.Version)
 }
