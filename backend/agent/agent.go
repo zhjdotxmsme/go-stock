@@ -338,7 +338,7 @@ func GetAllTools() []tool.BaseTool {
 	allTools = append(allTools, tools.GetHolidayTools()...)
 
 	allTools = append(allTools, tools.GetMCPServerTools()...)
-	//allTools = append(allTools, tools.GetSkillTools()...)
+	allTools = append(allTools, tools.GetSkillTools()...)
 
 	mcpTools := getMCPTools()
 	if len(mcpTools) > 0 {
@@ -361,7 +361,7 @@ func getToolsByQuestion(question string) []tool.BaseTool {
 	allTools = append(allTools, tools.GetHolidayTools()...)
 
 	allTools = append(allTools, tools.GetMCPServerTools()...)
-	//allTools = append(allTools, tools.GetSkillTools()...)
+	allTools = append(allTools, tools.GetSkillTools()...)
 
 	mcpTools := getMCPTools()
 	if len(mcpTools) > 0 {

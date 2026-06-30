@@ -183,3 +183,12 @@ func TestAgent(t *testing.T) {
 	logger.SugaredLogger.Info(md.String())
 	fileutil.WriteStringToFile("../../data/result.md", md.String(), false)
 }
+
+func TestBuildSkillPromptNoCrash(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("buildSkillPrompt panicked: %v", r)
+		}
+	}()
+	_ = buildSkillPrompt("test query")
+}

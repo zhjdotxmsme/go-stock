@@ -147,9 +147,15 @@ func (receiver StockAiAgent) ChatWithContext(ctx context.Context, question strin
 2. 财务数据（营收、利润、市盈率等）——必须调用工具获取最新财报数据
 3. 新闻资讯——必须调用工具获取最新新闻
 4. 宏观经济数据——必须调用工具获取最新数据
-任何涉及具体数字的回答，都必须先通过工具查询确认，不得使用训练数据中的过时信息。如果你没有获取到最新数据，必须明确告知用户"当前未能获取到最新数据"，绝不能编造数据。`
+	任何涉及具体数字的回答，都必须先通过工具查询确认，不得使用训练数据中的过时信息。如果你没有获取到最新数据，必须明确告知用户"当前未能获取到最新数据"，绝不能编造数据。`
 
-		settingConfig := data.GetSettingConfig()
+	// Append matched skill prompt to system message
+	skillPrompt := buildSkillPrompt(question)
+	if skillPrompt != "" {
+		sysPrompt += "\n\n" + skillPrompt
+	}
+
+	settingConfig := data.GetSettingConfig()
 		aiConfig, _ := lo.Find(settingConfig.AiConfigs, func(item *data.AIConfig) bool {
 			return uint(aiConfigId) == item.ID
 		})
