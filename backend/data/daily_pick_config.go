@@ -170,11 +170,4 @@ func buildStrategyConfigPrompt(query string) string {
 	return sb.String()
 }
 
-// createStockAiConfig 获取可用的 AI 配置（内部辅助）。
-func createStockAiConfig() *AIConfig {
-	config := GetSettingConfig()
-	if config == nil || len(config.AiConfigs) == 0 {
-		return nil
-	}
-	return config.AiConfigs[0]
-}
+

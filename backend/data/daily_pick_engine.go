@@ -110,7 +110,7 @@ func (e *DailyPickEngine) RunDailyPick(ctx context.Context, tradeDate string, to
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			p, err := e.scoreStock(ctx, candidate, tradeDate)
+			p, err := e.scoreStock(ctx, candidate, tradeDate, nil, nil)
 			mu.Lock()
 			result = append(result, scored{pick: p, err: err})
 			mu.Unlock()
@@ -247,7 +247,9 @@ func (e *DailyPickEngine) getCandidatesFromEastMoney(ctx context.Context) []stoc
 }
 
 // scoreStock computes all indicators and returns a scored DailyPick record.
-func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandidate, tradeDate string) (models.DailyPick, error) {
+// overrides is an optional map of parameter overrides (e.g. {"rsi_period": 10}) from AI config.
+// activeStrategies, if non-nil, replaces e.strategies for strategy scoring (used by RunWithConfig).
+func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandidate, tradeDate string, overrides map[string]float64, activeStrategies []ScoringStrategy) (models.DailyPick, error) {
 	pick := models.DailyPick{
 		StockCode: candidate.Code,
 		StockName: candidate.Name,
@@ -367,6 +369,7 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 		IndustryRankScore:   industryRankScore,
 		MacroScore:          e.macroScore,
 		ResearchReportCount: researchCount,
+		Overrides:           overrides,
 	}
 
 	pick.Score = baselineScore
@@ -377,7 +380,12 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 
 	// Fundamental/industry/macro strategies add bonus on top of technical score,
 	// while existing technical strategies compete for highest score.
-	for _, s := range e.strategies {
+	// Use activeStrategies if provided (RunWithConfig path), otherwise use e.strategies.
+	strategyList := e.strategies
+	if activeStrategies != nil {
+		strategyList = activeStrategies
+	}
+	for _, s := range strategyList {
 		r := s.Score(strategyCtx)
 		switch s.Code() {
 		case "industry_strength", "research_report", "macro_environment":
@@ -751,19 +759,19 @@ func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, c
 	e.prefetchIndustryRankings(ctx)
 	e.prefetchResearchData(ctx, candidates)
 
-	// Step 3: Filter strategies by config
+	// Step 3: Filter strategies by config (use local copy, don't mutate e.strategies)
+	activeStrategies := e.strategies
 	if len(config.EnabledStrategies) > 0 {
 		enabled := make(map[string]bool, len(config.EnabledStrategies))
 		for _, code := range config.EnabledStrategies {
 			enabled[code] = true
 		}
-		filtered := make([]ScoringStrategy, 0, len(config.EnabledStrategies))
+		activeStrategies = make([]ScoringStrategy, 0, len(config.EnabledStrategies))
 		for _, s := range e.strategies {
 			if enabled[s.Code()] {
-				filtered = append(filtered, s)
+				activeStrategies = append(activeStrategies, s)
 			}
 		}
-		e.strategies = filtered
 	}
 
 	// Step 4: Parallel score computation (same pattern as RunDailyPick)
@@ -786,7 +794,7 @@ func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, c
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			p, err := e.scoreStockWithConfig(ctx, candidate, tradeDate, config)
+			p, err := e.scoreStockWithConfig(ctx, candidate, tradeDate, config, activeStrategies)
 			mu.Lock()
 			result = append(result, scored{pick: p, err: err})
 			mu.Unlock()
@@ -834,9 +842,10 @@ func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, c
 	return picks, nil
 }
 
-// scoreStockWithConfig is like scoreStock but injects config overrides and weights.
-func (e *DailyPickEngine) scoreStockWithConfig(ctx context.Context, candidate stockCandidate, tradeDate string, config *models.StrategyConfig) (models.DailyPick, error) {
-	pick, err := e.scoreStock(ctx, candidate, tradeDate)
+// scoreStockWithConfig is like scoreStock but injects config parameter overrides and weights.
+// strategies is the filtered strategy list; config provides StrategyParams for Overrides injection.
+func (e *DailyPickEngine) scoreStockWithConfig(ctx context.Context, candidate stockCandidate, tradeDate string, config *models.StrategyConfig, strategies []ScoringStrategy) (models.DailyPick, error) {
+	pick, err := e.scoreStock(ctx, candidate, tradeDate, config.StrategyParams, strategies)
 	if err != nil {
 		return pick, err
 	}
