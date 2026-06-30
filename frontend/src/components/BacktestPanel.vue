@@ -301,6 +301,13 @@ function buildOptions(raw) {
 }
 
 onMounted(() => {
+  // Suppress ResizeObserver loop warning in Wails WebView2
+  const origError = console.error
+  console.error = (...args) => {
+    if (args[0] && typeof args[0] === 'string' && args[0].includes('ResizeObserver')) return
+    origError.apply(console, args)
+  }
+
   GetStockList('').then(result => {
     const list = result || []
     stockList.value = list
@@ -566,7 +573,6 @@ const historyPagination = computed(() => {
                     :single-line="false"
                     size="small"
                     :max-height="480"
-                    virtual-scroll
                   />
                 </template>
                 <template v-else>

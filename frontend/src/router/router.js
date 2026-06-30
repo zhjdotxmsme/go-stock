@@ -13,6 +13,7 @@ import klineAnalysis from "../components/kline-analysis.vue"
 import backtestPanel from "../components/BacktestPanel.vue"
 import dataManager from "../components/DataManager.vue"
 import dailyPickPanel from "../components/DailyPickPanel.vue"
+import commodityView from "../components/commodity.vue"
 
 const routes = [
     { path: '/', component: stockView,name: 'stock'},
@@ -28,6 +29,7 @@ const routes = [
     { path: '/backtest', component: backtestPanel,name: 'backtest' },
     { path: '/data-manager', component: dataManager, name: 'data-manager' },
     { path: '/daily-pick', component: dailyPickPanel, name: 'dailyPick' },
+    { path: '/commodity', component: commodityView, name: 'commodity' },
 ]
 
 const router = createRouter({

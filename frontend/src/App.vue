@@ -594,6 +594,92 @@ const menuOptions = ref([
             RouterLink,
             {
               to: {
+                name: 'commodity',
+                query: {
+                  name: '行情总览',
+                },
+              },
+              onClick: () => {
+                activeKey.value = 'commodity'
+              },
+            },
+            {default: () => '大宗商品',}
+        ),
+    key: 'commodity',
+    icon: renderIcon(DiamondOutline),
+    children: [
+      {
+        label: () =>
+            h(
+                RouterLink,
+                {
+                  to: {name: 'commodity', query: {name: '行情总览'}},
+                  onClick: () => {
+                    activeKey.value = 'commodity'
+                    EventsEmit("changeCommodityTab", {name: '行情总览'})
+                  },
+                },
+                {default: () => '行情总览'}
+            ),
+        key: 'commodityOverview',
+        icon: renderIcon(StatsChartOutline),
+      },
+      {
+        label: () =>
+            h(
+                RouterLink,
+                {
+                  to: {name: 'commodity', query: {name: '商品期货'}},
+                  onClick: () => {
+                    activeKey.value = 'commodity'
+                    EventsEmit("changeCommodityTab", {name: '商品期货'})
+                  },
+                },
+                {default: () => '商品期货'}
+            ),
+        key: 'commodityFutures',
+        icon: renderIcon(BarChartSharp),
+      },
+      {
+        label: () =>
+            h(
+                RouterLink,
+                {
+                  to: {name: 'commodity', query: {name: '商品基金'}},
+                  onClick: () => {
+                    activeKey.value = 'commodity'
+                    EventsEmit("changeCommodityTab", {name: '商品基金'})
+                  },
+                },
+                {default: () => '商品基金'}
+            ),
+        key: 'commodityFunds',
+        icon: renderIcon(Wallet),
+      },
+      {
+        label: () =>
+            h(
+                RouterLink,
+                {
+                  to: {name: 'commodity', query: {name: 'AI分析'}},
+                  onClick: () => {
+                    activeKey.value = 'commodity'
+                    EventsEmit("changeCommodityTab", {name: 'AI分析'})
+                  },
+                },
+                {default: () => 'AI分析'}
+            ),
+        key: 'commodityAnalysis',
+        icon: renderIcon(SparklesOutline),
+      },
+    ]
+  },
+  {
+    label: () =>
+        h(
+            RouterLink,
+            {
+              to: {
                 name: 'agent',
                 query: {
                   name:"Ai智能体",
