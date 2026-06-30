@@ -925,7 +925,7 @@ const menuOptions = ref([
               ),
           key: 'skills',
           icon: renderIcon(FlashOutline),
-          show: false,
+          show: true,
         },
       ],
     },
