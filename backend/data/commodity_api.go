@@ -1,6 +1,7 @@
 package data
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -47,7 +48,7 @@ func (c *CommodityApi) GetQuote(code string) (*datasource.QuoteData, error) {
 func (c *CommodityApi) getSpotQuote(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
 	result := c.wsClient.GetMarketReal([]string{asset.Symbol}, nil)
 	if result == nil || result.Code != 20000 || len(result.Data.Snapshot) == 0 {
-		return nil, fmt.Errorf("获取 %s 行情失败", asset.Symbol)
+		return nil, fmt.Errorf("华尔街见闻数据源未配置或网络不可达：获取 %s 行情失败", asset.Symbol)
 	}
 
 	values := result.Data.Snapshot[asset.Symbol]
@@ -70,9 +71,73 @@ func (c *CommodityApi) getSpotQuote(asset *models.CommodityAsset) (*datasource.Q
 }
 
 func (c *CommodityApi) getFuturesQuote(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
-	kLines := c.emClient.GetKLineData(asset.Symbol, "101", "", 1)
+	// Try Sina Finance API first, fallback to EastMoney K-line
+	quote, err := c.getFuturesQuoteFromSina(asset)
+	if err == nil {
+		return quote, nil
+	}
+	return c.getFuturesQuoteFromEMKLine(asset)
+}
+
+func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
+	sinaSymbol := "NF_" + asset.Code + "0"
+	url := fmt.Sprintf("http://hq.sinajs.cn/list=%s", sinaSymbol)
+
+	resp, err := SharedHTTPClient.SetTimeout(10*time.Second).R().
+		SetHeader("Referer", "https://finance.sina.com.cn").
+		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
+		Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("sina futures quote: %w", err)
+	}
+
+	body := GB18030ToUTF8(resp.Body())
+	// Response: var hq_str_NF_AU0="name,open,lastSettle,current,high,low,...";
+	startIdx := strings.Index(body, "\"")
+	if startIdx < 0 {
+		return nil, fmt.Errorf("sina futures quote: unexpected response for %s", asset.Symbol)
+	}
+	endIdx := strings.LastIndex(body, "\"")
+	if endIdx <= startIdx {
+		return nil, fmt.Errorf("sina futures quote: unexpected response for %s", asset.Symbol)
+	}
+	content := body[startIdx+1 : endIdx]
+	parts := strings.Split(content, ",")
+	if len(parts) < 10 {
+		return nil, fmt.Errorf("sina futures quote: insufficient fields for %s", asset.Symbol)
+	}
+
+	name := parts[0]
+	open, _ := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	lastSettle, _ := strconv.ParseFloat(strings.TrimSpace(parts[2]), 64)
+	current, _ := strconv.ParseFloat(strings.TrimSpace(parts[3]), 64)
+	high, _ := strconv.ParseFloat(strings.TrimSpace(parts[4]), 64)
+	low, _ := strconv.ParseFloat(strings.TrimSpace(parts[5]), 64)
+
+	change := current - lastSettle
+	var changePct float64
+	if lastSettle > 0 {
+		changePct = change / lastSettle * 100
+	}
+
+	return &datasource.QuoteData{
+		Code:      asset.Code,
+		Name:      name,
+		Price:     current,
+		Change:    change,
+		ChangePct: changePct,
+		High:      high,
+		Low:       low,
+		Open:      open,
+		Time:      time.Now(),
+	}, nil
+}
+
+func (c *CommodityApi) getFuturesQuoteFromEMKLine(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
+	// Fallback: derive spot quote from EastMoney K-line (adjustFlag="0" = unadjusted)
+	kLines := c.emClient.GetKLineData(asset.Symbol, "101", "0", 1)
 	if kLines == nil || len(*kLines) == 0 {
-		return nil, fmt.Errorf("获取 %s 行情失败", asset.Symbol)
+		return nil, fmt.Errorf("获取 %s 行情失败（Sina + EastMoney 均无数据）", asset.Symbol)
 	}
 	k := (*kLines)[0]
 	closeVal, _ := parseFloatToFloat(k.Close)
@@ -187,41 +252,66 @@ func (c *CommodityApi) getSpotKLine(asset *models.CommodityAsset, period string,
 }
 
 func (c *CommodityApi) getFuturesKLine(asset *models.CommodityAsset, period string, count int) ([]datasource.KLineBar, error) {
-	periodMap := map[string]string{
-		"day":   "101",
-		"week":  "102",
-		"month": "103",
+	// Use Sina Finance for futures K-lines (EastMoney stock endpoint doesn't support futures secids)
+	sinaSymbol := asset.Code + "0"
+	url := fmt.Sprintf("http://stock.finance.sina.com.cn/futures/api/jsonp.php/InnerFuturesNewService.getDailyKLine?symbol=%s", sinaSymbol)
+
+	resp, err := SharedHTTPClient.SetTimeout(15*time.Second).R().
+		SetHeader("Referer", "https://finance.sina.com.cn").
+		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
+		Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("sina futures kline: %w", err)
 	}
 
-	klt := periodMap[period]
-	if klt == "" {
-		klt = "101"
+	body := GB18030ToUTF8(resp.Body())
+	// Response: InnerFuturesNewService.getDailyKLine([["2024-01-15","473.28","476.46","472.98","474.50","150220","0"],...]);
+	idx := strings.Index(body, "[")
+	if idx < 0 {
+		return nil, fmt.Errorf("sina futures kline: unexpected response for %s", asset.Symbol)
 	}
+	endIdx := strings.LastIndex(body, "]")
+	if endIdx <= idx {
+		return nil, fmt.Errorf("sina futures kline: unexpected response for %s", asset.Symbol)
+	}
+
+	var rows [][]string
+	jsonStr := body[idx : endIdx+1]
+	if err := json.Unmarshal([]byte(jsonStr), &rows); err != nil {
+		return nil, fmt.Errorf("sina futures kline: parse error for %s: %w", asset.Symbol, err)
+	}
+
+	// Sina returns newest first, reverse to oldest-first
+	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+		rows[i], rows[j] = rows[j], rows[i]
+	}
+
+	// Take the most recent `count` entries
 	if count <= 0 {
 		count = 120
 	}
-
-	kLines := c.emClient.GetKLineData(asset.Symbol, klt, "", count)
-	if kLines == nil || len(*kLines) == 0 {
-		return nil, fmt.Errorf("获取 %s K 线失败", asset.Symbol)
+	if len(rows) > count {
+		rows = rows[len(rows)-count:]
 	}
 
-	result := make([]datasource.KLineBar, 0, len(*kLines))
-	for _, k := range *kLines {
-		o, _ := parseFloatToFloat(k.Open)
-		closeVal, _ := parseFloatToFloat(k.Close)
-		h, _ := parseFloatToFloat(k.High)
-		l, _ := parseFloatToFloat(k.Low)
-		v, _ := parseFloatToFloat(k.Volume)
-		a, _ := parseFloatToFloat(k.Amount)
+	result := make([]datasource.KLineBar, 0, len(rows))
+	for _, row := range rows {
+		if len(row) < 6 {
+			continue
+		}
+		t, _ := time.Parse("2006-01-02", row[0])
+		o, _ := strconv.ParseFloat(row[1], 64)
+		h, _ := strconv.ParseFloat(row[2], 64)
+		l, _ := strconv.ParseFloat(row[3], 64)
+		c, _ := strconv.ParseFloat(row[4], 64)
+		v, _ := strconv.ParseFloat(row[5], 64)
 		result = append(result, datasource.KLineBar{
-			Time:   parseEastMoneyDay(k.Day),
+			Time:   t,
 			Open:   o,
-			Close:  closeVal,
+			Close:  c,
 			High:   h,
 			Low:    l,
 			Volume: int64(v),
-			Amount: a,
 		})
 	}
 	return result, nil
