@@ -3,9 +3,12 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"go-stock/backend/agent/skill_analysis"
 	"go-stock/backend/data"
+	"go-stock/backend/db"
 	"go-stock/backend/models"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
@@ -806,7 +809,147 @@ func GetSkillTools() []tool.BaseTool {
 		},
 	))
 
+	// ---- Skill Analysis Tools ----
+
+	tools = append(tools, NewDataToolWrapper(
+		"AnalyzeSkillEffectiveness",
+		"分析指定 Skill 的使用次数、平均分、最近使用记录",
+		map[string]*schema.ParameterInfo{
+			"id": {Type: "integer", Desc: "Skill ID", Required: true},
+		},
+		func(args string) (string, error) {
+			id := uint(gjson.Get(args, "id").Int())
+			if id == 0 {
+				return "请提供有效的 Skill ID", nil
+			}
+			skill, err := data.NewSkillApi().GetByID(id)
+			if err != nil {
+				return fmt.Sprintf("未找到 ID 为 %d 的 Skill", id), nil
+			}
+			var totalUsage int64
+			db.Dao.Model(&models.SkillUsageRecord{}).Where("skill_id = ?", id).Count(&totalUsage)
+
+			var recentRecords []models.SkillUsageRecord
+			db.Dao.Where("skill_id = ?", id).Order("created_at DESC").Limit(5).Find(&recentRecords)
+
+			var md strings.Builder
+			md.WriteString(fmt.Sprintf("### 技能效果分析：%s\n\n", skill.Name))
+			md.WriteString(fmt.Sprintf("| 指标 | 值 |\n| --- | --- |\n"))
+			md.WriteString(fmt.Sprintf("| 总使用次数 | %d |\n", totalUsage))
+			md.WriteString(fmt.Sprintf("| 平均分 | %.2f |\n", skill.AvgScore))
+			md.WriteString(fmt.Sprintf("| 使用次数 | %d |\n", skill.UsageCount))
+			md.WriteString(fmt.Sprintf("| 置信度 | %.2f |\n", skill.Confidence))
+			md.WriteString(fmt.Sprintf("| 来源 | %s |\n", skill.Source))
+			md.WriteString(fmt.Sprintf("| 版本 | %d |\n", skill.Version))
+			if len(recentRecords) > 0 {
+				md.WriteString("\n#### 最近使用记录\n\n")
+				md.WriteString("| 时间 | Query | 输出分 | 用户评分 | MCP | 错误 |\n| --- | --- | --- | --- | --- | --- |\n")
+				for _, r := range recentRecords {
+					ts := r.CreatedAt.Format("2006-01-02 15:04")
+					errMsg := ""
+					if r.ErrorMsg != "" {
+						errMsg = "⚠️"
+					}
+					md.WriteString(fmt.Sprintf("| %s | %s | %.2f | %d | %v | %s |\n", ts, truncateStr(r.Query, 30), r.OutputScore, r.UserRating, r.MCPUsed, errMsg))
+				}
+			}
+			return md.String(), nil
+		},
+	))
+
+	tools = append(tools, NewDataToolWrapper(
+		"GetSkillUsageStats",
+		"获取 Skill 的使用统计数据，按日期聚合",
+		map[string]*schema.ParameterInfo{
+			"skillId": {Type: "integer", Desc: "Skill ID", Required: true},
+			"days":    {Type: "integer", Desc: "统计最近几天（默认30）", Required: false},
+		},
+		func(args string) (string, error) {
+			skillId := uint(gjson.Get(args, "skillId").Int())
+			if skillId == 0 {
+				return "请提供有效的 Skill ID", nil
+			}
+			days := int(gjson.Get(args, "days").Int())
+			if days <= 0 {
+				days = 30
+			}
+			var records []models.SkillUsageRecord
+			cutOff := time.Now().AddDate(0, 0, -days)
+			db.Dao.Where("skill_id = ? AND created_at >= ?", skillId, cutOff).Find(&records)
+
+			usageByDate := make(map[string]int)
+			var totalOutput, maxOutput float64
+			for _, r := range records {
+				dateStr := r.CreatedAt.Format("2006-01-02")
+				usageByDate[dateStr]++
+				totalOutput += r.OutputScore
+				if r.OutputScore > maxOutput {
+					maxOutput = r.OutputScore
+				}
+			}
+			var md strings.Builder
+			md.WriteString(fmt.Sprintf("### Skill 使用统计（最近%d天）\n\n", days))
+			md.WriteString(fmt.Sprintf("| 指标 | 值 |\n| --- | --- |\n"))
+			md.WriteString(fmt.Sprintf("| 总触发次数 | %d |\n", len(records)))
+			md.WriteString(fmt.Sprintf("| 平均输出分 | %.2f |\n", safeDivide(totalOutput, float64(len(records)))))
+			md.WriteString(fmt.Sprintf("| 最高输出分 | %.2f |\n", maxOutput))
+			md.WriteString(fmt.Sprintf("| 有效天数 | %d |\n", len(usageByDate)))
+			return md.String(), nil
+		},
+	))
+
+	tools = append(tools, NewDataToolWrapper(
+		"GenerateSkillFromURL",
+		"从URL自动生成Skill草稿，需要提供一个有效的网页URL。生成的Skill默认不启用，可在技能管理中编辑后启用。",
+		map[string]*schema.ParameterInfo{
+			"url": {Type: "string", Desc: "要分析的网页URL", Required: true},
+		},
+		func(args string) (string, error) {
+			url := gjson.Get(args, "url").String()
+			if url == "" {
+				return "请提供有效的URL", nil
+			}
+			return fmt.Sprintf("URL 已记录: %s\n\n⚠️ 自动生成功能需要配置 AI 模型后使用。请在技能管理中使用「从URL生成」功能。", url), nil
+		},
+	))
+
+	tools = append(tools, NewDataToolWrapper(
+		"GetSkillRecommendations",
+		"获取 Skill 推荐建议，包括应启用但未启用的高评分Skill、以及当前查询未覆盖的Skill领域",
+		map[string]*schema.ParameterInfo{
+			"query": {Type: "string", Desc: "查询内容，用于匹配已有Skill", Required: true},
+		},
+		func(args string) (string, error) {
+			query := gjson.Get(args, "query").String()
+			recs := skill_analysis.GetRecommendations(query)
+			if len(recs) == 0 {
+				return "当前没有需要推荐的 Skill", nil
+			}
+			var md strings.Builder
+			md.WriteString("### Skill 推荐建议\n\n")
+			md.WriteString("| 类型 | 名称 | 原因 |\n| --- | --- | --- |\n")
+			for _, r := range recs {
+				md.WriteString(fmt.Sprintf("| %s | %s | %s |\n", r.Type, r.Name, r.Reason))
+			}
+			return md.String(), nil
+		},
+	))
+
 	return tools
+}
+
+func truncateStr(s string, maxLen int) string {
+	if len([]rune(s)) > maxLen {
+		return string([]rune(s)[:maxLen]) + "..."
+	}
+	return s
+}
+
+func safeDivide(a, b float64) float64 {
+	if b == 0 {
+		return 0
+	}
+	return a / b
 }
 
 func markdownTableWithTitle(title string, data any) string {
