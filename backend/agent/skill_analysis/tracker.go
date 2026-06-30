@@ -6,6 +6,9 @@ import (
 )
 
 func RecordMatch(query, sessionID string, skillIDs []uint) error {
+	if db.Dao == nil {
+		return nil // DB not initialized, skip silently
+	}
 	for _, sid := range skillIDs {
 		rec := models.SkillUsageRecord{
 			SkillID:   sid,
@@ -22,6 +25,9 @@ func RecordMatch(query, sessionID string, skillIDs []uint) error {
 }
 
 func UpdateResult(sessionID string, outputScore float64, mcpUsed bool, errMsg string) error {
+	if db.Dao == nil {
+		return nil // DB not initialized, skip silently
+	}
 	return db.Dao.Model(&models.SkillUsageRecord{}).
 		Where("session_id = ?", sessionID).
 		Updates(map[string]any{

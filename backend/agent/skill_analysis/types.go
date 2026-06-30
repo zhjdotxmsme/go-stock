@@ -15,6 +15,9 @@ type TrackContext struct {
 
 // GetMatchedSkillIDs returns IDs of enabled skills whose trigger keywords match the query.
 func GetMatchedSkillIDs(query string) []uint {
+	if db.Dao == nil {
+		return nil // DB not initialized
+	}
 	var skills []models.Skill
 	db.Dao.Where("enable = ?", true).Find(&skills)
 	var ids []uint
