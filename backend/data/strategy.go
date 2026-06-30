@@ -24,10 +24,11 @@ type StrategyContext struct {
 	TradeDate string
 
 	// Fundamental / industry context (pre-fetched, shared across all candidates)
-	IndustryCode        string  // stock's industry name
-	IndustryRankScore   float64 // industry strength score (0-1), from industry money-flow rank
-	MacroScore          float64 // macro environment score (0-1), from PMI/CPI/GDP
-	ResearchReportCount int     // number of research reports in last 30 days
+	IndustryCode        string             // stock's industry name
+	IndustryRankScore   float64            // industry strength score (0-1), from industry money-flow rank
+	MacroScore          float64            // macro environment score (0-1), from PMI/CPI/GDP
+	ResearchReportCount int                // number of research reports in last 30 days
+	Overrides           map[string]float64 // parameter overrides from AI config (e.g. "rsi_period":10)
 }
 
 // StrategyResult holds the scoring output.
