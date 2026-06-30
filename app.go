@@ -3389,7 +3389,7 @@ func (a *App) GetAllMCPTools() []models.MCPServerTool {
 }
 
 type einoLLMClient struct {
-	model model.ChatModel
+	model model.ToolCallingChatModel
 }
 
 func (c *einoLLMClient) Complete(ctx context.Context, prompt string) (string, error) {

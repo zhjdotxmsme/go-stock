@@ -29,6 +29,8 @@ export function AnalyzeSentiment(arg1:string):Promise<models.SentimentResult>;
 
 export function AnalyzeSentimentWithFreqWeight(arg1:string):Promise<Record<string, any>>;
 
+export function AnalyzeSkillEffectiveness(arg1:number):Promise<string>;
+
 export function BatchDeleteAIResponseResult(arg1:Array<number>):Promise<string>;
 
 export function BatchDeleteAllStockInfo(arg1:Array<number>):Promise<string>;
@@ -100,6 +102,8 @@ export function FetchAndSaveMarketStatistic():Promise<void>;
 export function Follow(arg1:string):Promise<string>;
 
 export function FollowFund(arg1:string):Promise<string>;
+
+export function GenerateSkillFromURL(arg1:string):Promise<string>;
 
 export function GetAIResponseResult(arg1:string):Promise<models.AIResponseResult>;
 

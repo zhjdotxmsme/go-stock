@@ -3306,6 +3306,11 @@ export namespace models {
 	    mcpServerIds: string;
 	    enable: boolean;
 	    sortOrder: number;
+	    usageCount: number;
+	    avgScore: number;
+	    source: string;
+	    version: number;
+	    confidence: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Skill(source);
@@ -3325,6 +3330,11 @@ export namespace models {
 	        this.mcpServerIds = source["mcpServerIds"];
 	        this.enable = source["enable"];
 	        this.sortOrder = source["sortOrder"];
+	        this.usageCount = source["usageCount"];
+	        this.avgScore = source["avgScore"];
+	        this.source = source["source"];
+	        this.version = source["version"];
+	        this.confidence = source["confidence"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

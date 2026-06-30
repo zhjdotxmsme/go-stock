@@ -46,6 +46,10 @@ export function AnalyzeSentimentWithFreqWeight(arg1) {
   return window['go']['main']['App']['AnalyzeSentimentWithFreqWeight'](arg1);
 }
 
+export function AnalyzeSkillEffectiveness(arg1) {
+  return window['go']['main']['App']['AnalyzeSkillEffectiveness'](arg1);
+}
+
 export function BatchDeleteAIResponseResult(arg1) {
   return window['go']['main']['App']['BatchDeleteAIResponseResult'](arg1);
 }
@@ -188,6 +192,10 @@ export function Follow(arg1) {
 
 export function FollowFund(arg1) {
   return window['go']['main']['App']['FollowFund'](arg1);
+}
+
+export function GenerateSkillFromURL(arg1) {
+  return window['go']['main']['App']['GenerateSkillFromURL'](arg1);
 }
 
 export function GetAIResponseResult(arg1) {
