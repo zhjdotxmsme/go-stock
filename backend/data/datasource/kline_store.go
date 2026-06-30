@@ -6,10 +6,10 @@ import (
 	"sort"
 	"time"
 
-	"go-stock/backend/data"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
 
+	"github.com/go-resty/resty/v2"
 	"gorm.io/gorm/clause"
 )
 
@@ -156,7 +156,7 @@ func isHoliday(date time.Time) bool {
 		} `json:"holiday"`
 	}
 	
-	resp, err := data.SharedHTTPClient.R().
+	resp, err := resty.New().SetTimeout(10*time.Second).R().
 		SetResult(&result).
 		Get(apiURL)
 	
