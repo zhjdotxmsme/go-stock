@@ -3,6 +3,7 @@ package multi
 import (
 	"context"
 	"fmt"
+	"go-stock/backend/agent/skill_analysis"
 	"go-stock/backend/data"
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
@@ -46,6 +47,14 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 			StrategyCode: strategyCode,
 			AIConfigID:   e.aiConfigID,
 			StreamCh:     ch,
+		}
+
+		// Skill usage tracking: record matched skills at start
+		matchedIDs := skill_analysis.GetMatchedSkillIDs(userQuery)
+		if len(matchedIDs) > 0 {
+			sessionID := fmt.Sprintf("multi-%s-%s-%d", stockCode, time.Now().Format("20060102150405"), e.aiConfigID)
+			skill_analysis.RecordMatch(userQuery, sessionID, matchedIDs)
+			defer skill_analysis.UpdateResult(sessionID, 0.0, false, "")
 		}
 
 		// Fast path: simple queries skip the full multi-agent pipeline

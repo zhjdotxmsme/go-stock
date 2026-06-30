@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go-stock/backend/agent/skill_analysis"
 	"go-stock/backend/data"
 	"go-stock/backend/logger"
 	"io"
@@ -109,6 +110,14 @@ func (receiver StockAiAgent) ChatWithContext(ctx context.Context, question strin
 			}
 			close(ch)
 			return
+		}
+
+		// Skill usage tracking for single agent
+		matchedIDs := skill_analysis.GetMatchedSkillIDs(question)
+		if len(matchedIDs) > 0 {
+			sessionID := fmt.Sprintf("agent-%s-%d", question, stockAiAgent.aiConfigId)
+			skill_analysis.RecordMatch(question, sessionID, matchedIDs)
+			defer skill_analysis.UpdateResult(sessionID, 0.0, false, "")
 		}
 
 		if sessionIDOverride != "" {
