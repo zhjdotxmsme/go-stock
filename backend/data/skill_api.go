@@ -2,6 +2,7 @@ package data
 
 import (
 	"fmt"
+	"go-stock/backend/agent/skill_analysis"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
 	"strings"
@@ -91,6 +92,10 @@ func (a *SkillApi) GetEnabledSkills() []models.Skill {
 	var skills []models.Skill
 	db.Dao.Where("enable = ?", true).Order("sort_order ASC, created_at DESC").Find(&skills)
 	return skills
+}
+
+func (a *SkillApi) RecalculateSkillScores() error {
+	return skill_analysis.RecalculateSkillScores()
 }
 
 func (a *SkillApi) GetMCPServerIDs(skill *models.Skill) []uint {
