@@ -4910,6 +4910,8 @@ func GetAllDataTools() []tool.BaseTool {
 		},
 	))
 
+	appendCommodityTools(&tools)
+
 	// 根据 API Key 配置过滤工具，未配置对应 Key 的工具不注册
 	filtered := make([]tool.BaseTool, 0, len(tools))
 	for _, t := range tools {
@@ -5177,4 +5179,114 @@ func mutualTypeName(code string) string {
 	default:
 		return code
 	}
+}
+
+func appendCommodityTools(tools *[]tool.BaseTool) {
+	*tools = append(*tools, NewDataToolWrapper(
+		"GetCommodityTechnicals",
+		"商品技术分析。分析黄金、白银、原油等商品期货的技术面，包括趋势判断、MACD/RSI/布林带指标信号、关键支撑压力位。",
+		map[string]*schema.ParameterInfo{
+			"code": {
+				Type:     "string",
+				Desc:     "品种代码，如：XAUUSD(黄金)、XAGUSD(白银)、USCL(原油)、AU(沪金)",
+				Required: true,
+			},
+			"period": {
+				Type:     "string",
+				Desc:     "分析周期：day（日线）/ week（周线），默认 day",
+				Required: false,
+			},
+		},
+		func(args string) (string, error) {
+			code := gjson.Get(args, "code").String()
+			period := gjson.Get(args, "period").String()
+			output, err := data.GetCommodityTechnicalsOutput(code, period)
+			if err != nil {
+				return "", err
+			}
+			b, _ := json.Marshal(output)
+			return string(b), nil
+		},
+	))
+
+	*tools = append(*tools, NewDataToolWrapper(
+		"GetCommodityFundamentals",
+		"商品基本面分析。分析黄金、白银、原油等商品的供需格局、美元指数关联、宏观事件影响。",
+		map[string]*schema.ParameterInfo{
+			"code": {
+				Type:     "string",
+				Desc:     "品种代码，如：XAUUSD(黄金)、XAGUSD(白银)、USCL(原油)、AU(沪金)",
+				Required: true,
+			},
+		},
+		func(args string) (string, error) {
+			code := gjson.Get(args, "code").String()
+			output, err := data.GetCommodityFundamentalsOutput(code)
+			if err != nil {
+				return "", err
+			}
+			b, _ := json.Marshal(output)
+			return string(b), nil
+		},
+	))
+
+	*tools = append(*tools, NewDataToolWrapper(
+		"GetCorrelationAnalysis",
+		"商品关联性分析。计算多个品种之间的相关性（基于对数收益率），支持金银比、油金比等比值分析。",
+		map[string]*schema.ParameterInfo{
+			"primaryCode": {
+				Type:     "string",
+				Desc:     "主品种代码，如：XAUUSD",
+				Required: true,
+			},
+			"secondaryCodes": {
+				Type:     "string",
+				Desc:     "关联品种代码，多个用逗号分隔，如：XAGUSD,USCL,DXY.OTC",
+				Required: true,
+			},
+		},
+		func(args string) (string, error) {
+			primaryCode := gjson.Get(args, "primaryCode").String()
+			secondaryCodesStr := gjson.Get(args, "secondaryCodes").String()
+			secondaryCodes := []string{}
+			if secondaryCodesStr != "" {
+				for _, s := range strings.Split(secondaryCodesStr, ",") {
+					secondaryCodes = append(secondaryCodes, strings.TrimSpace(s))
+				}
+			}
+			output, err := data.GetCorrelationOutput(primaryCode, secondaryCodes)
+			if err != nil {
+				return "", err
+			}
+			b, _ := json.Marshal(output)
+			return string(b), nil
+		},
+	))
+
+	*tools = append(*tools, NewDataToolWrapper(
+		"GetCommodityReport",
+		"生成商品分析报告。综合分析多个商品品种的技术面、基本面和关联性，输出结构化报告。",
+		map[string]*schema.ParameterInfo{
+			"codes": {
+				Type:     "string",
+				Desc:     "品种代码列表，多个用逗号分隔，如：XAUUSD,XAGUSD,USCL",
+				Required: true,
+			},
+			"reportType": {
+				Type:     "string",
+				Desc:     "报告类型：周报/月报，默认周报",
+				Required: false,
+			},
+		},
+		func(args string) (string, error) {
+			codes := gjson.Get(args, "codes").String()
+			reportType := gjson.Get(args, "reportType").String()
+			output, err := data.GetCommodityReportOutput(codes, reportType)
+			if err != nil {
+				return "", err
+			}
+			b, _ := json.Marshal(output)
+			return string(b), nil
+		},
+	))
 }

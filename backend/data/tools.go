@@ -2301,6 +2301,10 @@ var dataToolGroupMap = map[string]dataToolGroup{
 	"HotspotDiscovery":           dataToolGroupMarket,
 	"GetWallstreetcnMarketReal":  dataToolGroupMarket,
 	"GetWallstreetcnKline":       dataToolGroupMarket,
+	"GetCommodityTechnicals":     dataToolGroupMarket,
+	"GetCommodityFundamentals":   dataToolGroupMarket,
+	"GetCorrelationAnalysis":     dataToolGroupMarket,
+	"GetCommodityReport":         dataToolGroupMarket,
 	"GetDailyDimensionStats":     dataToolGroupMarket,
 	"GetTypeStatsByDate":         dataToolGroupMarket,
 
@@ -2607,6 +2611,95 @@ func appendAgentParityTools(tools []Tool) []Tool {
 					},
 				},
 				Required: []string{"plate_name"},
+			},
+		},
+	})
+
+	tools = append(tools, Tool{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "GetCommodityTechnicals",
+			Description: "商品技术分析。分析黄金、白银、原油等商品期货的技术面，包括趋势判断、MACD/RSI/布林带指标信号、关键支撑压力位。",
+			Parameters: &FunctionParameters{
+				Type: "object",
+				Properties: map[string]any{
+					"code": map[string]any{
+						"type":        "string",
+						"description": "品种代码，如：XAUUSD(黄金)、XAGUSD(白银)、USCL(原油)、AU(沪金)",
+					},
+					"period": map[string]any{
+						"type":        "string",
+						"description": "分析周期：day（日线）/ week（周线），默认 day",
+					},
+				},
+				Required: []string{"code"},
+			},
+		},
+	})
+	tools = append(tools, Tool{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "GetCommodityFundamentals",
+			Description: "商品基本面分析。分析黄金、白银、原油等商品的供需格局、美元指数关联、宏观事件影响。",
+			Parameters: &FunctionParameters{
+				Type: "object",
+				Properties: map[string]any{
+					"code": map[string]any{
+						"type":        "string",
+						"description": "品种代码，如：XAUUSD(黄金)、XAGUSD(白银)、USCL(原油)、AU(沪金)",
+					},
+					"includeNews": map[string]any{
+						"type":        "boolean",
+						"description": "是否包含新闻资讯，默认 true",
+					},
+				},
+				Required: []string{"code"},
+			},
+		},
+	})
+	tools = append(tools, Tool{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "GetCorrelationAnalysis",
+			Description: "商品关联性分析。计算多个品种之间的相关性（基于对数收益率），支持金银比、油金比等比值分析。",
+			Parameters: &FunctionParameters{
+				Type: "object",
+				Properties: map[string]any{
+					"primaryCode": map[string]any{
+						"type":        "string",
+						"description": "主品种代码，如：XAUUSD",
+					},
+					"secondaryCodes": map[string]any{
+						"type":        "string",
+						"description": "关联品种代码，多个用逗号分隔，如：XAGUSD,USCL,DXY.OTC",
+					},
+					"period": map[string]any{
+						"type":        "string",
+						"description": "分析周期：day（日线）/ week（周线），默认 day",
+					},
+				},
+				Required: []string{"primaryCode", "secondaryCodes"},
+			},
+		},
+	})
+	tools = append(tools, Tool{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "GetCommodityReport",
+			Description: "生成商品分析报告。综合分析多个商品品种的技术面、基本面和关联性，输出结构化报告。",
+			Parameters: &FunctionParameters{
+				Type: "object",
+				Properties: map[string]any{
+					"codes": map[string]any{
+						"type":        "string",
+						"description": "品种代码列表，多个用逗号分隔，如：XAUUSD,XAGUSD,USCL",
+					},
+					"reportType": map[string]any{
+						"type":        "string",
+						"description": "报告类型：周报/月报，默认周报",
+					},
+				},
+				Required: []string{"codes"},
 			},
 		},
 	})
