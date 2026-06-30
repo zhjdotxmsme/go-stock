@@ -12,9 +12,9 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
-// callLLMForConfig 调用 LLM 生成 StrategyConfig。
+// CallLLMForConfig 调用 LLM 生成 StrategyConfig。
 // 使用当前设置中第一个启用的 AI 配置，走 resty HTTP 调用（避免跨包循环引用）。
-func callLLMForConfig(query string) (*models.StrategyConfig, error) {
+func CallLLMForConfig(query string) (*models.StrategyConfig, error) {
 	config := GetSettingConfig()
 	if config == nil || len(config.AiConfigs) == 0 {
 		return nil, fmt.Errorf("no AI config available")

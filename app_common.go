@@ -155,6 +155,25 @@ func (a *App) GetHotStrategy() map[string]any {
 	return data.NewSearchStockApi("").HotStrategy()
 }
 
+func (a *App) AIConfiguredStockPick(query string, topN int) ([]models.DailyPick, error) {
+	if topN <= 0 {
+		topN = 10
+	}
+
+	config, err := data.CallLLMForConfig(query)
+	if err != nil {
+		logger.SugaredLogger.Warnf("AIConfiguredStockPick: LLM config failed, fallback to default: %v", err)
+		engine := data.NewDailyPickEngine()
+		return engine.RunDailyPick(context.Background(), time.Now().Format("2006-01-02"), topN)
+	}
+	if config.TopN <= 0 {
+		config.TopN = topN
+	}
+
+	engine := data.NewDailyPickEngine()
+	return engine.RunWithConfig(context.Background(), time.Now().Format("2006-01-02"), config)
+}
+
 func (a *App) GetCustomStrategyList(query models.CustomStrategyQuery) *models.CustomStrategyPageData {
 	page, err := data.NewCustomStrategyApi().GetCustomStrategyList(&query)
 	if err != nil {
