@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {h, onBeforeMount, onMounted, onUnmounted, ref, reactive, computed} from 'vue'
-import {SearchStock, GetHotStrategy, OpenURL, Follow, GetFollowList, GetAllCustomStrategies, SaveCustomStrategy, DeleteCustomStrategy, GetEffectiveSponsorVip, GetConfig} from "../../wailsjs/go/main/App";
+import {SearchStock, GetHotStrategy, OpenURL, Follow, GetFollowList, GetAllCustomStrategies, SaveCustomStrategy, DeleteCustomStrategy, GetEffectiveSponsorVip, GetConfig, AIConfiguredStockPick} from "../../wailsjs/go/main/App";
 import {useMessage, NText, NTag, NButton, NPopconfirm} from 'naive-ui'
 import {Environment} from "../../wailsjs/runtime"
 import {BookmarkOutline, TrashOutline, CreateOutline, AddOutline} from "@vicons/ionicons5";
@@ -23,6 +23,37 @@ const klineModalShow = ref(false)
 const klineStockCode = ref('')
 const klineStockName = ref('')
 let klineAutoCloseTimer = null
+const useAIConfig = ref(false)
+const aiLoading = ref(false)
+
+function displayAIPickResult(picks) {
+  if (!picks || picks.length === 0) {
+    traceInfo.value = 'AI 配置选股无符合条件的结果'
+    columns.value = []
+    dataList.value = []
+    return
+  }
+  columns.value = [
+    {title: '排名', key: 'rank', width: 60},
+    {title: '股票代码', key: 'stockCode', width: 100},
+    {title: '股票名称', key: 'stockName', width: 120, ellipsis: {tooltip: true}},
+    {title: '评分', key: 'score', width: 80, sorter: (a, b) => a.score - b.score},
+    {title: '策略', key: 'strategyName', width: 100},
+    {title: '得分原因', key: 'reason', width: 400, ellipsis: {tooltip: true}},
+  ]
+  dataList.value = picks.map((p, i) => ({
+    rank: i + 1,
+    stockCode: p.StockCode,
+    stockName: p.StockName,
+    score: p.Score,
+    strategyName: p.StrategyName,
+    reason: p.Reason,
+    SECURITY_CODE: p.StockCode,
+    SECURITY_SHORT_NAME: p.StockName,
+  }))
+  traceInfo.value = `AI 配置选股结果（共 ${picks.length} 只）`
+}
+
 const saveForm = reactive({
   id: 0,
   name: '',
@@ -57,11 +88,25 @@ function calculateTableWidth(cols) {
   return Math.max(totalWidth, 1200);
 }
 
-function Search() {
+async function Search() {
   if (!search.value) {
     message.warning('请输入选股指标或者要求')
     return
   }
+
+  if (useAIConfig.value) {
+    aiLoading.value = true
+    try {
+      const res = await AIConfiguredStockPick(search.value, 10)
+      displayAIPickResult(res)
+    } catch (e) {
+      message.error('AI 配置选股失败: ' + e)
+    } finally {
+      aiLoading.value = false
+    }
+    return
+  }
+
   const loading = message.loading("正在获取选股数据...", {duration: 0});
   SearchStock(search.value).then(res => {
     loading.destroy()
@@ -386,9 +431,16 @@ function openCenteredWindow(url, width, height) {
     </n-gi>
     <n-gi :span="20">
       <div style="--wails-draggable:no-drag">
+        <n-space align="center" style="margin-bottom: 4px">
+          <n-switch v-model:value="useAIConfig" size="small" />
+          <n-text depth="3" style="font-size: 12px;">AI配置选股</n-text>
+          <n-tag v-if="useAIConfig" type="warning" size="tiny">消耗token</n-tag>
+        </n-space>
         <n-input-group style="text-align: left">
           <n-input :rows="1" clearable v-model:value="search" placeholder="请输入选股指标或者要求" @keyup.enter="Search"/>
-          <n-button type="primary" @click="Search">搜索A股</n-button>
+          <n-button type="primary" @click="Search" :loading="aiLoading" :disabled="aiLoading">
+            {{ useAIConfig ? 'AI配置选股' : '搜索A股' }}
+          </n-button>
           <n-button type="warning" @click="openSaveModal(false)" :disabled="!search">
             <template #icon><n-icon :component="BookmarkOutline" size="16"/></template>
             保存策略
