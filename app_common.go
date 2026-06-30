@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go-stock/backend/agent"
 	"go-stock/backend/data"
+	"go-stock/backend/data/datasource"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 	"strings"
@@ -537,4 +538,58 @@ func (a *App) GetConceptFundFlowTopListByDate(date string, topN int) []models.Co
 // GetAllConceptCodes 获取所有概念代码
 func (a *App) GetAllConceptCodes() []map[string]string {
 	return data.NewConceptFundFlowApi().GetAllConceptCodes()
+}
+
+func (a *App) GetCommodityKLine(code string, period string, count int) ([]datasource.KLineBar, error) {
+	api := data.NewCommodityApi()
+	return api.GetKLine(code, period, count)
+}
+
+func (a *App) GetCommodityQuote(code string) (*datasource.QuoteData, error) {
+	api := data.NewCommodityApi()
+	return api.GetQuote(code)
+}
+
+func (a *App) GetCommodityRegistry() []models.CommodityAsset {
+	return data.CommodityRegistry
+}
+
+func (a *App) GetCommodityTechnicals(code string, period string) (string, error) {
+	output, err := data.GetCommodityTechnicalsOutput(code, period)
+	if err != nil {
+		return "", err
+	}
+	b, _ := json.Marshal(output)
+	return string(b), nil
+}
+
+func (a *App) GetCommodityFundamentals(code string) (string, error) {
+	output, err := data.GetCommodityFundamentalsOutput(code)
+	if err != nil {
+		return "", err
+	}
+	b, _ := json.Marshal(output)
+	return string(b), nil
+}
+
+func (a *App) GetCommodityCorrelation(primaryCode string, secondaryCodes string) (string, error) {
+	list := []string{}
+	for _, s := range strings.Split(secondaryCodes, ",") {
+		list = append(list, strings.TrimSpace(s))
+	}
+	output, err := data.GetCorrelationOutput(primaryCode, list)
+	if err != nil {
+		return "", err
+	}
+	b, _ := json.Marshal(output)
+	return string(b), nil
+}
+
+func (a *App) GetCommodityReport(codes string, reportType string) (string, error) {
+	output, err := data.GetCommodityReportOutput(codes, reportType)
+	if err != nil {
+		return "", err
+	}
+	b, _ := json.Marshal(output)
+	return string(b), nil
 }
