@@ -84,6 +84,12 @@ func (a *SkillApi) GetAll() []models.Skill {
 	return skills
 }
 
+func (a *SkillApi) GetAllSkills() []models.Skill {
+	var skills []models.Skill
+	db.Dao.Order("sort_order ASC, created_at DESC").Find(&skills)
+	return skills
+}
+
 func (a *SkillApi) EnableSkill(id uint, enable bool) error {
 	return db.Dao.Model(&models.Skill{}).Where("id = ?", id).Update("enable", enable).Error
 }
