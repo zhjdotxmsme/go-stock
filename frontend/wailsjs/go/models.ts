@@ -2744,6 +2744,7 @@ export namespace models {
 	    rsiFactor: number;
 	    macdFactor: number;
 	    priceFactor: number;
+	    turnoverFactor: number;
 	    closePrice: number;
 	    openPrice: number;
 	    highPrice: number;
@@ -2794,6 +2795,7 @@ export namespace models {
 	        this.rsiFactor = source["rsiFactor"];
 	        this.macdFactor = source["macdFactor"];
 	        this.priceFactor = source["priceFactor"];
+	        this.turnoverFactor = source["turnoverFactor"];
 	        this.closePrice = source["closePrice"];
 	        this.openPrice = source["openPrice"];
 	        this.highPrice = source["highPrice"];

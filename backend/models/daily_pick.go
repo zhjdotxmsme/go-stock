@@ -21,6 +21,9 @@ type DailyPick struct {
 	Score float64 `json:"score" gorm:"index"` // 综合评分 0-100
 	Rank  int     `json:"rank"`               // 当日排名
 
+	StrategyCode string `json:"strategyCode" gorm:"size:50;index"`
+	StrategyName string `json:"strategyName" gorm:"size:50"`
+
 	// 因子得分明细
 	VolumeFactor   float64 `json:"volumeFactor"`   // 成交量放大因子 (0-1)
 	MaFactor       float64 `json:"maFactor"`       // 均线形态因子 (0-1)

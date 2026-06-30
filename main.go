@@ -9,6 +9,7 @@ import (
 	"go-stock/backend/data"
 	backtestService "go-stock/backend/data/backtest"
 	"go-stock/backend/data/datasource"
+	dailyPickBacktestService "go-stock/backend/service"
 	"go-stock/backend/data/datasource/fallback"
 	"go-stock/backend/db"
 	log "go-stock/backend/logger"
@@ -237,6 +238,7 @@ func main() {
 			app,
 			backtestService.NewService(),
 			data.NewDailyPickService(),
+			dailyPickBacktestService.NewDailyPickBacktestService(),
 		},
 		// Windows platform specific options
 		Windows: &windows.Options{

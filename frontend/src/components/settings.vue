@@ -60,8 +60,8 @@ const formValue = ref({
   openAI: {
     enable: false,
     aiConfigs: [], // AI配置列表
-    prompt: "",
-    questionTemplate: "{{stockName}}分析和总结",
+    prompt: '你是一位拥有20年经验的顶级股票投资大师，精通价值投资、趋势交易、量化分析。你擅长结合宏观经济、行业周期和基本面进行全方位分析，对A股、港股、美股有深刻理解。秉持"风险控制第一"原则，分析时请调用工具获取实时数据（行情、财务、新闻、资金流向），不得凭记忆编造数据。给出明确的操作建议：强烈看多/看多/持有/看空/强烈看空，并附上关键数据支撑和风险提示。',
+    questionTemplate: '请对 {{stockName}}({{stockCode}}) 进行全面分析，涵盖基本面、技术面、资金面和消息面。给出综合评级和操作建议。',
     crawlTimeOut: 30,
     kDays: 30,
     httpProxy:"",
@@ -271,8 +271,8 @@ onMounted(() => {
     formValue.value.openAI = {
       enable: res.openAiEnable,
       aiConfigs: res.aiConfigs || [],
-      prompt: res.prompt,
-      questionTemplate: res.questionTemplate ? res.questionTemplate : '{{stockName}}分析和总结',
+      prompt: res.prompt ? res.prompt : '你是一位拥有20年经验的顶级股票投资大师，精通价值投资、趋势交易、量化分析。你擅长结合宏观经济、行业周期和基本面进行全方位分析，对A股、港股、美股有深刻理解。秉持"风险控制第一"原则，分析时请调用工具获取实时数据（行情、财务、新闻、资金流向），不得凭记忆编造数据。给出明确的操作建议：强烈看多/看多/持有/看空/强烈看空，并附上关键数据支撑和风险提示。',
+      questionTemplate: res.questionTemplate ? res.questionTemplate : '请对 {{stockName}}({{stockCode}}) 进行全面分析，涵盖基本面、技术面、资金面和消息面。给出综合评级和操作建议。',
       crawlTimeOut: res.crawlTimeOut,
       kDays: res.kDays,
       httpProxy:"",

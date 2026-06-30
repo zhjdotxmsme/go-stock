@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, reactive, h, onMounted } from 'vue'
 import { RunSingleBacktest, RunBatchBacktest, GetBacktestResults } from '../../wailsjs/go/backtest/Service'
+import { RunBacktestForDailyPicks } from '../../wailsjs/go/service/DailyPickBacktestService'
 import { GetStockList } from '../../wailsjs/go/main/App'
 import {
   NAutoComplete, NAlert, NButton, NCard, NDataTable, NDatePicker, NDivider,
@@ -16,10 +17,13 @@ const activeTab = ref('single')
 
 const singleLoading = ref(false)
 const batchLoading = ref(false)
+const strategyLoading = ref(false)
 const singleResult = ref(null)
 const batchResult = ref(null)
+const strategyResults = ref(null)
 const singleError = ref('')
 const batchError = ref('')
+const strategyError = ref('')
 
 const singleForm = reactive({
   stockCode: '',
@@ -37,6 +41,15 @@ const batchForm = reactive({
   endDate: null,
   period: 'day',
   entryPrice: 0,
+  holdingDays: 5,
+  stopLoss: 0.05,
+  stopProfit: 0.1,
+  adjusted: true,
+})
+
+const strategyForm = reactive({
+  tradeDate: null,
+  topN: 5,
   holdingDays: 5,
   stopLoss: 0.05,
   stopProfit: 0.1,
@@ -161,6 +174,77 @@ async function runBatch() {
     message.error('批量回测失败: ' + String(e))
   } finally {
     batchLoading.value = false
+  }
+}
+
+// ── 策略回测 ──
+const strategyColumns = [
+  { title: '#', key: 'rank', width: 40,
+    render: (_, index) => index + 1
+  },
+  { title: '股票代码', key: 'stockCode', width: 110 },
+  { title: '股票名称', key: 'stockName', width: 100 },
+  { title: '评分', key: 'score', width: 70, render: (r) => r.score?.toFixed(0) },
+  { title: '策略', key: 'strategyName', width: 90,
+    render: (r) => h(NTag, { size: 'small', type: 'info' }, { default: () => r.strategyName || '-' })
+  },
+  { title: '信号日期', key: 'tradeDate', width: 100 },
+  { title: '总收益率', key: 'totalReturn', width: 105,
+    render: (r) => {
+      const v = (r.totalReturn * 100).toFixed(2)
+      return h(NText, { type: r.totalReturn >= 0 ? 'success' : 'error' }, { default: () => `${v}%` })
+    }
+  },
+  { title: '结果', key: 'win', width: 60,
+    render: (r) => h(NTag, { type: r.win ? 'success' : 'error', size: 'small' }, { default: () => r.win ? '盈' : '亏' })
+  },
+  { title: '持仓', key: 'holdingDays', width: 60 },
+  { title: '最大回撤', key: 'maxDrawdown', width: 100,
+    render: (r) => (r.maxDrawdown * 100).toFixed(2) + '%'
+  },
+  { title: '入场价', key: 'entryPrice', width: 90, render: (r) => r.entryPrice?.toFixed(2) },
+  { title: '出场价', key: 'exitPrice', width: 90, render: (r) => r.exitPrice?.toFixed(2) },
+]
+
+const strategySummary = computed(() => {
+  const r = strategyResults.value
+  if (!r || r.length === 0) return []
+  const total = r.length
+  const wins = r.filter(x => x.win).length
+  const loss = total - wins
+  const avgReturn = r.reduce((s, x) => s + x.totalReturn, 0) / total * 100
+  return [
+    { label: '选股数量', value: total },
+    { label: '胜率', value: (wins / total * 100).toFixed(1) + '%' },
+    { label: '胜/负', value: `${wins}/${loss}` },
+    { label: '平均收益率', value: avgReturn.toFixed(2) + '%' },
+  ]
+})
+
+async function runStrategyPick() {
+  if (!strategyForm.tradeDate) {
+    message.warning('请选择信号日期')
+    return
+  }
+  strategyLoading.value = true
+  strategyError.value = ''
+  strategyResults.value = null
+  try {
+    const res = await RunBacktestForDailyPicks(
+      fmtDate(strategyForm.tradeDate),
+      strategyForm.topN,
+      strategyForm.holdingDays,
+      strategyForm.stopLoss,
+      strategyForm.stopProfit,
+      strategyForm.adjusted,
+    )
+    strategyResults.value = res || []
+    message.success(`回测完成，共 ${res?.length || 0} 支股票`)
+  } catch (e) {
+    strategyError.value = String(e)
+    message.error('策略回测失败: ' + String(e))
+  } finally {
+    strategyLoading.value = false
   }
 }
 
@@ -425,6 +509,69 @@ const historyPagination = computed(() => {
                 <template v-else>
                   <div style="padding: 40px 0; text-align: center">
                     <n-text depth="3">设置参数后点击「批量回测」</n-text>
+                  </div>
+                </template>
+              </n-spin>
+            </n-card>
+          </n-gi>
+        </n-grid>
+      </n-tab-pane>
+
+      <n-tab-pane name="strategy" tab="策略回测">
+        <n-grid :cols="24" :x-gap="16">
+          <n-gi :span="6">
+            <n-card title="筛选参数" size="small">
+              <n-form label-placement="left" label-width="100">
+                <n-form-item label="信号日期">
+                  <n-date-picker v-model:value="strategyForm.tradeDate" type="date" style="width: 100%" />
+                </n-form-item>
+                <n-form-item label="选股数量">
+                  <n-input-number v-model:value="strategyForm.topN" :min="1" :max="30" style="width: 100%" />
+                </n-form-item>
+                <n-form-item label="持仓天数">
+                  <n-input-number v-model:value="strategyForm.holdingDays" :min="1" style="width: 100%" />
+                </n-form-item>
+                <n-form-item label="止损比例">
+                  <n-input-number v-model:value="strategyForm.stopLoss" :min="0" :step="0.01" style="width: 100%" />
+                </n-form-item>
+                <n-form-item label="止盈比例">
+                  <n-input-number v-model:value="strategyForm.stopProfit" :min="0" :step="0.01" style="width: 100%" />
+                </n-form-item>
+                <n-form-item label="前复权">
+                  <n-switch v-model:value="strategyForm.adjusted" />
+                </n-form-item>
+              </n-form>
+              <n-button type="primary" @click="runStrategyPick" :loading="strategyLoading" style="width: 100%">
+                策略选股 + 回测
+              </n-button>
+            </n-card>
+          </n-gi>
+          <n-gi :span="18">
+            <n-card title="多股对比结果" size="small">
+              <n-spin :show="strategyLoading">
+                <template v-if="strategyError">
+                  <n-alert type="error" closable @close="strategyError = ''">
+                    <template #header>回测出错</template>
+                    {{ strategyError }}
+                  </n-alert>
+                </template>
+                <template v-else-if="strategyResults && strategyResults.length > 0">
+                  <n-flex :size="8" style="margin-bottom: 12px">
+                    <n-statistic v-for="s in strategySummary" :key="s.label" :label="s.label" :value="s.value" style="margin-right: 24px" />
+                  </n-flex>
+                  <n-data-table
+                    :columns="strategyColumns"
+                    :data="strategyResults"
+                    :bordered="true"
+                    :single-line="false"
+                    size="small"
+                    :max-height="480"
+                    virtual-scroll
+                  />
+                </template>
+                <template v-else>
+                  <div style="padding: 60px 0; text-align: center">
+                    <n-text depth="3">设置参数后点击「策略选股 + 回测」</n-text>
                   </div>
                 </template>
               </n-spin>

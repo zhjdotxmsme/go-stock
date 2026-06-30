@@ -28,14 +28,28 @@ const (
 
 // DailyPickEngine handles the daily stock screening and scoring.
 type DailyPickEngine struct {
-	maxWorkers int // max concurrent goroutines for K-line fetching
+	maxWorkers int
+	strategies []ScoringStrategy
 }
 
-// NewDailyPickEngine creates a new engine instance.
+// NewDailyPickEngine creates a new engine instance with default strategies.
 func NewDailyPickEngine() *DailyPickEngine {
 	return &DailyPickEngine{
 		maxWorkers: 10,
+		strategies: []ScoringStrategy{
+			&MATrendStrategy{},
+			&OversoldReversalStrategy{},
+			&MomentumStrategy{},
+			&ChannelBreakoutStrategy{},
+			&KDJShortStrategy{},
+		},
 	}
+}
+
+// WithStrategies replaces the default strategy list. Useful for testing.
+func (e *DailyPickEngine) WithStrategies(s []ScoringStrategy) *DailyPickEngine {
+	e.strategies = s
+	return e
 }
 
 // RunDailyPick performs the full daily pick flow:
@@ -304,15 +318,14 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 		pick.BollDown = boll["Down"]
 	}
 
-	// Multi-factor scoring
+	// Multi-factor baseline scoring
 	pick.VolumeFactor = scoreVolumeFactor(volume, closeP)
 	pick.MaFactor = scoreMAFactor(pick.Ma5, pick.Ma10, pick.Ma20)
 	pick.RsiFactor = scoreRSIFactor(pick.Rsi14)
 	pick.MacdFactor = scoreMACDFactor(pick.Macd, pick.MacdSignal)
 	pick.PriceFactor = scorePriceFactor(pick.ClosePrice, pick.BollMid, pick.BollUp, pick.BollDown)
 	pick.TurnoverFactor = scoreTurnoverFactor(pick.TurnoverRate)
-	// Composite score (all weights sum to 1.0)
-	pick.Score = math.Round(
+	baselineScore := math.Round(
 		(pick.VolumeFactor*WeightVolume+
 			pick.MaFactor*WeightMA+
 			pick.RsiFactor*WeightRSI+
@@ -320,8 +333,29 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 			pick.PriceFactor*WeightPrice+
 			pick.TurnoverFactor*WeightTurn)*100*100) / 100
 
-	// Generate reason
+	// Multi-strategy scoring: run all registered strategies and pick the best
+	strategyCtx := &StrategyContext{
+		KLines:    klines,
+		CloseP:    closeP,
+		HighP:     highP,
+		LowP:      lowP,
+		Volume:    volume,
+		StockCode: candidate.Code,
+		StockName: candidate.Name,
+		TradeDate: tradeDate,
+	}
+
+	pick.Score = baselineScore
 	pick.Reason = buildReason(pick)
+	for _, s := range e.strategies {
+		r := s.Score(strategyCtx)
+		if r.Score > pick.Score {
+			pick.Score = r.Score
+			pick.StrategyCode = s.Code()
+			pick.StrategyName = s.Name()
+			pick.Reason = fmt.Sprintf("[%s] %s", s.Name(), r.Signal)
+		}
+	}
 
 	return pick, nil
 }
