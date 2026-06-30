@@ -15,9 +15,13 @@ func (s *OversoldReversalStrategy) Score(ctx *StrategyContext) *StrategyResult {
 		return &StrategyResult{Score: 0, Factors: map[string]float64{}, Signal: "K线数据不足"}
 	}
 
-	rsi14 := calcRSI(ctx.CloseP, 14)
-	wr14 := calcWR(ctx.HighP, ctx.LowP, ctx.CloseP, 14)
-	cci14 := calcCCI(ctx.HighP, ctx.LowP, ctx.CloseP, 14)
+	rsiPeriod := 14
+	if v, ok := ctx.Overrides["rsi_period"]; ok && v > 0 {
+		rsiPeriod = int(v)
+	}
+	rsi14 := calcRSI(ctx.CloseP, rsiPeriod)
+	wr14 := calcWR(ctx.HighP, ctx.LowP, ctx.CloseP, rsiPeriod)
+	cci14 := calcCCI(ctx.HighP, ctx.LowP, ctx.CloseP, rsiPeriod)
 	kdj := calcKDJ(ctx.HighP, ctx.LowP, ctx.CloseP, 9, 3)
 
 	// RSI oversold

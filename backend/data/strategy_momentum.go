@@ -45,6 +45,10 @@ func (s *MomentumStrategy) Score(ctx *StrategyContext) *StrategyResult {
 	}
 
 	// Volume ratio
+	volMinRatio := 1.0
+	if v, ok := ctx.Overrides["volume_min_ratio"]; ok && v > 0 {
+		volMinRatio = v
+	}
 	volRatio := 0.0
 	if n >= 21 {
 		todayVol := ctx.Volume[n-1]
@@ -59,13 +63,13 @@ func (s *MomentumStrategy) Score(ctx *StrategyContext) *StrategyResult {
 	}
 	volScore := 0.0
 	switch {
-	case volRatio >= 2.0:
+	case volRatio >= volMinRatio*2.0:
 		volScore = 1.0
-	case volRatio >= 1.5:
+	case volRatio >= volMinRatio*1.5:
 		volScore = 0.7
-	case volRatio >= 1.2:
+	case volRatio >= volMinRatio*1.2:
 		volScore = 0.4
-	case volRatio >= 1.0:
+	case volRatio >= volMinRatio:
 		volScore = 0.2
 	}
 

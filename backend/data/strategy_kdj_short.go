@@ -15,8 +15,12 @@ func (s *KDJShortStrategy) Score(ctx *StrategyContext) *StrategyResult {
 		return &StrategyResult{Score: 0, Factors: map[string]float64{}, Signal: "K线数据不足"}
 	}
 
-	kdj := calcKDJ(ctx.HighP, ctx.LowP, ctx.CloseP, 9, 3)
-	wr10 := calcWR(ctx.HighP, ctx.LowP, ctx.CloseP, 10)
+	kdjKPeriod := 9
+	if v, ok := ctx.Overrides["kdj_k_period"]; ok && v > 0 {
+		kdjKPeriod = int(v)
+	}
+	kdj := calcKDJ(ctx.HighP, ctx.LowP, ctx.CloseP, kdjKPeriod, 3)
+	wr10 := calcWR(ctx.HighP, ctx.LowP, ctx.CloseP, kdjKPeriod+1)
 	rsi6 := calcRSI(ctx.CloseP, 6)
 
 	kVal := kdj["K"]

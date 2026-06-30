@@ -14,12 +14,20 @@ func (s *MATrendStrategy) Score(ctx *StrategyContext) *StrategyResult {
 	if n < 20 {
 		return &StrategyResult{Score: 0, Factors: map[string]float64{}, Signal: "K线数据不足"}
 	}
-	ma5 := calcSMA(ctx.CloseP, 5)
-	ma10 := calcSMA(ctx.CloseP, 10)
-	ma20 := calcSMA(ctx.CloseP, 20)
-	ma60 := calcSMA(ctx.CloseP, 60)
-	bias5 := calcBIAS(ctx.CloseP, 5)
-	bias10 := calcBIAS(ctx.CloseP, 10)
+	maFast := 5
+	maSlow := 20
+	if v, ok := ctx.Overrides["ma_fast"]; ok && v > 0 {
+		maFast = int(v)
+	}
+	if v, ok := ctx.Overrides["ma_slow"]; ok && v > 0 {
+		maSlow = int(v)
+	}
+	ma5 := calcSMA(ctx.CloseP, maFast)
+	ma10 := calcSMA(ctx.CloseP, maFast*2)
+	ma20 := calcSMA(ctx.CloseP, maSlow)
+	ma60 := calcSMA(ctx.CloseP, maSlow*3)
+	bias5 := calcBIAS(ctx.CloseP, maFast)
+	bias10 := calcBIAS(ctx.CloseP, maFast*2)
 
 	// 1. MA alignment score (0-1)
 	maScore := 0.0

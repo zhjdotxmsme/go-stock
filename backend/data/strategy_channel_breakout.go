@@ -15,12 +15,16 @@ func (s *ChannelBreakoutStrategy) Score(ctx *StrategyContext) *StrategyResult {
 		return &StrategyResult{Score: 0, Factors: map[string]float64{}, Signal: "K线数据不足"}
 	}
 
-	boll := calcBOLL(ctx.CloseP, 20, 2.0)
+	bollPeriod := 20
+	if v, ok := ctx.Overrides["boll_period"]; ok && v > 0 {
+		bollPeriod = int(v)
+	}
+	boll := calcBOLL(ctx.CloseP, bollPeriod, 2.0)
 	bollMid := boll["Mid"]
 	bollUp := boll["Up"]
 	bollDown := boll["Down"]
 
-	atr14 := calcATR(ctx.HighP, ctx.LowP, ctx.CloseP, 14)
+	atr14 := calcATR(ctx.HighP, ctx.LowP, ctx.CloseP, bollPeriod-6)
 	price := ctx.CloseP[n-1]
 
 	// 1. BOLL position score (0-1)
