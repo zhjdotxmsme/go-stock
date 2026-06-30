@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
@@ -229,7 +230,17 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 	apiCode := normalizeCode(candidate.Code)
 
 	// Fetch K-line data (60 daily bars for indicator computation)
-	klineData := NewStockDataApi().GetKLineData(apiCode, "101", 60)
+	var klineData *[]KLineData
+	todayStr := time.Now().Format("2006-01-02")
+	if tradeDate != "" && tradeDate < todayStr {
+		// 指定历史日期：使用东方财富 API 获取该日期之前的 K 线
+		endDate := strings.ReplaceAll(tradeDate, "-", "") // "2024-01-01" → "20240101"
+		emAPI := NewEastMoneyKLineApi(GetSettingConfig())
+		klineData = emAPI.GetKLineDataBefore(candidate.Code, "101", "1", 60, endDate)
+	} else {
+		// 默认行为：获取最新 60 根 K 线
+		klineData = NewStockDataApi().GetKLineData(apiCode, "101", 60)
+	}
 	if klineData == nil || len(*klineData) < 20 {
 		return pick, fmt.Errorf("insufficient kline data: %d bars", lenPtr(klineData))
 	}

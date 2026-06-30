@@ -232,9 +232,12 @@ async function loadStats() {
 async function runPick() {
   running.value = true
   try {
-    const date = format(new Date(), 'yyyy-MM-dd')
+    // 使用日期选择器的日期，未选择时默认今天
+    const date = queryDate.value
+      ? format(new Date(queryDate.value), 'yyyy-MM-dd')
+      : format(new Date(), 'yyyy-MM-dd')
     await RunDailyPick(date, 5)
-    message.success('选股完成')
+    message.success('选股完成: ' + date)
     await loadPicks()
     await loadStats()
   } catch (e) {

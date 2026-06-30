@@ -17,7 +17,6 @@ import {
   BarChartSharp, Bonfire, BonfireOutline, DiamondOutline, EaselSharp,
   ExpandOutline, Flag,
   Flame, FlameSharp, FlaskOutline, GlobeOutline, InformationOutline,
-  LogoGithub,
   ChatbubblesOutline,
   NewspaperOutline,
   NewspaperSharp, Notifications,
@@ -948,27 +947,6 @@ const menuOptions = ref([
         ),
     key: 'settings',
     icon: renderIcon(SettingsOutline),
-  },
-  {
-    label: () =>
-        h(
-            RouterLink,
-            {
-              to: {
-                name: 'about',
-                query: {
-                  name:"关于",
-                }
-              },
-              onClick: () => {
-                activeKey.value = 'about'
-              },
-            },
-            {default: () => '关于'}
-        ),
-    key: 'about',
-    icon: renderIcon(LogoGithub),
-    show: true,
   },
   {
     show:false,
