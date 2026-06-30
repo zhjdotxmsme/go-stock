@@ -298,6 +298,34 @@ export function GetChipDistribution(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GetChipDistribution'](arg1, arg2, arg3, arg4);
 }
 
+export function GetCommodityCorrelation(arg1, arg2) {
+  return window['go']['main']['App']['GetCommodityCorrelation'](arg1, arg2);
+}
+
+export function GetCommodityFundamentals(arg1) {
+  return window['go']['main']['App']['GetCommodityFundamentals'](arg1);
+}
+
+export function GetCommodityKLine(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetCommodityKLine'](arg1, arg2, arg3);
+}
+
+export function GetCommodityQuote(arg1) {
+  return window['go']['main']['App']['GetCommodityQuote'](arg1);
+}
+
+export function GetCommodityRegistry() {
+  return window['go']['main']['App']['GetCommodityRegistry']();
+}
+
+export function GetCommodityReport(arg1, arg2) {
+  return window['go']['main']['App']['GetCommodityReport'](arg1, arg2);
+}
+
+export function GetCommodityTechnicals(arg1, arg2) {
+  return window['go']['main']['App']['GetCommodityTechnicals'](arg1, arg2);
+}
+
 export function GetConceptFundFlowList(arg1, arg2) {
   return window['go']['main']['App']['GetConceptFundFlowList'](arg1, arg2);
 }

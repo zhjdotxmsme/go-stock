@@ -1778,6 +1778,109 @@ export namespace data {
 
 }
 
+export namespace datasource {
+	
+	export class KLineBar {
+	    // Go type: time
+	    time: any;
+	    open: number;
+	    high: number;
+	    low: number;
+	    close: number;
+	    prevClose: number;
+	    volume: number;
+	    amount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KLineBar(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.time = this.convertValues(source["time"], null);
+	        this.open = source["open"];
+	        this.high = source["high"];
+	        this.low = source["low"];
+	        this.close = source["close"];
+	        this.prevClose = source["prevClose"];
+	        this.volume = source["volume"];
+	        this.amount = source["amount"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class QuoteData {
+	    code: string;
+	    name: string;
+	    price: number;
+	    change: number;
+	    changePct: number;
+	    volume: number;
+	    amount: number;
+	    high: number;
+	    low: number;
+	    open: number;
+	    prevClose: number;
+	    // Go type: time
+	    time: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new QuoteData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.price = source["price"];
+	        this.change = source["change"];
+	        this.changePct = source["changePct"];
+	        this.volume = source["volume"];
+	        this.amount = source["amount"];
+	        this.high = source["high"];
+	        this.low = source["low"];
+	        this.open = source["open"];
+	        this.prevClose = source["prevClose"];
+	        this.time = this.convertValues(source["time"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace gorm {
 	
 	export class DeletedAt {
@@ -2459,6 +2562,26 @@ export namespace models {
 	        this.netInflow = source["netInflow"];
 	    }
 	}
+	export class CommodityAsset {
+	    code: string;
+	    name: string;
+	    assetType: string;
+	    exchange: string;
+	    symbol: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommodityAsset(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.assetType = source["assetType"];
+	        this.exchange = source["exchange"];
+	        this.symbol = source["symbol"];
+	    }
+	}
 	export class ConceptFundFlow {
 	    id: number;
 	    code: string;
@@ -2739,12 +2862,17 @@ export namespace models {
 	    tradeDate: string;
 	    score: number;
 	    rank: number;
+	    strategyCode: string;
+	    strategyName: string;
 	    volumeFactor: number;
 	    maFactor: number;
 	    rsiFactor: number;
 	    macdFactor: number;
 	    priceFactor: number;
 	    turnoverFactor: number;
+	    industryScore: number;
+	    researchScore: number;
+	    macroScore: number;
 	    closePrice: number;
 	    openPrice: number;
 	    highPrice: number;
@@ -2790,12 +2918,17 @@ export namespace models {
 	        this.tradeDate = source["tradeDate"];
 	        this.score = source["score"];
 	        this.rank = source["rank"];
+	        this.strategyCode = source["strategyCode"];
+	        this.strategyName = source["strategyName"];
 	        this.volumeFactor = source["volumeFactor"];
 	        this.maFactor = source["maFactor"];
 	        this.rsiFactor = source["rsiFactor"];
 	        this.macdFactor = source["macdFactor"];
 	        this.priceFactor = source["priceFactor"];
 	        this.turnoverFactor = source["turnoverFactor"];
+	        this.industryScore = source["industryScore"];
+	        this.researchScore = source["researchScore"];
+	        this.macroScore = source["macroScore"];
 	        this.closePrice = source["closePrice"];
 	        this.openPrice = source["openPrice"];
 	        this.highPrice = source["highPrice"];
@@ -3725,6 +3858,49 @@ export namespace models {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace service {
+	
+	export class DailyPickBacktestResult {
+	    stockCode: string;
+	    stockName: string;
+	    tradeDate: string;
+	    score: number;
+	    strategyCode: string;
+	    strategyName: string;
+	    reason: string;
+	    totalReturn: number;
+	    win: boolean;
+	    holdingDays: number;
+	    maxDrawdown: number;
+	    entryPrice: number;
+	    exitPrice: number;
+	    slippageWarning: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DailyPickBacktestResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stockCode = source["stockCode"];
+	        this.stockName = source["stockName"];
+	        this.tradeDate = source["tradeDate"];
+	        this.score = source["score"];
+	        this.strategyCode = source["strategyCode"];
+	        this.strategyName = source["strategyName"];
+	        this.reason = source["reason"];
+	        this.totalReturn = source["totalReturn"];
+	        this.win = source["win"];
+	        this.holdingDays = source["holdingDays"];
+	        this.maxDrawdown = source["maxDrawdown"];
+	        this.entryPrice = source["entryPrice"];
+	        this.exitPrice = source["exitPrice"];
+	        this.slippageWarning = source["slippageWarning"];
+	    }
 	}
 
 }
