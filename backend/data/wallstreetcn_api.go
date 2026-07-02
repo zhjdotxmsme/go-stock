@@ -159,6 +159,9 @@ var WSCNProdCodes = map[string]string{
 	"510050.SS":  "上证50ETF",
 	"159915.SZ":  "创业板ETF",
 	"588000.SS":  "科创50ETF",
+	"US2YR.OTC":  "美国2年期国债收益率",
+	"US10YR.OTC": "美国10年期国债收益率",
+	"US30YR.OTC": "美国30年期国债收益率",
 }
 
 const (
