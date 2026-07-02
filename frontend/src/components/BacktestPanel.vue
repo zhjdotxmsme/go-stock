@@ -85,9 +85,8 @@ const singleStockOptions = ref([])
 const batchStockOptions = ref([])
 
 function findStockList(formOptions, query) {
-  if (!query || !query.trim()) {
-    // 未输入时显示全部股票
-    formOptions.value = buildOptions(stockList.value)
+  if (!query || query.trim().length < 2) {
+    formOptions.value = []
     return
   }
   const q = query.trim()
@@ -99,6 +98,7 @@ function findStockList(formOptions, query) {
       label: item.name + ' - ' + item.ts_code,
       value: item.ts_code,
     }))
+    .slice(0, 100)
 }
 
 function handleSelectStock(form, val) {
@@ -470,6 +470,7 @@ onMounted(() => {
     stockList.value = list
     singleStockOptions.value = buildOptions(list)
     batchStockOptions.value = buildOptions(list)
+    optStockOptions.value = buildOptions(list)
   }).catch(err => {
     console.error('GetStockList error:', err)
   })
