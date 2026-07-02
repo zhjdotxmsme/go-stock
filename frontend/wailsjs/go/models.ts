@@ -1775,7 +1775,68 @@ export namespace data {
 	        this.totalCount = source["totalCount"];
 	    }
 	}
+	export class ModelStat {
+	    modelName: string;
+	    winRate: number;
+	    avgReturn: number;
+	    count: number;
 
+	    static createFrom(source: any = {}) {
+	        return new ModelStat(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.modelName = source["modelName"];
+	        this.winRate = source["winRate"];
+	        this.avgReturn = source["avgReturn"];
+	        this.count = source["count"];
+	    }
+	}
+	export class SectorStat {
+	    bkName: string;
+	    count: number;
+
+	    static createFrom(source: any = {}) {
+	        return new SectorStat(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.bkName = source["bkName"];
+	        this.count = source["count"];
+	    }
+	}
+	export class DailyCount {
+	    date: string;
+	    count: number;
+
+	    static createFrom(source: any = {}) {
+	        return new DailyCount(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.count = source["count"];
+	    }
+	}
+	export class AiRecommendStats {
+	    byModel: ModelStat[];
+	    bySector: SectorStat[];
+	    dailyCount: DailyCount[];
+
+	    static createFrom(source: any = {}) {
+	        return new AiRecommendStats(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.byModel = this.convertValues(source["byModel"], ModelStat);
+	        this.bySector = this.convertValues(source["bySector"], SectorStat);
+	        this.dailyCount = this.convertValues(source["dailyCount"], DailyCount);
+	    }
+	}
 }
 
 export namespace datasource {

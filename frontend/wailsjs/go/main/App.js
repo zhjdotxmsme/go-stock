@@ -218,6 +218,10 @@ export function GetAiConfigs() {
   return window['go']['main']['App']['GetAiConfigs']();
 }
 
+export function GetAiRecommendStats() {
+  return window['go']['main']['App']['GetAiRecommendStats']();
+}
+
 export function GetAiRecommendStocksList(arg1) {
   return window['go']['main']['App']['GetAiRecommendStocksList'](arg1);
 }
@@ -668,6 +672,10 @@ export function LongTigerRank(arg1) {
 
 export function NewChatStream(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
   return window['go']['main']['App']['NewChatStream'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+}
+
+export function NewCommodityAnalysisStream(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['NewCommodityAnalysisStream'](arg1, arg2, arg3, arg4);
 }
 
 export function NewsPush(arg1) {

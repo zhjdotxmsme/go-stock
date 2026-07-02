@@ -2,13 +2,14 @@
 import {computed, h, onBeforeMount, onBeforeUnmount, onMounted,onUnmounted, ref,reactive} from 'vue'
 import {
   GetAiRecommendStocksList,
+  GetAiRecommendStats,
   GetConfig,
   GetSponsorInfo,
   DeleteAiRecommendStocks,
   UpdateAiRecommendStocksAlert,
   ShareAnalysis
 } from "../../wailsjs/go/main/App";
-import {NAvatar, NButton, NEllipsis, NSwitch, NTag, NText, useMessage, useNotification} from "naive-ui";
+import {NAvatar, NButton, NCard, NEllipsis, NGi, NGrid, NGridItem, NNumberAnimation, NSpace, NSwitch, NTag, NText, useMessage, useNotification} from "naive-ui";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
 import sparkLine from "./stockSparkLine.vue"
 import {format} from "date-fns";
@@ -19,6 +20,9 @@ const vipStartTime=ref("");
 const vipEndTime=ref("");
 const expired=ref(false)
 const isValidVip=ref(false) // 是否是会员
+
+// ── L1 Overview Stats ──
+const statsRef = ref(null) // AiRecommendStats
 
 onBeforeMount(()=> {
   GetConfig().then(result => {
@@ -45,6 +49,8 @@ onBeforeMount(()=> {
   })
 })
 onMounted(() => {
+  GetAiRecommendStats().then(s => statsRef.value = s)
+
   query({
     page: 1,
     pageSize: paginationReactive.pageSize,
@@ -245,6 +251,54 @@ const columnsRef = ref([
     }
   },
   {
+    title: '信号',
+    key: 'signal',
+    width: 100,
+    render(row) {
+      const cur = Number(row.stockCurrentPrice)
+      const badges = []
+
+      // buy zone check
+      const buyMin = Number(row.recommendBuyPriceMin)
+      const buyMax = Number(row.recommendBuyPriceMax)
+      if (buyMin && buyMax && cur >= buyMin && cur <= buyMax) {
+        badges.push(h(NTag, { type: 'error', size: 'tiny', bordered: false }, () => '买入'))
+      } else if (row.recommendBuyPrice && String(row.recommendBuyPrice).includes('-')) {
+        const parts = String(row.recommendBuyPrice).split('-')
+        if (cur >= Number(parts[0]) && cur <= Number(parts[1])) {
+          badges.push(h(NTag, { type: 'error', size: 'tiny', bordered: false }, () => '买入'))
+        }
+      }
+
+      // tp zone check
+      const tpMin = Number(row.recommendStopProfitPriceMin)
+      if (tpMin && cur >= tpMin) {
+        badges.push(h(NTag, { type: 'warning', size: 'tiny', bordered: false }, () => '止盈'))
+      } else if (row.recommendStopProfitPrice && String(row.recommendStopProfitPrice).includes('-')) {
+        const parts = String(row.recommendStopProfitPrice).split('-')
+        if (cur >= Number(parts[0]) && cur <= Number(parts[1])) {
+          badges.push(h(NTag, { type: 'warning', size: 'tiny', bordered: false }, () => '止盈'))
+        }
+      }
+
+      // sl zone check
+      const sl = Number(row.recommendStopLossPrice)
+      if (sl && cur <= sl) {
+        badges.push(h(NTag, { type: 'success', size: 'tiny', bordered: false }, () => '止损'))
+      } else if (row.recommendStopLossPrice && String(row.recommendStopLossPrice).includes('-')) {
+        const parts = String(row.recommendStopLossPrice).split('-')
+        if (cur <= Number(parts[0])) {
+          badges.push(h(NTag, { type: 'success', size: 'tiny', bordered: false }, () => '止损'))
+        }
+      }
+
+      if (badges.length === 0) {
+        return h(NTag, { type: 'default', size: 'tiny', bordered: false }, () => '持有')
+      }
+      return badges
+    }
+  },
+  {
     title: '推荐理由',
     key: 'recommendReason',
     ellipsis: {
@@ -328,6 +382,13 @@ const modalDataRef = reactive({
   longEntryPrice: '',
   longStopLossPrice: '',
   longTakeProfitPrice: '',
+})
+
+const totalCount = computed(() => {
+  if (!statsRef.value) return 0
+  let sum = 0
+  for (const m of statsRef.value.byModel) sum += m.count
+  return sum
 })
 
 const theme = computed(() => {
@@ -481,6 +542,61 @@ function toggleAlert(row, newEnableAlert) {
 </script>
 
 <template>
+  <!-- L1 Overview Dashboard -->
+  <n-space vertical v-if="statsRef" class="l1-dashboard">
+    <n-grid :cols="4" :x-gap="12">
+      <n-grid-item>
+        <n-card size="small" title="模型表现">
+          <n-table size="small" :single-line="false">
+            <thead><tr><th>模型</th><th>推荐数</th><th>胜率</th><th>平均收益</th></tr></thead>
+            <tbody>
+              <tr v-for="m in statsRef.byModel" :key="m.modelName">
+                <td><n-text>{{ m.modelName }}</n-text></td>
+                <td><n-number-animation :from="0" :to="m.count" /></td>
+                <td><n-text :type="m.winRate >= 50 ? 'error' : 'success'">{{ m.winRate }}%</n-text></td>
+                <td><n-text :type="m.avgReturn >= 0 ? 'error' : 'success'">{{ m.avgReturn }}%</n-text></td>
+              </tr>
+            </tbody>
+          </n-table>
+        </n-card>
+      </n-grid-item>
+      <n-grid-item>
+        <n-card size="small" title="板块分布">
+          <n-table size="small" :single-line="false">
+            <thead><tr><th>板块</th><th>推荐数</th></tr></thead>
+            <tbody>
+              <tr v-for="s in statsRef.bySector" :key="s.bkName">
+                <td><n-tag size="tiny">{{ s.bkName }}</n-tag></td>
+                <td><n-number-animation :from="0" :to="s.count" /></td>
+              </tr>
+            </tbody>
+          </n-table>
+        </n-card>
+      </n-grid-item>
+      <n-grid-item>
+        <n-card size="small" title="每日推荐">
+          <n-table size="small" :single-line="false">
+            <thead><tr><th>日期</th><th>数量</th></tr></thead>
+            <tbody>
+              <tr v-for="d in statsRef.dailyCount" :key="d.date">
+                <td>{{ d.date }}</td>
+                <td><n-number-animation :from="0" :to="d.count" /></td>
+              </tr>
+            </tbody>
+          </n-table>
+        </n-card>
+      </n-grid-item>
+      <n-grid-item>
+        <n-card size="small" title="总计">
+          <n-text style="font-size:2em;font-weight:700">
+            <n-number-animation :from="0" :to="totalCount" />
+          </n-text>
+          <n-text depth="3">条推荐</n-text>
+        </n-card>
+      </n-grid-item>
+    </n-grid>
+  </n-space>
+
   <n-input-group>
     <n-date-picker  v-model:value="paginationReactive.range" type="daterange"   style="width: 40%"/>
     <n-select v-model:value="paginationReactive.enableAlert" :options="enableAlertOptions" placeholder="预警状态" style="width: 15%" clearable />
@@ -525,5 +641,13 @@ function toggleAlert(row, newEnableAlert) {
 </template>
 
 <style scoped>
-
+.l1-dashboard {
+  margin-bottom: 12px;
+}
+.l1-dashboard .n-card {
+  height: 100%;
+}
+.l1-dashboard .n-table {
+  font-size: 12px;
+}
 </style>

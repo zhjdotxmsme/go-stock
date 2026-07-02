@@ -116,6 +116,8 @@ export function GetAiAssistantSession(arg1:string):Promise<models.AiAssistantSes
 
 export function GetAiConfigs():Promise<Array<data.AIConfig>>;
 
+export function GetAiRecommendStats():Promise<data.AiRecommendStats>;
+
 export function GetAiRecommendStocksList(arg1:models.AiRecommendStocksQuery):Promise<models.AiRecommendStocksPageData>;
 
 export function GetAllBKCodes():Promise<Array<Record<string, string>>>;
@@ -341,6 +343,8 @@ export function IsUSTradingTime():Promise<boolean>;
 export function LongTigerRank(arg1:string):Promise<any>;
 
 export function NewChatStream(arg1:string,arg2:string,arg3:string,arg4:number,arg5:any,arg6:boolean,arg7:boolean,arg8:string,arg9:string):Promise<void>;
+
+export function NewCommodityAnalysisStream(arg1:string,arg2:string,arg3:string,arg4:number):Promise<void>;
 
 export function NewsPush(arg1:any):Promise<void>;
 
