@@ -73,6 +73,7 @@ type QuoteData struct {
 	Open      float64   `json:"open"`
 	PrevClose float64   `json:"prevClose"`
 	Time      time.Time `json:"time"`
+	Extra     map[string]interface{} `json:"extra,omitempty"`
 }
 
 type KLineData struct {
