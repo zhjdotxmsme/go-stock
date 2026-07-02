@@ -10,7 +10,10 @@ import {
   NSwitch, NTabPane, NTabs, NTag, NText, NPagination
 } from 'naive-ui'
 import { useMessage } from 'naive-ui'
-import { SearchOutline } from '@vicons/ionicons5'
+import { SearchOutline, TrendingUpOutline, TrendingDownOutline } from '@vicons/ionicons5'
+
+import EquityCurve from './charts/EquityCurve.vue'
+import MonthlyHeatmap from './charts/MonthlyHeatmap.vue'
 
 const message = useMessage()
 const activeTab = ref('single')
@@ -97,10 +100,30 @@ const singleMetrics = computed(() => {
   const r = singleResult.value
   if (!r) return []
   return [
-    { label: '总收益率', value: pct(r.TotalReturn), raw: r.TotalReturn * 100 },
-    { label: '最大回撤', value: pct(r.MaxDrawdown), raw: r.MaxDrawdown * 100 },
-    { label: 'Alpha收益', value: pct(r.Alpha), raw: r.Alpha * 100 },
+    { label: '总收益率', value: pct(r.TotalReturn), raw: r.TotalReturn * 100, color: r.TotalReturn >= 0 ? '#18a058' : '#d03050' },
+    { label: '最大回撤', value: pct(r.MaxDrawdown), raw: r.MaxDrawdown * 100, color: '#d03050' },
+    { label: 'Alpha收益', value: pct(r.Alpha), raw: r.Alpha * 100, color: r.Alpha >= 0 ? '#18a058' : '#d03050' },
   ]
+})
+
+const singleCurveData = computed(() => {
+  const r = singleResult.value
+  if (!r?.dailyValues || !r.dailyValues.length) return []
+  const startDate = r.SignalDate || ''
+  return r.dailyValues.map((v, i) => ({
+    date: startDate ? `${startDate.slice(0, 10)} +${i + 1}d` : `D${i + 1}`,
+    value: 1 + v,
+  }))
+})
+
+const singleBenchData = computed(() => {
+  const r = singleResult.value
+  if (!r?.benchmarkValues || !r.benchmarkValues.length) return undefined
+  const startDate = r.SignalDate || ''
+  return r.benchmarkValues.map((v, i) => ({
+    date: startDate ? `${startDate.slice(0, 10)} +${i + 1}d` : `D${i + 1}`,
+    value: 1 + v,
+  }))
 })
 
 const batchMetrics = computed(() => {
@@ -178,6 +201,17 @@ async function runBatch() {
 }
 
 // ── 策略回测 ──
+function returnGradient(v) {
+  const pct = v * 100
+  if (pct >= 10) return '#18a058'
+  if (pct >= 5) return '#63e2b7'
+  if (pct >= 1) return '#a5e8c5'
+  if (pct <= -10) return '#d03050'
+  if (pct <= -5) return '#e88080'
+  if (pct <= -1) return '#f0b0b0'
+  return '#909399'
+}
+
 const strategyColumns = [
   { title: '#', key: 'rank', width: 40,
     render: (_, index) => index + 1
@@ -192,7 +226,8 @@ const strategyColumns = [
   { title: '总收益率', key: 'totalReturn', width: 105,
     render: (r) => {
       const v = (r.totalReturn * 100).toFixed(2)
-      return h(NText, { type: r.totalReturn >= 0 ? 'success' : 'error' }, { default: () => `${v}%` })
+      const color = returnGradient(r.totalReturn)
+      return h(NText, { style: { color, fontWeight: 'bold' } }, { default: () => `${r.totalReturn >= 0 ? '+' : ''}${v}%` })
     }
   },
   { title: '结果', key: 'win', width: 60,
@@ -200,7 +235,18 @@ const strategyColumns = [
   },
   { title: '持仓', key: 'holdingDays', width: 60 },
   { title: '最大回撤', key: 'maxDrawdown', width: 100,
-    render: (r) => (r.maxDrawdown * 100).toFixed(2) + '%'
+    render: (r) => {
+      const dd = (r.maxDrawdown * 100).toFixed(2)
+      return h(NText, { style: { color: '#d03050' } }, { default: () => `${dd}%` })
+    }
+  },
+  { title: '收益风险比', key: 'rrRatio', width: 95,
+    render: (r) => {
+      const dd = Math.abs(r.maxDrawdown || 0.01)
+      const ratio = (r.totalReturn / dd).toFixed(2)
+      const c = parseFloat(ratio) >= 2 ? '#18a058' : parseFloat(ratio) >= 1 ? '#d48806' : '#d03050'
+      return h(NText, { style: { color: c, fontWeight: 'bold' } }, { default: () => ratio })
+    }
   },
   { title: '入场价', key: 'entryPrice', width: 90, render: (r) => r.entryPrice?.toFixed(2) },
   { title: '出场价', key: 'exitPrice', width: 90, render: (r) => r.exitPrice?.toFixed(2) },
@@ -391,21 +437,25 @@ const historyPagination = computed(() => {
                   <n-grid :cols="2" :x-gap="12" :y-gap="12">
                     <n-gi v-for="m in singleMetrics" :key="m.label">
                       <n-statistic :label="m.label" :tabular-nums="true">
-                        <n-number-animation
-                          v-if="m.raw > 0"
-                          :from="0"
-                          :to="m.raw"
-                          :duration="800"
-                        />
-                        <template v-else>
-                          {{ m.value }}
-                        </template>
+                        <n-text :style="{ color: m.color, fontWeight: 'bold', fontSize: '22px' }">
+                          <n-number-animation v-if="m.raw > 0" :from="0" :to="m.raw" :duration="800" />
+                          <template v-else>{{ m.value }}</template>
+                        </n-text>
                         <template #suffix>
-                          <n-text v-if="m.raw > 0" depth="3">%</n-text>
+                          <n-text :style="{ color: m.color }">%</n-text>
                         </template>
                       </n-statistic>
                     </n-gi>
                   </n-grid>
+                  <EquityCurve
+                    v-if="singleCurveData.length > 0"
+                    :daily-values="singleCurveData"
+                    :benchmark="singleBenchData"
+                    :dark="false"
+                    :height="200"
+                    :drawdown="false"
+                    title="策略净值曲线"
+                  />
                   <n-divider />
                   <n-grid :cols="3" :x-gap="12" :y-gap="8">
                     <n-gi>
