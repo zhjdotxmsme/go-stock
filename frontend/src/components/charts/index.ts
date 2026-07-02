@@ -1,0 +1,7 @@
+export { default as TrendLine } from './TrendLine.vue'
+export { default as DistributionHist } from './DistributionHist.vue'
+export { default as RadarChart } from './RadarChart.vue'
+export { default as BarCompare } from './BarCompare.vue'
+export { default as EquityCurve } from './EquityCurve.vue'
+export { default as MonthlyHeatmap } from './MonthlyHeatmap.vue'
+export { default as FactorBar } from './FactorBar.vue'
