@@ -6,6 +6,7 @@ import CommodityKlineChart from "./CommodityKlineChart.vue";
 const selectedCode = ref('XAUUSD')
 const selectedName = ref('现货黄金')
 const quotes = ref({})
+const errors = ref({})
 const registry = ref([])
 const loading = ref(false)
 const mainAssets = ref([
@@ -27,9 +28,11 @@ async function loadQuotes() {
       const q = await GetCommodityQuote(asset.code)
       if (q) {
         quotes.value[asset.code] = q
+        errors.value[asset.code] = ''
       }
     } catch (e) {
       console.error('quote error', asset.code, e)
+      errors.value[asset.code] = e.message || e
     }
   }
 }
@@ -75,6 +78,7 @@ onBeforeUnmount(() => {
             <div>
               <n-text depth="3">{{ asset.name }}</n-text>
               <div class="text-lg font-bold">{{ formatPrice(quotes[asset.code]?.Price) }}</div>
+              <div v-if="errors[asset.code]" class="text-xs text-red-500">{{ errors[asset.code] }}</div>
             </div>
             <div :class="quotes[asset.code]?.ChangePct >= 0 ? 'text-red-500' : 'text-green-500'">
               {{ formatPct(quotes[asset.code]?.ChangePct) }}

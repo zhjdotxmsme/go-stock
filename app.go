@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"go-stock/backend/agent"
 	"go-stock/backend/agent/multi"
+	"go-stock/backend/agent/commodity"
 	"go-stock/backend/agent/strategy"
 	"go-stock/backend/agent/skill_analysis"
 	"go-stock/backend/agent/tools"
@@ -1934,6 +1935,27 @@ func (a *App) NewChatStream(stock string, stockCode string, question string, aiC
 		Content: fmt.Sprintf("股票: %s(%s)\n问题: %s\n\n请打开 go-stock 查看完整分析报告。", stock, stockCode, question),
 		Stock:   stockCode,
 	})
+}
+
+func (a *App) NewCommodityAnalysisStream(code string, name string, question string, aiConfigId int) {
+	defer func() {
+		if err := recover(); err != nil {
+			logger.SugaredLogger.Errorf("NewCommodityAnalysisStream panic: %v", err)
+			runtime.EventsEmit(a.ctx, "commodityAnalysisStream", map[string]any{
+				"code":    0,
+				"content": fmt.Sprintf("商品分析异常: %v", err),
+			})
+			runtime.EventsEmit(a.ctx, "commodityAnalysisStream", "DONE")
+		}
+	}()
+
+	engine := commodity.NewCommodityEngine(aiConfigId)
+	resultCh := engine.Run(a.ctx, code, name, question)
+
+	for msg := range resultCh {
+		runtime.EventsEmit(a.ctx, "commodityAnalysisStream", msg)
+	}
+	runtime.EventsEmit(a.ctx, "commodityAnalysisStream", "DONE")
 }
 
 func (a *App) GetAllStrategies() []*strategy.Strategy {
