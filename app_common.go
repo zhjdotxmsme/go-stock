@@ -397,6 +397,14 @@ func (a *App) UpdateAiRecommendStocksAlert(id uint, enableAlert bool) string {
 	return "更新预警状态成功"
 }
 
+func (a *App) GetAiRecommendStats() *data.AiRecommendStats {
+	stats, err := data.NewAiRecommendStocksService().GetAiRecommendStats()
+	if err != nil {
+		return &data.AiRecommendStats{}
+	}
+	return stats
+}
+
 func (a *App) GetPromptTemplateList(query models.PromptTemplateQuery) *models.PromptTemplatePageData {
 	page, err := data.NewPromptTemplateApi().GetPromptTemplateList(&query)
 	if err != nil {

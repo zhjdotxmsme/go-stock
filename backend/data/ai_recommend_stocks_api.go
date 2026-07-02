@@ -2,8 +2,10 @@
 package data
 
 import (
+	"fmt"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
+	"math"
 	"time"
 
 	"github.com/duke-git/lancet/v2/datetime"
@@ -172,4 +174,120 @@ func (s *AiRecommendStocksService) BatchDeleteAiRecommendStocks(ids []uint) erro
 	// 使用软删除
 	result := db.Dao.Where("id IN ?", ids).Delete(&models.AiRecommendStocks{})
 	return result.Error
+}
+
+// ── Stats ──
+
+type ModelStat struct {
+	ModelName string  `json:"modelName"`
+	WinRate   float64 `json:"winRate"`
+	AvgReturn float64 `json:"avgReturn"`
+	Count     int     `json:"count"`
+}
+
+type SectorStat struct {
+	BkName string `json:"bkName"`
+	Count  int    `json:"count"`
+}
+
+type DailyCount struct {
+	Date  string `json:"date"`
+	Count int    `json:"count"`
+}
+
+type AiRecommendStats struct {
+	ByModel    []ModelStat  `json:"byModel"`
+	BySector   []SectorStat `json:"bySector"`
+	DailyCount []DailyCount `json:"dailyCount"`
+}
+
+func parsePrice(s string) float64 {
+	if s == "" {
+		return 0
+	}
+	var v float64
+	if _, err := fmt.Sscanf(s, "%f", &v); err == nil {
+		return v
+	}
+	return 0
+}
+
+func (s *AiRecommendStocksService) GetAiRecommendStats() (*AiRecommendStats, error) {
+	var all []models.AiRecommendStocks
+	if err := db.Dao.Model(&models.AiRecommendStocks{}).Find(&all).Error; err != nil {
+		return nil, err
+	}
+	if len(all) == 0 {
+		return &AiRecommendStats{}, nil
+	}
+
+	// ByModel
+	modelMap := make(map[string]struct{ wins int; total int; retSum float64 })
+	for _, r := range all {
+		key := r.ModelName
+		if key == "" {
+			key = "unknown"
+		}
+		entry := modelMap[key]
+		entry.total++
+		current := parsePrice(r.StockCurrentPrice)
+		orig := parsePrice(r.StockPrice)
+		if orig > 0 && current > 0 {
+			if current > orig {
+				entry.wins++
+			}
+			entry.retSum += (current - orig) / orig
+		}
+		modelMap[key] = entry
+	}
+	var byModel []ModelStat
+	for name, m := range modelMap {
+		wr := 0.0
+		if m.total > 0 {
+			wr = float64(m.wins) / float64(m.total) * 100
+		}
+		avgRet := 0.0
+		if m.total > 0 {
+			avgRet = m.retSum / float64(m.total) * 100
+		}
+		byModel = append(byModel, ModelStat{
+			ModelName: name,
+			WinRate:   math.Round(wr*10) / 10,
+			AvgReturn: math.Round(avgRet*10) / 10,
+			Count:     m.total,
+		})
+	}
+
+	// BySector
+	sectorMap := make(map[string]int)
+	for _, r := range all {
+		key := r.BkName
+		if key == "" {
+			key = "未知"
+		}
+		sectorMap[key]++
+	}
+	var bySector []SectorStat
+	for name, cnt := range sectorMap {
+		bySector = append(bySector, SectorStat{BkName: name, Count: cnt})
+	}
+
+	// DailyCount
+	dayMap := make(map[string]int)
+	for _, r := range all {
+		if r.DataTime != nil {
+			day := r.DataTime.Format("2006-01-02")
+			dayMap[day]++
+		}
+	}
+	var dailyCount []DailyCount
+	for d, cnt := range dayMap {
+		dailyCount = append(dailyCount, DailyCount{Date: d, Count: cnt})
+	}
+
+	return &AiRecommendStats{
+		ByModel:    byModel,
+		BySector:   bySector,
+		DailyCount: dailyCount,
+	}, nil
 }

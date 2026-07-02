@@ -35,6 +35,8 @@ type Result struct {
 	Alpha           float64
 	Win             bool
 	SlippageWarning string
+	DailyValues     []float64 `json:"dailyValues"`
+	BenchmarkValues []float64 `json:"benchmarkValues"`
 }
 
 type Engine struct {
@@ -156,8 +158,11 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 
 	// T+1 约束：bars[0] 为买入日（信号日），从 i=1 开始检查退出
 	// 确保买入当日不可卖出
+	var dailyValues []float64
 	for i := 1; i < len(bars) && i <= in.HoldingDays; i++ {
 		bar := bars[i]
+		dailyValues = append(dailyValues, (bar.Close-entry)/entry)
+
 		if bar.High > maxPrice {
 			maxPrice = bar.High
 		}
@@ -201,9 +206,13 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 	}
 
 	benchRet := 0.0
+	var benchValues []float64
 	benchBars, _ := e.store.QueryKLines(ctx, in.Benchmark, "day", in.SignalDate, bars[exitIdx].TradeDate, in.Adjusted)
 	if len(benchBars) >= 2 {
 		benchRet = (benchBars[len(benchBars)-1].Close - benchBars[0].Close) / benchBars[0].Close
+		for i := 1; i < len(benchBars) && i <= exitIdx; i++ {
+			benchValues = append(benchValues, (benchBars[i].Close-benchBars[0].Close)/benchBars[0].Close)
+		}
 	}
 
 	return &Result{
@@ -219,5 +228,7 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 		Alpha:           ret - benchRet,
 		Win:             ret > 0,
 		SlippageWarning: warning,
+		DailyValues:     dailyValues,
+		BenchmarkValues: benchValues,
 	}, nil
 }
