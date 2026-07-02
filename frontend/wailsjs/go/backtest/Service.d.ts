@@ -9,11 +9,15 @@ export function GetKLineCacheStats():Promise<Record<string, any>>;
 
 export function GetLastSeedImportOutput():Promise<string>;
 
+export function GetOptimizationPresets():Promise<Record<string, any>>;
+
 export function GetSeedImportStatus():Promise<Record<string, any>>;
 
 export function GetSyncProgress():Promise<Array<backtest.syncTaskItem>>;
 
 export function RunBatchBacktest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean,arg6:number,arg7:number,arg8:number,arg9:number):Promise<backtest.BatchResult>;
+
+export function RunOptimization(arg1:backtest.OptimizationInput):Promise<Array<backtest.OptimizationResult>>;
 
 export function RunSeedImport(arg1:string,arg2:string,arg3:string,arg4:number):Promise<string>;
 

@@ -14,6 +14,10 @@ export function GetLastSeedImportOutput() {
   return window['go']['backtest']['Service']['GetLastSeedImportOutput']();
 }
 
+export function GetOptimizationPresets() {
+  return window['go']['backtest']['Service']['GetOptimizationPresets']();
+}
+
 export function GetSeedImportStatus() {
   return window['go']['backtest']['Service']['GetSeedImportStatus']();
 }
@@ -24,6 +28,10 @@ export function GetSyncProgress() {
 
 export function RunBatchBacktest(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
   return window['go']['backtest']['Service']['RunBatchBacktest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
+}
+
+export function RunOptimization(arg1) {
+  return window['go']['backtest']['Service']['RunOptimization'](arg1);
 }
 
 export function RunSeedImport(arg1, arg2, arg3, arg4) {

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, reactive, h, onMounted } from 'vue'
-import { RunSingleBacktest, RunBatchBacktest, GetBacktestResults } from '../../wailsjs/go/backtest/Service'
+import { RunSingleBacktest, RunBatchBacktest, GetBacktestResults, RunOptimization, GetOptimizationPresets } from '../../wailsjs/go/backtest/Service'
 import { RunBacktestForDailyPicks } from '../../wailsjs/go/service/DailyPickBacktestService'
 import { GetStockList } from '../../wailsjs/go/main/App'
 import {
@@ -57,6 +57,26 @@ const strategyForm = reactive({
   stopLoss: 0.05,
   stopProfit: 0.1,
   adjusted: true,
+})
+
+const optLoading = ref(false)
+const optResults = ref(null)
+const optError = ref('')
+const optStockOptions = ref([])
+const optForm = reactive({
+  stockCode: '',
+  startDate: null,
+  endDate: null,
+  adjusted: true,
+  entryPrice: 0,
+  holdingDaysValues: '5,10,20,40,60',
+  stopLossValues: '0.03,0.05,0.08,0.12',
+  stopProfitValues: '0.10,0.15,0.20,0.30',
+  sharpeWeight: 0.3,
+  winRateWeight: 0.3,
+  returnWeight: 0.3,
+  drawdownPenalty: 0.1,
+  topN: 10,
 })
 
 // ── 股票搜索自动补全 ──
@@ -197,6 +217,97 @@ async function runBatch() {
     message.error('批量回测失败: ' + String(e))
   } finally {
     batchLoading.value = false
+  }
+}
+
+function parseNumList(str) {
+  return str.split(',').map(s => parseFloat(s.trim())).filter(v => !isNaN(v))
+}
+
+const optColumns = [
+  { title: '排名', key: 'rank', width: 60, render: (row, idx) => idx + 1 },
+  { title: '持仓天数', key: 'holdingDays', width: 80, render: row => row.params?.holdingDays ?? '-' },
+  { title: '止损', key: 'stopLoss', width: 70, render: row => pct(row.params?.stopLoss) },
+  { title: '止盈', key: 'stopProfit', width: 70, render: row => pct(row.params?.stopProfit) },
+  { title: '综合评分', key: 'objectiveScore', width: 90, sorter: 'default', render: row => row.objectiveScore?.toFixed(3) },
+  { title: '胜率', key: 'winRate', width: 70, render: row => pct(row.winRate) },
+  { title: '均收益', key: 'avgReturn', width: 80, render: row => pct(row.avgReturn) },
+  { title: '夏普', key: 'sharpeRatio', width: 70, render: row => row.sharpeRatio?.toFixed(2) ?? '-' },
+  { title: '最大回撤', key: 'maxDrawdown', width: 80, render: row => pct(row.maxDrawdown) },
+  { title: '回测数', key: 'totalTrades', width: 70 },
+]
+
+async function runOptimization() {
+  if (!optForm.stockCode) {
+    message.warning('请输入股票代码')
+    return
+  }
+  optLoading.value = true
+  optError.value = ''
+  optResults.value = null
+  try {
+    const holdingDaysVals = parseNumList(optForm.holdingDaysValues)
+    const stopLossVals = parseNumList(optForm.stopLossValues)
+    const stopProfitVals = parseNumList(optForm.stopProfitValues)
+    if (holdingDaysVals.length === 0 || stopLossVals.length === 0 || stopProfitVals.length === 0) {
+      message.warning('参数值不能为空')
+      optLoading.value = false
+      return
+    }
+    const combos = holdingDaysVals.length * stopLossVals.length * stopProfitVals.length
+    if (combos > 256) {
+      message.warning(`组合数 ${combos} 超过上限 256，请减少参数值`)
+      optLoading.value = false
+      return
+    }
+    const input = {
+      stockCode: optForm.stockCode,
+      startDate: fmtDate(optForm.startDate),
+      endDate: fmtDate(optForm.endDate),
+      period: 'day',
+      adjusted: optForm.adjusted,
+      entryPrice: optForm.entryPrice,
+      paramSpace: {
+        ranges: [
+          { name: 'holdingDays', values: holdingDaysVals },
+          { name: 'stopLoss', values: stopLossVals },
+          { name: 'stopProfit', values: stopProfitVals },
+        ],
+      },
+      objective: {
+        sharpeWeight: optForm.sharpeWeight,
+        winRateWeight: optForm.winRateWeight,
+        returnWeight: optForm.returnWeight,
+        drawdownPenalty: optForm.drawdownPenalty,
+      },
+      topN: optForm.topN,
+    }
+    const res = await RunOptimization(input)
+    optResults.value = res
+    message.success(`优化完成，返回 ${res.length} 组结果`)
+  } catch (e) {
+    optError.value = String(e)
+    message.error('优化失败: ' + String(e))
+  } finally {
+    optLoading.value = false
+  }
+}
+
+async function applyOptPreset(name) {
+  try {
+    const data = await GetOptimizationPresets()
+    const presets = data.presets
+    if (presets && presets[name]) {
+      const ps = presets[name]
+      for (const r of ps.ranges) {
+        if (r.name === 'holdingDays') optForm.holdingDaysValues = r.values.join(',')
+        if (r.name === 'stopLoss') optForm.stopLossValues = r.values.join(',')
+        if (r.name === 'stopProfit') optForm.stopProfitValues = r.values.join(',')
+      }
+      message.info(`已加载预设: ${name}`)
+    }
+  } catch (e) {
+    // silent fallback
   }
 }
 
@@ -678,6 +789,102 @@ const historyPagination = computed(() => {
             暂无回测历史记录
           </n-text>
         </n-flex>
+      </n-tab-pane>
+
+      <n-tab-pane name="optimize" tab="参数优化">
+        <n-grid :cols="24" :x-gap="16">
+          <n-gi :span="8">
+            <n-card title="优化设置" size="small">
+              <n-form label-placement="left" label-width="90">
+                <n-form-item label="股票代码">
+                  <n-auto-complete
+                    v-model:value="optForm.stockCode"
+                    :options="optStockOptions"
+                    placeholder="搜索股票名称或代码"
+                    clearable
+                    :input-props="{ autocomplete: 'disabled' }"
+                    :on-select="(val) => optForm.stockCode = val"
+                    @update:value="(val) => findStockList(optStockOptions, val)"
+                  />
+                </n-form-item>
+                <n-form-item label="开始日期">
+                  <n-date-picker v-model:value="optForm.startDate" type="date" style="width: 100%" />
+                </n-form-item>
+                <n-form-item label="结束日期">
+                  <n-date-picker v-model:value="optForm.endDate" type="date" style="width: 100%" />
+                </n-form-item>
+                <n-form-item label="前复权">
+                  <n-switch v-model:value="optForm.adjusted" />
+                </n-form-item>
+                <n-divider style="margin: 8px 0">参数搜索空间</n-divider>
+                <n-space>
+                  <n-button size="small" @click="applyOptPreset('保守')">保守</n-button>
+                  <n-button size="small" @click="applyOptPreset('均衡')">均衡</n-button>
+                  <n-button size="small" @click="applyOptPreset('激进')">激进</n-button>
+                </n-space>
+                <n-form-item label="持仓天数">
+                  <n-input v-model:value="optForm.holdingDaysValues" placeholder="5,10,20,40,60" />
+                </n-form-item>
+                <n-form-item label="止损范围">
+                  <n-input v-model:value="optForm.stopLossValues" placeholder="0.03,0.05,0.08,0.12" />
+                </n-form-item>
+                <n-form-item label="止盈范围">
+                  <n-input v-model:value="optForm.stopProfitValues" placeholder="0.10,0.15,0.20,0.30" />
+                </n-form-item>
+                <n-divider style="margin: 8px 0">目标函数权重</n-divider>
+                <n-form-item label="夏普权重">
+                  <n-input-number v-model:value="optForm.sharpeWeight" :min="0" :max="1" :step="0.05" style="width: 100%" />
+                </n-form-item>
+                <n-form-item label="胜率权重">
+                  <n-input-number v-model:value="optForm.winRateWeight" :min="0" :max="1" :step="0.05" style="width: 100%" />
+                </n-form-item>
+                <n-form-item label="收益权重">
+                  <n-input-number v-model:value="optForm.returnWeight" :min="0" :max="1" :step="0.05" style="width: 100%" />
+                </n-form-item>
+                <n-form-item label="回撤惩罚">
+                  <n-input-number v-model:value="optForm.drawdownPenalty" :min="0" :max="1" :step="0.05" style="width: 100%" />
+                </n-form-item>
+                <n-form-item label="返回TopN">
+                  <n-input-number v-model:value="optForm.topN" :min="1" :max="50" style="width: 100%" />
+                </n-form-item>
+              </n-form>
+              <n-button type="warning" @click="runOptimization" :loading="optLoading" :disabled="!optForm.stockCode" style="width: 100%">
+                启动参数优化
+              </n-button>
+            </n-card>
+          </n-gi>
+          <n-gi :span="16">
+            <n-card title="优化结果" size="small">
+              <n-spin :show="optLoading">
+                <template v-if="optError">
+                  <n-alert type="error" closable @close="optError = ''">
+                    {{ optError }}
+                  </n-alert>
+                </template>
+                <template v-else-if="optResults && optResults.length > 0">
+                  <n-data-table
+                    :columns="optColumns"
+                    :data="optResults"
+                    :bordered="true"
+                    :single-line="false"
+                    size="small"
+                    :max-height="500"
+                  />
+                </template>
+                <template v-else-if="optResults && optResults.length === 0">
+                  <div style="padding: 40px 0; text-align: center">
+                    <n-text depth="3">无有效结果，请检查参数或数据范围</n-text>
+                  </div>
+                </template>
+                <template v-else>
+                  <div style="padding: 40px 0; text-align: center">
+                    <n-text depth="3">设置参数范围后点击「启动参数优化」</n-text>
+                  </div>
+                </template>
+              </n-spin>
+            </n-card>
+          </n-gi>
+        </n-grid>
       </n-tab-pane>
     </n-tabs>
   </div>

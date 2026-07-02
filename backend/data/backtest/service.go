@@ -292,6 +292,29 @@ func (s *Service) GetLastSeedImportOutput() (string, error) {
 	return seedImportOutput, nil
 }
 
+// RunOptimization runs grid search parameter optimization and returns ranked results.
+func (s *Service) RunOptimization(input OptimizationInput) ([]OptimizationResult, error) {
+	ctx := context.Background()
+	results, err := RunGridSearch(ctx, input)
+	if err != nil {
+		logger.SugaredLogger.Errorf("optimization failed: %v", err)
+		return nil, err
+	}
+	if len(results) > 0 {
+		logger.SugaredLogger.Infof("optimization for %s: %d results, best score=%.3f params=%v",
+			input.StockCode, len(results), results[0].ObjectiveScore, results[0].Params)
+	}
+	return results, nil
+}
+
+// GetOptimizationPresets returns preset parameter spaces and default objective config.
+func (s *Service) GetOptimizationPresets() (map[string]any, error) {
+	return map[string]any{
+		"presets":  PresetParamSpaces(),
+		"objective": DefaultObjective(),
+	}, nil
+}
+
 func (s *Service) GetKLineCacheStats() (map[string]any, error) {
 	ctx := context.Background()
 	var totalBars int64
