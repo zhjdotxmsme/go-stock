@@ -62,7 +62,6 @@ const strategyForm = reactive({
 const optLoading = ref(false)
 const optResults = ref(null)
 const optError = ref('')
-const optStockOptions = ref([])
 const optForm = reactive({
   stockCode: '',
   startDate: null,
@@ -80,17 +79,19 @@ const optForm = reactive({
 })
 
 // ── 股票搜索自动补全 ──
+// 单一共享 options ref：3 个输入框共用一份过滤结果。
+// 关键：handler 必须是顶层函数引用（不要用内联箭头），否则 Vue 模板
+// 编译时会解包 ref，导致函数收到的不是 ref 而是普通数组，赋值不触发响应式。
 const stockList = ref([])
-const singleStockOptions = ref([])
-const batchStockOptions = ref([])
+const stockOptions = ref([])
 
-function findStockList(formOptions, query) {
+function findStockList(query) {
   if (!query || query.trim().length < 2) {
-    formOptions.value = []
+    stockOptions.value = []
     return
   }
   const q = query.trim()
-  formOptions.value = stockList.value
+  stockOptions.value = stockList.value
     .filter(item =>
       item.name.includes(q) || item.ts_code.includes(q)
     )
@@ -450,12 +451,6 @@ async function loadHistory(page = 1) {
   }
 }
 
-function buildOptions(raw) {
-  return raw.map(item => ({
-    label: item.name + ' - ' + item.ts_code,
-    value: item.ts_code,
-  }))
-}
 
 onMounted(() => {
   // Suppress ResizeObserver loop warning in Wails WebView2
@@ -468,9 +463,8 @@ onMounted(() => {
   GetStockList('').then(result => {
     const list = result || []
     stockList.value = list
-    singleStockOptions.value = buildOptions(list)
-    batchStockOptions.value = buildOptions(list)
-    optStockOptions.value = buildOptions(list)
+    // 选项初始为空，由 @update:value → findStockList 按需填充
+    stockOptions.value = []
   }).catch(err => {
     console.error('GetStockList error:', err)
   })
@@ -502,12 +496,12 @@ const historyPagination = computed(() => {
                 <n-form-item label="股票代码">
                   <n-auto-complete
                     v-model:value="singleForm.stockCode"
-                    :options="singleStockOptions"
+                    :options="stockOptions"
                     placeholder="搜索股票名称或代码"
                     clearable
                     :input-props="{ autocomplete: 'disabled' }"
                     :on-select="(val) => handleSelectStock(singleForm, val)"
-                    @update-value="(val) => findStockList(singleStockOptions, val)"
+                    @update:value="findStockList"
                   />
                 </n-form-item>
                 <n-form-item label="信号日期">
@@ -620,12 +614,12 @@ const historyPagination = computed(() => {
                 <n-form-item label="股票代码">
                   <n-auto-complete
                     v-model:value="batchForm.stockCode"
-                    :options="batchStockOptions"
+                    :options="stockOptions"
                     placeholder="搜索股票名称或代码"
                     clearable
                     :input-props="{ autocomplete: 'disabled' }"
                     :on-select="(val) => handleSelectStock(batchForm, val)"
-                    @update-value="(val) => findStockList(batchStockOptions, val)"
+                    @update:value="findStockList"
                   />
                 </n-form-item>
                 <n-form-item label="开始日期">
@@ -800,12 +794,12 @@ const historyPagination = computed(() => {
                 <n-form-item label="股票代码">
                   <n-auto-complete
                     v-model:value="optForm.stockCode"
-                    :options="optStockOptions"
+                    :options="stockOptions"
                     placeholder="搜索股票名称或代码"
                     clearable
                     :input-props="{ autocomplete: 'disabled' }"
                     :on-select="(val) => optForm.stockCode = val"
-                    @update:value="(val) => findStockList(optStockOptions, val)"
+                    @update:value="findStockList"
                   />
                 </n-form-item>
                 <n-form-item label="开始日期">

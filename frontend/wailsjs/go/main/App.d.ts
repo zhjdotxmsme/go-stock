@@ -166,7 +166,11 @@ export function GetCommodityFundamentals(arg1:string):Promise<string>;
 
 export function GetCommodityKLine(arg1:string,arg2:string,arg3:number):Promise<Array<datasource.KLineBar>>;
 
+export function GetCommodityKLineIntl(arg1:string,arg2:string,arg3:number):Promise<Array<datasource.KLineBar>>;
+
 export function GetCommodityQuote(arg1:string):Promise<datasource.QuoteData>;
+
+export function GetCommodityQuoteIntl(arg1:string):Promise<datasource.QuoteData>;
 
 export function GetCommodityRegistry():Promise<Array<models.CommodityAsset>>;
 

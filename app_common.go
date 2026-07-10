@@ -572,9 +572,19 @@ func (a *App) GetCommodityKLine(code string, period string, count int) ([]dataso
 	return api.GetKLine(code, period, count)
 }
 
+func (a *App) GetCommodityKLineIntl(code string, period string, count int) ([]datasource.KLineBar, error) {
+	api := data.NewCommodityApi()
+	return api.GetKLineIntl(code, period, count)
+}
+
 func (a *App) GetCommodityQuote(code string) (*datasource.QuoteData, error) {
 	api := data.NewCommodityApi()
 	return api.GetQuote(code)
+}
+
+func (a *App) GetCommodityQuoteIntl(code string) (*datasource.QuoteData, error) {
+	api := data.NewCommodityApi()
+	return api.GetQuoteIntl(code)
 }
 
 func (a *App) GetCommodityRegistry() []models.CommodityAsset {

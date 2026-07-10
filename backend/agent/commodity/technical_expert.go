@@ -89,6 +89,9 @@ func (e *TechnicalExpert) buildTechnicalIndicators(klines []datasource.KLineBar)
 	ma60 := calcSMA(closes, 60)
 
 	rsi14 := calcRSI(closes, 14)
+	macd, macdSignal, macdHist := calcMACD(closes, 12, 26, 9)
+	atr14 := calcATR(klines, 14)
+	bbMiddle, bbUpper, bbLower, bbWidth := calcBollinger(closes, 20, 2)
 
 	lastClose := closes[len(closes)-1]
 
@@ -123,8 +126,13 @@ func (e *TechnicalExpert) buildTechnicalIndicators(klines []datasource.KLineBar)
 
 	result += "### 技术指标\n"
 	result += fmt.Sprintf("RSI(14): %.1f  |  %s\n", rsi14, rsiLabel(rsi14))
+	result += fmt.Sprintf("MACD(12,26,9): %.2f | Signal: %.2f | Histogram: %.2f\n", macd, macdSignal, macdHist)
+	result += fmt.Sprintf("MACD状态: %s\n", macdLabel(macd, macdSignal, macdHist))
+	result += fmt.Sprintf("ATR(14): %.2f\n", atr14)
+	result += fmt.Sprintf("Bollinger(20,2): 上轨 %.2f | 中轨 %.2f | 下轨 %.2f | 带宽 %.2f%%\n", bbUpper, bbMiddle, bbLower, bbWidth*100)
+	result += fmt.Sprintf("布林带状态: %s\n\n", bollingerLabel(lastClose, bbUpper, bbMiddle, bbLower))
 
-	result += "\n### 支撑与压力\n"
+	result += "### 支撑与压力\n"
 	result += fmt.Sprintf("近期压力位(20日高): %.2f\n", periodHigh)
 	result += fmt.Sprintf("近期支撑位(20日低): %.2f\n", periodLow)
 	result += fmt.Sprintf("历史最高: %.2f\n", allHigh)
@@ -144,6 +152,141 @@ func (e *TechnicalExpert) buildTechnicalIndicators(klines []datasource.KLineBar)
 	}
 
 	return result + klinePreview
+}
+
+func calcEMA(data []float64, period int) float64 {
+	if len(data) < period || period <= 0 {
+		return 0
+	}
+	multiplier := 2.0 / (float64(period) + 1)
+	ema := data[0]
+	for i := 1; i < len(data); i++ {
+		ema = (data[i]-ema)*multiplier + ema
+	}
+	return math.Round(ema*100) / 100
+}
+
+func calcMACD(data []float64, fastPeriod, slowPeriod, signalPeriod int) (macd, signal, hist float64) {
+	if len(data) < slowPeriod+signalPeriod {
+		return 0, 0, 0
+	}
+
+	// Calculate EMAs for the entire series
+	emaFast := make([]float64, len(data))
+	emaSlow := make([]float64, len(data))
+	multiplierFast := 2.0 / (float64(fastPeriod) + 1)
+	multiplierSlow := 2.0 / (float64(slowPeriod) + 1)
+
+	emaFast[0] = data[0]
+	emaSlow[0] = data[0]
+	for i := 1; i < len(data); i++ {
+		emaFast[i] = (data[i]-emaFast[i-1])*multiplierFast + emaFast[i-1]
+		emaSlow[i] = (data[i]-emaSlow[i-1])*multiplierSlow + emaSlow[i-1]
+	}
+
+	macdLine := make([]float64, len(data))
+	for i := 0; i < len(data); i++ {
+		macdLine[i] = emaFast[i] - emaSlow[i]
+	}
+
+	// Calculate signal line (EMA of MACD line)
+	signalLine := make([]float64, len(data))
+	signalLine[0] = macdLine[0]
+	multiplierSignal := 2.0 / (float64(signalPeriod) + 1)
+	for i := 1; i < len(data); i++ {
+		signalLine[i] = (macdLine[i]-signalLine[i-1])*multiplierSignal + signalLine[i-1]
+	}
+
+	macd = math.Round(macdLine[len(macdLine)-1]*100) / 100
+	signal = math.Round(signalLine[len(signalLine)-1]*100) / 100
+	hist = math.Round((macd-signal)*100) / 100
+	return macd, signal, hist
+}
+
+func calcATR(klines []datasource.KLineBar, period int) float64 {
+	if len(klines) < period+1 {
+		return 0
+	}
+	trueRanges := make([]float64, len(klines))
+	trueRanges[0] = klines[0].High - klines[0].Low
+	for i := 1; i < len(klines); i++ {
+		tr1 := klines[i].High - klines[i].Low
+		tr2 := math.Abs(klines[i].High - klines[i-1].Close)
+		tr3 := math.Abs(klines[i].Low - klines[i-1].Close)
+		trueRanges[i] = math.Max(tr1, math.Max(tr2, tr3))
+	}
+
+	// Wilder's smoothing
+	atr := 0.0
+	for i := len(trueRanges) - period; i < len(trueRanges); i++ {
+		atr += trueRanges[i]
+	}
+	atr /= float64(period)
+	return math.Round(atr*100) / 100
+}
+
+func calcBollinger(data []float64, period int, stdDevFactor float64) (middle, upper, lower, width float64) {
+	if len(data) < period {
+		return 0, 0, 0, 0
+	}
+	middle = calcSMA(data, period)
+
+	// Calculate standard deviation
+	sum := 0.0
+	for i := len(data) - period; i < len(data); i++ {
+		diff := data[i] - middle
+		sum += diff * diff
+	}
+	stdDev := math.Sqrt(sum / float64(period))
+
+	upper = middle + stdDevFactor*stdDev
+	lower = middle - stdDevFactor*stdDev
+	width = (upper - lower) / middle
+
+	upper = math.Round(upper*100) / 100
+	lower = math.Round(lower*100) / 100
+	width = math.Round(width*1000) / 1000
+	return middle, upper, lower, width
+}
+
+func macdLabel(macd, signal, hist float64) string {
+	if hist == 0 {
+		return "无数据"
+	}
+	if hist > 0 {
+		if macd > 0 {
+			return "MACD 在零轴上方，多头动能"
+		}
+		return "MACD 金叉向上，可能转多"
+	}
+	if macd < 0 {
+		return "MACD 在零轴下方，空头动能"
+	}
+	return "MACD 死叉向下，可能转空"
+}
+
+func bollingerLabel(price, upper, middle, lower float64) string {
+	if price == 0 || upper == 0 || lower == 0 {
+		return "无数据"
+	}
+	if price > upper {
+		return "突破上轨（超买）"
+	}
+	if price < lower {
+		return "跌破下轨（超卖）"
+	}
+	bandRange := upper - lower
+	if bandRange == 0 {
+		return "无数据"
+	}
+	position := (price - lower) / bandRange
+	if position > 0.8 {
+		return "接近上轨（偏强）"
+	}
+	if position < 0.2 {
+		return "接近下轨（偏弱）"
+	}
+	return "位于中轨附近（震荡）"
 }
 
 func calcSMA(data []float64, period int) float64 {

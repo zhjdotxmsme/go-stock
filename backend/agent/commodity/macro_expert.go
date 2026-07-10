@@ -22,6 +22,7 @@ func (e *MacroExpert) Role() string { return "macro" }
 
 func (e *MacroExpert) Run(ctx context.Context, cc *CommodityContext) (*ExpertReport, error) {
 	commodityApi := data.NewCommodityApi()
+	fredApi := data.NewFredApi()
 
 	macro, err := commodityApi.GetMacroIndicators()
 	dataStr := fmt.Sprintf("品种: %s(%s)\n\n## 宏观指标\n", cc.Name, cc.Code)
@@ -37,6 +38,47 @@ func (e *MacroExpert) Run(ctx context.Context, cc *CommodityContext) (*ExpertRep
 			spread := macro.US10YR - macro.US2YR
 			dataStr += fmt.Sprintf("2s10s利差: %.4f%%\n", spread)
 		}
+	}
+
+	// Fetch TIPS from FRED
+	tipsRate, tipsErr := fredApi.GetTIPSRate()
+	if tipsErr == nil {
+		realRate := data.CalculateRealRate(macro.US10YR, tipsRate)
+		dataStr += fmt.Sprintf("\n## 实际利率（TIPS）\n")
+		dataStr += fmt.Sprintf("10年TIPS收益率: %.4f%%\n", tipsRate)
+		dataStr += fmt.Sprintf("10年实际利率: %.4f%%\n", realRate)
+		
+		// TIPS interpretation
+		tipsSignal := ""
+		switch {
+		case realRate > 2:
+			tipsSignal = "实际利率处于高位（>2%），持有黄金的机会成本较高，对黄金形成压力"
+		case realRate < 0:
+			tipsSignal = "实际利率为负，持有黄金相对现金有优势，对黄金形成支撑"
+		default:
+			tipsSignal = "实际利率处于正常区间"
+		}
+		dataStr += fmt.Sprintf("实际利率解读: %s\n", tipsSignal)
+	} else {
+		dataStr += fmt.Sprintf("\n## 实际利率（TIPS）\n")
+		dataStr += fmt.Sprintf("TIPS数据获取失败: %v\n\n注：实际利率是影响黄金价格的关键宏观指标\n", tipsErr)
+	}
+
+	// Fetch break-even inflation
+	beInflation, beErr := fredApi.GetBreakEvenInflation()
+	if beErr == nil {
+		dataStr += fmt.Sprintf("\n## 通胀预期\n")
+		dataStr += fmt.Sprintf("5年盈亏平衡通胀: %.4f%%\n", beInflation)
+		beSignal := ""
+		switch {
+		case beInflation > 2.5:
+			beSignal = "通胀预期较高（>2.5%），对黄金白银形成支撑"
+		case beInflation < 2:
+			beSignal = "通胀预期较低（<2%），可能抑制贵金属需求"
+		default:
+			beSignal = "通胀预期处于正常区间"
+		}
+		dataStr += fmt.Sprintf("通胀预期解读: %s\n", beSignal)
 	}
 
 	chatModel, err := multi.GetChatModelWithTier(ctx, "macro", multi.LLMTierQuick, cc.AIConfigID)

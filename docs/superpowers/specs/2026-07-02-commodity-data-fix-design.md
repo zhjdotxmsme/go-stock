@@ -1,6 +1,6 @@
-# 大宗商品数据修复设计
+# 大宗商品数据修复设计（v2）
 
-> 修复 go-stock 中黄金、白银、原油数据不可用的问题，为后续多专家 AI 分析框架打好基础。
+> 修复 go-stock 中大宗商品数据源问题，替换为网络上可用数据源，并保留国际参考。
 > 日期：2026-07-02
 
 ---
@@ -9,57 +9,47 @@
 
 ### 1.1 目标
 
-- 修复 `commodity.vue` 页面中现货黄金/白银/原油、国内商品期货、商品 ETF 的行情与 K 线数据不可用问题。
-- 为每类资产提供至少一个可靠数据源，并增加主备 fallback。
-- 前端不再静默显示 `--`，而是明确展示数据状态与错误原因。
-- 建立后端单元测试，确保 3 类资产（现货/期货/ETF）的行情与 K 线至少有一个数据源可返回有效数据。
+- 修复 `commodity.vue` 页面中现货黄金/白银/原油、国内商品期货、商品 ETF 的行情与 K 线数据不可靠问题。
+- 关键修复：**国内期货 AU/AG/SC 目前返回的是 COMEX 国际价格（如 GC=F），需要修正为上期所/能源交易中心的人民币价格**。
+- 为每类资产提供主备 fallback，单点失败可切换。
+- 保留"国际参考"切换，允许用户对比 COMEX 国际价格。
+- 前端明确展示数据状态、错误原因与数据来源。
 
 ### 1.2 核心设计原则
 
-- **数据优先**：没有可靠数据，后续 AI 分析无意义。
-- **最小改动**：优先修复现有链路，不引入外部语言依赖（不新增 Python 依赖）。
-- **主备冗余**：每个资产类型至少 2 个独立数据源，单点失败可 fallback。
-- **错误可见**：前端展示具体错误，便于用户排查网络/数据源问题。
-- **可测试**：新增单元测试覆盖关键数据解析逻辑。
+- **数据正确优先**：错误数据比无数据更危险。
+- **主备冗余**：每个资产类型至少 2 个独立数据源。
+- **错误可见**：前端展示具体错误与当前使用的数据源。
+- **最小依赖**：不引入外部语言依赖，优先复用已有 Go 代码。
+- **可测试**：重写错误测试，新增关键解析单元测试。
 
 ---
 
-## 2. 当前状态与根因分析
+## 2. 当前状态与根因
 
-### 2.1 现有数据链路
+### 2.1 当前数据链路
 
 ```
 GetQuote(code)
-  ├── AssetSpot   → WallStreetCN API      → XAUUSD / XAGUSD / USCL
-  ├── AssetFutures → Sina Finance API      → AU / AG / SC
-  └── AssetETF    → StockDataApi          → 518880 / 159930 / 159981
+  ├── AssetSpot    → WallStreetCN API → Yahoo Finance fallback
+  ├── AssetFutures → Sina hq.sinajs.cn → Yahoo Finance fallback
+  └── AssetETF     → StockDataApi(EastMoney/Sina) → 无 fallback
 
 GetKLine(code, period, count)
-  ├── AssetSpot   → WallStreetCN K-line    → XAUUSD / XAGUSD / USCL
-  ├── AssetFutures → Sina Futures K-line   → AU / AG / SC
-  └── AssetETF    → EastMoney push2his     → 518880 / 159930 / 159981
+  ├── AssetSpot    → WallStreetCN K-line → Yahoo Finance fallback
+  ├── AssetFutures → Yahoo Finance ONLY (Sina K-line 代码已成死代码)
+  └── AssetETF     → EastMoney push2his → 无 fallback
 ```
 
-### 2.2 已知问题
+### 2.2 关键问题
 
-| 问题 | 影响 | 当前状态 |
+| 问题 | 影响 | 严重程度 |
 |---|---|---|
-| 新浪财经期货接口可能返回空或格式变化 | 国内期货 AU/AG/SC 行情与 K 线不稳定 | GB18030 解码已加，但无 fallback |
-| 现货仅依赖 WallStreetCN | XAUUSD/XAGUSD/USCL 单点故障 | 无 fallback |
-| ETF 行情依赖 StockDataApi | 可能失败 | 无 fallback |
-| ETF K 线依赖 EastMoney | 可能因 BrowserPath 配置问题失败 | 无 fallback |
-| 前端吞掉所有错误 | 用户看到 `--`，无法判断是网络还是 bug | 需要增加错误状态 |
-
-### 2.3 失败场景（待验证）
-
-需要运行以下调用确认具体失败点：
-
-1. `GetCommodityQuote("XAUUSD")` — 现货行情
-2. `GetCommodityQuote("AU")` — 期货行情
-3. `GetCommodityQuote("518880")` — ETF 行情
-4. `GetCommodityKLine("XAUUSD", "day", 120)` — 现货 K 线
-5. `GetCommodityKLine("AU", "day", 120)` — 期货 K 线
-6. `GetCommodityKLine("518880", "day", 120)` — ETF K 线
+| 期货 K 线只走 Yahoo，返回 COMEX 国际价 | AU 显示 GC=F 美元价，不是国内沪金价 | **严重** |
+| 期货行情走 Sina `hq.sinajs.cn` | 格式已变化过（NF_ 前缀失效），无国内备用源 | 高 |
+| 现货主源 WallStreetCN 不稳定 | 经常无数据 | 中 |
+| ETF 行情/K 线无 fallback | 单点故障 | 中 |
+| 前端吞掉错误/不显示数据源 | 用户看到 `--` 无法判断 | 中 |
 
 ---
 
@@ -69,135 +59,124 @@ GetKLine(code, period, count)
 
 #### 现货（XAUUSD / XAGUSD / USCL）
 
-| 数据源 | URL/说明 | 用途 | 优先级 |
+| 数据源 | URL/说明 | 优先级 | 备注 |
 |---|---|---|---|
-| WallStreetCN | `api-ddc-wscn.awtmt.com` | 主数据源 | 1 |
-| Yahoo Finance | `query1.finance.yahoo.com` | fallback | 2 |
-
-Yahoo 商品代码：
-- 黄金现货：`GC=F`（COMEX 黄金期货主力，最接近现货）
-- 白银现货：`SI=F`（COMEX 白银期货主力）
-- 原油现货：`CL=F`（WTI 原油）
+| Yahoo Finance v8 | `query1.finance.yahoo.com/v8/finance/chart/{SYM}` | 1 | GC=F/SI=F/CL=F，延迟约 15 分钟 |
+| AURUM Rates | `aurumrates.com/api/v1/spot` | 2 | 覆盖黄金/白银/WTI，50 req/天 |
+| WallStreetCN | `api-ddc-wscn.awtmt.com` | 3 | 原有主源，降为 fallback |
 
 #### 国内期货（AU / AG / SC）
 
-| 数据源 | 说明 | 优先级 |
-|---|---|---|
-| Sina Finance | `hq.sinajs.cn/list=NF_AU0` | 1 |
-| EastMoney push2his | 不支持期货 secid，仅作为实验性 fallback | 2 |
-| 同花顺 iFinD / 东方财富 futures API | 若 Sina 持续不可用，调研备用 | 3 |
+| 数据源 | URL/说明 | 优先级 | 备注 |
+|---|---|---|---|
+| EastMoney push2 | `push2.eastmoney.com/api/qt/stock/get?secid={SECID}` | 1 | secid: 113.AU0 / 113.AG0 / 114.SC0 |
+| EastMoney push2his | `push2his.eastmoney.com/api/qt/stock/kline/get?secid={SECID}` | 1 | K 线主源 |
+| Sina Futures | `hq.sinajs.cn/list={CODE}0` / `stock.finance.sina.com.cn/futures/api/jsonp.php/...` | 2 | 行情+K-line fallback |
+| Yahoo Finance | `query1.finance.yahoo.com/v8/finance/chart/GC=F` | 3 | **国际参考** |
 
 #### 商品 ETF（518880 / 159930 / 159981）
 
-| 数据源 | 说明 | 优先级 |
-|---|---|---|
-| StockDataApi | 现有股票实时接口 | 1 |
-| EastMoney push2his | 现有 K 线接口 | 1 |
-| 腾讯财经 | 作为行情 fallback | 2 |
+| 数据源 | URL/说明 | 优先级 | 备注 |
+|---|---|---|---|
+| EastMoney push2/push2his | 现有接口 | 1 | ETF 行情+K 线 |
+| Tencent Finance | `qt.gtimg.cn/q={CODE}` | 2 | 行情 fallback |
+| Sina Stock | `hq.sinajs.cn/list={CODE}` | 3 | 行情 fallback |
 
-### 3.2 API 接口改动
+### 3.2 国际参考切换
+
+在 `CommodityRegistry` 中为期货品种增加国际参考符号映射：
+
+```go
+// CommodityAsset 增加 InternationalRef 字段
+{
+    Code: "AU",
+    Name: "沪金",
+    InternationalRef: "GC=F", // COMEX 黄金
+}
+```
+
+前端 `CommodityAnalysis.vue` / `CommodityOverview.vue` 增加"国际参考"开关：
+- 关闭：显示国内 SHFE/INE 价格
+- 打开：调用 Yahoo Finance 获取 COMEX 国际价格
+
+### 3.3 API 接口改动
 
 在 `backend/data/commodity_api.go` 中：
 
-1. `getSpotQuote`：Sina 失败后尝试 Yahoo Finance。
-2. `getSpotKLine`：WallStreetCN 失败后尝试 Yahoo Finance 历史数据。
-3. `getFuturesQuote`：Sina 失败后增加备用数据源探测逻辑。
-4. `getFuturesKLine`：Sina 失败后尝试备用数据源。
-5. `getETFQuote`：StockDataApi 失败后尝试腾讯财经。
-6. `getETFKLine`：EastMoney 失败后尝试腾讯财经/Sina。
+1. `getSpotQuote`：Yahoo Finance → AURUM Rates → WallStreetCN。
+2. `getSpotKLine`：Yahoo Finance → AURUM Rates（如支持）→ WallStreetCN。
+3. `getFuturesQuote`：EastMoney push2 → Sina → Yahoo（国际参考）。
+4. `getFuturesKLine`：**启用 `getFuturesKLineFromSina`** → EastMoney push2his → Yahoo（国际参考）。
+5. `getETFQuote`：StockDataApi/EastMoney → Tencent Finance → Sina。
+6. `getETFKLine`：EastMoney push2his → Sina stock K-line fallback。
 
-### 3.3 新增数据源模块
+### 3.4 新增数据源模块
 
-新增 `backend/data/yahoo_finance_api.go`：
-
-```go
-package data
-
-// YahooFinanceApi 提供 Yahoo Finance 行情与 K 线数据
-// 用于商品现货 fallback
-type YahooFinanceApi struct{}
-
-// GetQuote 获取实时行情
-func (y *YahooFinanceApi) GetQuote(symbol string) (*datasource.QuoteData, error)
-
-// GetKLine 获取历史 K 线
-func (y *YahooFinanceApi) GetKLine(symbol, period string, count int) ([]datasource.KLineBar, error)
-```
-
-Yahoo Finance 接口说明：
-- 行情：`https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=1d`
-- K 线：`https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=1y`
-- 返回 JSON，字段：`chart.result[0].meta`（当前价）和 `chart.result[0].timestamp/indicators.quote`（OHLCV）
-
-### 3.4 错误处理与状态码
-
-为每个失败场景返回明确错误：
-
-```go
-var (
-    ErrCommodityNotFound      = errors.New("未找到品种")
-    ErrSpotDataUnavailable    = errors.New("现货数据源全部不可用，请检查网络")
-    ErrFuturesDataUnavailable = errors.New("期货数据源全部不可用，请检查网络")
-    ErrETFDataUnavailable     = errors.New("ETF数据源全部不可用，请检查网络")
-)
-```
+1. **新增/复用 `YahooFinanceApi`**：已存在于 `backend/data/yahoo_finance_api.go`，调整映射逻辑支持国际参考。
+2. **新增 `AurumRatesApi`**：轻量级 HTTP 封装，解析 `aurumrates.com/api/v1/spot`。
+3. **新增/复用 EastMoney push2**：封装期货行情接口，复用 `push2.eastmoney.com`。
 
 ---
 
 ## 4. 前端改动
 
-### 4.1 错误状态展示
+### 4.1 国际参考开关
 
-修改 `CommodityOverview.vue`：
+修改 `CommodityAnalysis.vue`：
+- 在品种选择器旁增加 `<n-switch v-model:value="showInternationalRef" />`
+- 切换时重新加载行情和 K 线
 
-- 每个报价卡片增加 `error` 状态，失败时显示具体错误信息。
-- K 线图组件 `CommodityKlineChart.vue` 已显示 `errorText`，但需更明确。
+### 4.2 数据状态展示
 
-### 4.2 数据加载状态
+修改 `CommodityOverview.vue` 和 `CommodityAnalysis.vue`：
+- 每个报价卡片显示当前数据源（如"东方财富"、"Yahoo"、"Sina"）
+- 失败时显示具体错误信息，不再只显示 `--`
+- 显示数据时间戳，便于判断 stale 数据
 
-- 增加 `loading` 状态避免重复请求。
-- 报价轮询失败后暂停轮询并提示用户。
+### 4.3 加载与错误状态
+
+修改 `CommodityPriceChart.vue`：
+- 增加 `<n-spin>` 加载态
+- 空数据/错误时显示 `<n-empty>` + 重试按钮
+- 支持深色主题 prop
 
 ---
 
 ## 5. 测试策略
 
-### 5.1 单元测试
+### 5.1 重写错误测试
 
-新增 `backend/data/commodity_api_test.go`：
-
-```go
-func TestGetCommodityQuote_Spot(t *testing.T)
-func TestGetCommodityQuote_Futures(t *testing.T)
-func TestGetCommodityQuote_ETF(t *testing.T)
-func TestGetCommodityKLine_Spot(t *testing.T)
-func TestGetCommodityKLine_Futures(t *testing.T)
-func TestGetCommodityKLine_ETF(t *testing.T)
-```
-
-测试要求：
-- 网络正常时，每个测试至少返回非空数据。
-- 失败时返回明确错误，不 panic。
-
-### 5.2 数据源解析测试
-
-新增 `backend/data/yahoo_finance_api_test.go`：
+`commodity_api_test.go` 中 `TestCommodityApi_GetKLine_Futures_Unavailable` 当前断言 futures K-line 应该失败。修后应期望成功，改为：
 
 ```go
-func TestYahooFinanceApi_GetQuote(t *testing.T)
-func TestYahooFinanceApi_GetKLine(t *testing.T)
+func TestCommodityApi_GetKLine_Futures_Domestic(t *testing.T)
 ```
+
+验证 AU K-line 返回价格约为 570 CNY（不是 3200 USD）。
+
+### 5.2 新增解析测试
+
+- `TestEastMoneyFuturesQuote_Parse`：验证 push2 字段 f43/f44/f45/f46/f60/f169/f170 解析
+- `TestAurumRates_Parse`：验证 AURUM JSON 解析
+- `TestYahooFinance_InternationalRef`：验证 GC=F 映射
+
+### 5.3 集成测试
+
+- `TestCommodityApi_GetQuote_Futures_Domestic`：验证 AU 返回 "沪金" 名称
+- `TestCommodityApi_GetKLine_Spot`：验证 XAUUSD 返回有效 K 线
+- `TestCommodityApi_GetQuote_ETF`：验证 518880 返回有效行情
 
 ---
 
 ## 6. 实施顺序
 
-1. 诊断当前 6 个关键调用失败原因。
-2. 实现 `YahooFinanceApi` 模块。
-3. 修改 `commodity_api.go` 增加 fallback 逻辑。
-4. 前端增加错误状态展示。
-5. 新增单元测试。
-6. 集成验证：手动测试 commodity.vue 4 个 tab。
+1. 实现 EastMoney push2 期货行情封装。
+2. 启用 Sina futures K-line 并增加 EastMoney push2his fallback。
+3. 调整现货链路：Yahoo 为主，AURUM 和 WallStreetCN 为 fallback。
+4. 增加 ETF fallback（Tencent/Sina）。
+5. 前端：国际参考开关 + 数据源/错误展示。
+6. 重写测试并运行验证。
+7. 手动测试 commodity.vue 4 个 tab。
 
 ---
 
@@ -205,23 +184,25 @@ func TestYahooFinanceApi_GetKLine(t *testing.T)
 
 | 文件 | 改动 |
 |---|---|
-| `backend/data/yahoo_finance_api.go` | 新增 Yahoo Finance 数据源 |
-| `backend/data/yahoo_finance_api_test.go` | 新增测试 |
-| `backend/data/commodity_api.go` | 修改：增加 fallback 逻辑 |
-| `backend/data/commodity_api_test.go` | 新增集成测试 |
-| `frontend/src/components/CommodityOverview.vue` | 修改：错误状态展示 |
-| `frontend/src/components/CommodityKlineChart.vue` | 修改：更明确的错误提示 |
+| `backend/data/commodity_api.go` | 修改 fallback 链路，启用 Sina K-line |
+| `backend/data/commodity_registry.go` | 增加 `InternationalRef` 字段 |
+| `backend/data/eastmoney_futures_api.go` | 新增东方财富期货行情封装 |
+| `backend/data/aurum_rates_api.go` | 新增 AURUM Rates 数据源 |
+| `backend/data/yahoo_finance_api.go` | 调整国际参考映射 |
+| `backend/data/commodity_api_test.go` | 重写错误测试，新增集成测试 |
+| `frontend/src/components/CommodityAnalysis.vue` | 增加国际参考开关 |
+| `frontend/src/components/CommodityOverview.vue` | 显示数据源与错误 |
+| `frontend/src/components/CommodityPriceChart.vue` | 加载/错误态 + 深色主题 |
 
 ---
 
 ## 8. 验收标准
 
-- [ ] `GetCommodityQuote("XAUUSD")`、`GetCommodityQuote("AU")`、`GetCommodityQuote("518880")` 至少一个返回有效数据。
-- [ ] `GetCommodityKLine(...)` 三类资产均返回非空 K 线。
-- [ ] 前端不再只显示 `--`，失败时显示中文错误原因。
-- [ ] 新增单元测试全部通过。
-- [ ] `go build ./backend/...` 无错误。
-
----
-
-(End of file)
+- [ ] `GetCommodityQuote("AU")` 返回沪金国内价格（人民币，非 COMEX 美元）。
+- [ ] `GetCommodityKLine("AU", "day", 60)` 返回国内 K 线数据。
+- [ ] `GetCommodityQuote("XAUUSD")` 通过 Yahoo Finance 返回有效数据。
+- [ ] `GetCommodityQuote("518880")` 至少一个数据源返回有效数据。
+- [ ] 国际参考开关开启后，AU 显示 COMEX 国际价格。
+- [ ] 前端失败时显示中文错误原因与当前数据源。
+- [ ] 新增/重写单元测试全部通过。
+- [ ] `go build ./...` 无错误，`vite build` 无错误。

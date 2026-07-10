@@ -86,6 +86,142 @@ export namespace backtest {
 		    return a;
 		}
 	}
+	export class ObjectiveConfig {
+	    sharpeWeight: number;
+	    winRateWeight: number;
+	    returnWeight: number;
+	    drawdownPenalty: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ObjectiveConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sharpeWeight = source["sharpeWeight"];
+	        this.winRateWeight = source["winRateWeight"];
+	        this.returnWeight = source["returnWeight"];
+	        this.drawdownPenalty = source["drawdownPenalty"];
+	    }
+	}
+	export class ParamRange {
+	    name: string;
+	    values: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ParamRange(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.values = source["values"];
+	    }
+	}
+	export class ParamSpace {
+	    ranges: ParamRange[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ParamSpace(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ranges = this.convertValues(source["ranges"], ParamRange);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class OptimizationInput {
+	    stockCode: string;
+	    startDate: string;
+	    endDate: string;
+	    period: string;
+	    adjusted: boolean;
+	    entryPrice: number;
+	    paramSpace: ParamSpace;
+	    objective: ObjectiveConfig;
+	    topN: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new OptimizationInput(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stockCode = source["stockCode"];
+	        this.startDate = source["startDate"];
+	        this.endDate = source["endDate"];
+	        this.period = source["period"];
+	        this.adjusted = source["adjusted"];
+	        this.entryPrice = source["entryPrice"];
+	        this.paramSpace = this.convertValues(source["paramSpace"], ParamSpace);
+	        this.objective = this.convertValues(source["objective"], ObjectiveConfig);
+	        this.topN = source["topN"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class OptimizationResult {
+	    params: Record<string, number>;
+	    winRate: number;
+	    avgReturn: number;
+	    totalReturn: number;
+	    sharpeRatio: number;
+	    maxDrawdown: number;
+	    totalTrades: number;
+	    objectiveScore: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new OptimizationResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.params = source["params"];
+	        this.winRate = source["winRate"];
+	        this.avgReturn = source["avgReturn"];
+	        this.totalReturn = source["totalReturn"];
+	        this.sharpeRatio = source["sharpeRatio"];
+	        this.maxDrawdown = source["maxDrawdown"];
+	        this.totalTrades = source["totalTrades"];
+	        this.objectiveScore = source["objectiveScore"];
+	    }
+	}
+	
+	
 	
 	export class syncTaskItem {
 	    stockCode: string;
@@ -2657,6 +2793,7 @@ export namespace models {
 	    assetType: string;
 	    exchange: string;
 	    symbol: string;
+	    internationalRef: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CommodityAsset(source);
@@ -2669,6 +2806,7 @@ export namespace models {
 	        this.assetType = source["assetType"];
 	        this.exchange = source["exchange"];
 	        this.symbol = source["symbol"];
+	        this.internationalRef = source["internationalRef"];
 	    }
 	}
 	export class ConceptFundFlow {

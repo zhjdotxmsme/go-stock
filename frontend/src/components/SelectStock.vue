@@ -1,11 +1,99 @@
 <script setup lang="ts">
 import {h, onBeforeMount, onMounted, onUnmounted, ref, reactive, computed} from 'vue'
 import {SearchStock, GetHotStrategy, OpenURL, Follow, GetFollowList, GetAllCustomStrategies, SaveCustomStrategy, DeleteCustomStrategy, GetEffectiveSponsorVip, GetConfig, AIConfiguredStockPick} from "../../wailsjs/go/main/App";
-import {useMessage, NText, NTag, NButton, NPopconfirm} from 'naive-ui'
+import {useMessage, NText, NTag, NButton, NPopconfirm, NCard, NTooltip, NSpace, NEllipsis} from 'naive-ui'
 import {Environment} from "../../wailsjs/runtime"
-import {BookmarkOutline, TrashOutline, CreateOutline, AddOutline} from "@vicons/ionicons5";
+import {BookmarkOutline, TrashOutline, CreateOutline, AddOutline, FlashOutline, TrendingUpOutline, TrendingDownOutline, GitBranchOutline} from "@vicons/ionicons5";
 import {EventsEmit} from "../../wailsjs/runtime";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
+
+interface ComboIndicator {
+  name: string
+  explanation: string
+}
+
+interface StrategyCombo {
+  name: string
+  description: string
+  query: string
+  category: string
+  indicators: ComboIndicator[]
+  icon: any
+}
+
+const strategyCombos: StrategyCombo[] = [
+  {
+    name: '追涨组合',
+    description: '捕捉强势上涨趋势，适合顺势交易',
+    query: '均线多头排列 放量突破 连涨放量',
+    category: '趋势跟踪',
+    icon: TrendingUpOutline,
+    indicators: [
+      { name: '均线多头排列', explanation: '短期均线（5日）在长期均线（20日）上方，且都向上发散，表明处于强势上涨趋势中' },
+      { name: '放量突破', explanation: '成交量显著放大且股价突破关键阻力位（均线或前高），资金大量涌入，突破有效性强' },
+      { name: '连涨放量', explanation: '连续多日上涨且成交量持续放大，上涨有资金支撑，趋势健康' },
+    ],
+  },
+  {
+    name: '抄底组合',
+    description: '寻找超跌反弹机会，适合左侧交易',
+    query: '低位资金净流入 连跌14天 早晨之星',
+    category: '反转交易',
+    icon: FlashOutline,
+    indicators: [
+      { name: '低位资金净流入', explanation: '股价处于阶段低位但资金持续流入，可能有主力在悄悄吸筹' },
+      { name: '连跌14天', explanation: '股价连续下跌14个交易日，处于极度超卖状态，反弹概率增大' },
+      { name: '早晨之星', explanation: '三根K线组合：大阴线→十字星→大阳线，经典见底反转信号' },
+    ],
+  },
+  {
+    name: '逃顶组合',
+    description: '识别见顶信号及时离场，适合风险控制',
+    query: '高位资金净流出 乌云盖顶 人气排名下降',
+    category: '风险管理',
+    icon: TrendingDownOutline,
+    indicators: [
+      { name: '高位资金净流出', explanation: '股价处于阶段高位但资金持续流出，主力可能在出货，需要警惕' },
+      { name: '乌云盖顶', explanation: '大阳线后出现高开低走的大阴线，经典的见顶反转K线形态' },
+      { name: '人气排名下降', explanation: '市场关注度/热度在下降，说明资金正在撤离该股' },
+    ],
+  },
+  {
+    name: '金叉组合',
+    description: '捕捉技术指标金叉信号，适合短线交易',
+    query: 'MACD金叉 KDJ金叉',
+    category: '短线信号',
+    icon: GitBranchOutline,
+    indicators: [
+      { name: 'MACD金叉', explanation: '快线（DIF）上穿慢线（DEA），短期趋势转强，是常见的买入信号' },
+      { name: 'KDJ金叉', explanation: 'K线上穿D线，尤其在超卖区（20以下）金叉时反弹信号更强' },
+    ],
+  },
+  {
+    name: '放量强稳组合',
+    description: '放量上涨且趋势稳健，适合稳健型投资者',
+    query: '放量上攻 均线多头排列 强势多方炮',
+    category: '稳健投资',
+    icon: FlashOutline,
+    indicators: [
+      { name: '放量上攻', explanation: '成交量放大伴随股价上涨，上涨动能充足，是真金白银推动的上涨' },
+      { name: '均线多头排列', explanation: '短期均线在长期均线上方且向上发散，整体处于强势上涨趋势' },
+      { name: '强势多方炮', explanation: '两阳夹一阴且阳线实体大、阴线实体小，是上涨中继的强势信号' },
+    ],
+  },
+  {
+    name: '超跌反弹组合',
+    description: '连续下跌后的反弹机会，适合激进型投资者',
+    query: '连跌8天 曙光初现 低位资金净流入',
+    category: '反转交易',
+    icon: FlashOutline,
+    indicators: [
+      { name: '连跌8天', explanation: '连续8个交易日下跌，处于明显超卖状态' },
+      { name: '曙光初现', explanation: '大跌后出现大阳线且深入前一根阴线实体，是见底反转信号' },
+      { name: '低位资金净流入', explanation: '低位有资金持续买入，说明有资金认可当前价位' },
+    ],
+  },
+]
 
 const message = useMessage()
 const search = ref('')
@@ -25,6 +113,8 @@ const klineStockName = ref('')
 let klineAutoCloseTimer = null
 const useAIConfig = ref(false)
 const aiLoading = ref(false)
+const batchFollowing = ref(false)
+const batchFollowProgress = ref('')
 
 function displayAIPickResult(picks) {
   if (!picks || picks.length === 0) {
@@ -256,6 +346,41 @@ function handleFollow(row) {
   });
 }
 
+async function batchFollow() {
+  const stocks = dataList.value
+  if (!stocks || stocks.length === 0) {
+    message.warning('没有可关注的股票')
+    return
+  }
+  batchFollowing.value = true
+  let success = 0
+  let fail = 0
+  for (let i = 0; i < stocks.length; i++) {
+    const row = stocks[i]
+    const code = (row.SECURITY_CODE || row.stockCode)
+    const market = (row.MARKET_SHORT_NAME || 'SZ').toLowerCase()
+    batchFollowProgress.value = `正在关注 (${i+1}/${stocks.length}): ${row.SECURITY_SHORT_NAME || row.stockName}`
+    try {
+      const result = await Follow(market + code)
+      if (result === "关注成功") {
+        success++
+      } else {
+        fail++
+      }
+    } catch {
+      fail++
+    }
+  }
+  batchFollowing.value = false
+  batchFollowProgress.value = ''
+  message.success(`批量关注完成：成功 ${success} 只，失败 ${fail} 只`)
+}
+
+function onComboClick(combo: StrategyCombo) {
+  search.value = combo.query
+  Search()
+}
+
 function isNumeric(value) {
   return !isNaN(parseFloat(value)) && isFinite(value);
 }
@@ -363,6 +488,7 @@ function openCenteredWindow(url, width, height) {
     <n-gi :span="4">
       <n-tabs v-model:value="leftTab" type="segment" size="small" style="margin-bottom: 4px;">
         <n-tab name="hot">热门策略</n-tab>
+        <n-tab name="combo">推荐组合</n-tab>
         <n-tab name="custom">我的策略</n-tab>
       </n-tabs>
 
@@ -381,6 +507,40 @@ function openCenteredWindow(url, width, height) {
           </n-list-item>
         </n-scrollbar>
       </n-list>
+
+      <div v-show="leftTab==='combo'">
+        <n-scrollbar style="max-height: calc(100vh - 210px);">
+          <n-space vertical size="small" style="padding: 2px">
+            <n-card
+              v-for="combo in strategyCombos"
+              :key="combo.name"
+              size="small"
+              hoverable
+              @click="onComboClick(combo)"
+              style="cursor: pointer;"
+            >
+              <template #header>
+                <n-space align="center" size="small">
+                  <n-icon :component="combo.icon" size="18"/>
+                  <n-text strong>{{ combo.name }}</n-text>
+                  <n-tag size="tiny" :bordered="false" type="info">{{ combo.category }}</n-tag>
+                </n-space>
+              </template>
+              <n-text depth="2" style="font-size: 12px;">{{ combo.description }}</n-text>
+              <template #footer>
+                <n-space size="small">
+                  <n-tooltip v-for="ind in combo.indicators" :key="ind.name" trigger="hover">
+                    <template #trigger>
+                      <n-tag size="tiny" :bordered="false" type="warning">{{ ind.name }}</n-tag>
+                    </template>
+                    <span>{{ ind.explanation }}</span>
+                  </n-tooltip>
+                </n-space>
+              </template>
+            </n-card>
+          </n-space>
+        </n-scrollbar>
+      </div>
 
       <div v-show="leftTab==='custom'">
         <n-scrollbar style="max-height: calc(100vh - 250px);">
@@ -447,8 +607,8 @@ function openCenteredWindow(url, width, height) {
           </n-button>
         </n-input-group>
       </div>
-      <div v-if="traceInfo" style="margin: 5px 0; --wails-draggable:no-drag">
-        <n-ellipsis line-clamp="1" :tooltip="true">
+      <div v-if="traceInfo" style="margin: 5px 0; --wails-draggable:no-drag; display: flex; align-items: center; gap: 8px;">
+        <n-ellipsis line-clamp="1" :tooltip="true" style="flex: 1;">
           <n-text type="info" :bordered="false">选股条件：</n-text>
           <n-text type="warning" :bordered="true">{{ traceInfo }}</n-text>
           <template #tooltip>
@@ -457,6 +617,17 @@ function openCenteredWindow(url, width, height) {
             </div>
           </template>
         </n-ellipsis>
+        <n-button
+          v-if="dataList.length > 0"
+          size="tiny"
+          type="warning"
+          :loading="batchFollowing"
+          :disabled="batchFollowing"
+          @click="batchFollow"
+        >
+          <template #icon><n-icon :component="BookmarkOutline" size="14"/></template>
+          {{ batchFollowing ? batchFollowProgress : '批量关注' }}
+        </n-button>
       </div>
       <n-data-table
           :striped="true"

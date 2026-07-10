@@ -11,9 +11,10 @@ const (
 
 // CommodityAsset 商品品种定义
 type CommodityAsset struct {
-	Code      string    `json:"code"`      // 统一代码: XAUUSD, AU, 518880
-	Name      string    `json:"name"`      // 显示名称: 现货黄金, 沪金, 黄金ETF
-	AssetType AssetType `json:"assetType"`
-	Exchange  string    `json:"exchange"`  // OTC, SHFE, INE, COMEX
-	Symbol    string    `json:"symbol"`    // 数据源原始代码
+	Code             string    `json:"code"`             // 统一代码: XAUUSD, AU, 518880
+	Name             string    `json:"name"`             // 显示名称: 现货黄金, 沪金, 黄金ETF
+	AssetType        AssetType `json:"assetType"`
+	Exchange         string    `json:"exchange"`         // OTC, SHFE, INE, COMEX
+	Symbol           string    `json:"symbol"`           // 数据源原始代码
+	InternationalRef string    `json:"internationalRef"` // 国际参考代码, 如 GC=F/SI=F/CL=F
 }

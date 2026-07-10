@@ -22,19 +22,21 @@ var (
 
 // CommodityApi 商品数据统一入口
 type CommodityApi struct {
-	wsClient WallstreetcnApi   // 国际现货数据源（值接收器）
-	emClient *EastMoneyKLineApi // 国内期货/ETF K线数据源
+	wsClient        WallstreetcnApi      // 国际现货数据源（值接收器）
+	emClient        *EastMoneyKLineApi   // ETF K 线数据源
+	emFuturesClient EastMoneyFuturesApi  // 国内期货行情+K 线数据源
 }
 
 // NewCommodityApi 创建 CommodityApi 实例
 func NewCommodityApi() *CommodityApi {
 	return &CommodityApi{
-		wsClient: WallstreetcnApi{},
-		emClient: NewEastMoneyKLineApi(GetSettingConfig()),
+		wsClient:        WallstreetcnApi{},
+		emClient:        NewEastMoneyKLineApi(GetSettingConfig()),
+		emFuturesClient: EastMoneyFuturesApi{},
 	}
 }
 
-// GetQuote 获取实时行情
+// GetQuote 获取实时行情（国内价格优先）
 // 根据品种 AssetType 路由到对应数据源
 func (c *CommodityApi) GetQuote(code string) (*datasource.QuoteData, error) {
 	asset := FindCommodityByCode(code)
@@ -54,7 +56,42 @@ func (c *CommodityApi) GetQuote(code string) (*datasource.QuoteData, error) {
 	return nil, fmt.Errorf("不支持的资产类型: %s", asset.AssetType)
 }
 
+// GetQuoteIntl 获取国际参考行情（仅对期货/现货有意义）
+func (c *CommodityApi) GetQuoteIntl(code string) (*datasource.QuoteData, error) {
+	asset := FindCommodityByCode(code)
+	if asset == nil {
+		return nil, fmt.Errorf("%w: %s", ErrCommodityNotFound, code)
+	}
+	if asset.InternationalRef == "" {
+		return nil, fmt.Errorf("%s 无国际参考代码", asset.Code)
+	}
+
+	yahoo := &YahooFinanceApi{}
+	quote, err := yahoo.GetQuote(asset.Code)
+	if err != nil {
+		return nil, fmt.Errorf("国际参考行情获取失败: %w", err)
+	}
+	quote.Name = asset.Name + "(国际参考)"
+	return quote, nil
+}
+
 func (c *CommodityApi) getSpotQuote(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
+	yahoo := &YahooFinanceApi{}
+	quote, err := yahoo.GetQuote(asset.Code)
+	if err == nil {
+		quote.Name = asset.Name
+		return quote, nil
+	}
+	logger.SugaredLogger.Warnf("Yahoo Finance spot quote failed for %s: %v, trying AURUM Rates", asset.Code, err)
+
+	aurum := &AurumRatesApi{}
+	quote, err = aurum.GetQuote(asset.Code)
+	if err == nil {
+		quote.Name = asset.Name
+		return quote, nil
+	}
+	logger.SugaredLogger.Warnf("AURUM Rates spot quote failed for %s: %v, trying WallStreetCN", asset.Code, err)
+
 	result := c.wsClient.GetMarketReal([]string{asset.Symbol}, nil)
 	if result != nil && result.Code == 20000 && len(result.Data.Snapshot) > 0 {
 		values := result.Data.Snapshot[asset.Symbol]
@@ -73,29 +110,28 @@ func (c *CommodityApi) getSpotQuote(asset *models.CommodityAsset) (*datasource.Q
 		}
 	}
 
-	logger.SugaredLogger.Warnf("WallStreetCN spot quote failed for %s, trying Yahoo Finance", asset.Code)
-	yahooFallback := &YahooFinanceApi{}
-	quote, err := yahooFallback.GetQuote(asset.Code)
-	if err == nil {
-		quote.Name = asset.Name
-		return quote, nil
-	}
-	logger.SugaredLogger.Errorf("Yahoo Finance spot quote fallback failed for %s: %v", asset.Code, err)
+	logger.SugaredLogger.Errorf("All spot quote sources failed for %s", asset.Code)
 	return nil, fmt.Errorf("%w: %s (%s)", ErrSpotDataUnavailable, asset.Name, asset.Symbol)
 }
 
 func (c *CommodityApi) getFuturesQuote(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
-	quote, err := c.getFuturesQuoteFromSina(asset)
+	quote, err := c.emFuturesClient.GetQuote(asset)
 	if err == nil {
 		return quote, nil
 	}
-	logger.SugaredLogger.Warnf("Sina futures quote failed for %s, trying Yahoo international reference: %v", asset.Code, err)
+	logger.SugaredLogger.Warnf("EastMoney futures quote failed for %s: %v, trying Sina", asset.Code, err)
+
+	quote, err = c.getFuturesQuoteFromSina(asset)
+	if err == nil {
+		return quote, nil
+	}
+	logger.SugaredLogger.Warnf("Sina futures quote failed for %s: %v, trying Yahoo international", asset.Code, err)
 
 	quote, err = c.getFuturesQuoteFromYahoo(asset)
 	if err == nil {
 		return quote, nil
 	}
-	logger.SugaredLogger.Errorf("Yahoo Finance futures quote fallback failed for %s: %v", asset.Code, err)
+	logger.SugaredLogger.Errorf("Yahoo international quote failed for %s: %v", asset.Code, err)
 	return nil, fmt.Errorf("%w: %s (%s)", ErrFuturesDataUnavailable, asset.Name, asset.Symbol)
 }
 
@@ -110,9 +146,8 @@ func (c *CommodityApi) getFuturesQuoteFromYahoo(asset *models.CommodityAsset) (*
 }
 
 func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
-	// Sina 期货行情：hq.sinajs.cn/list=AU0（主力连续）。旧 NF_ 前缀接口已返回空数据。
-	sinaSymbol := asset.Code + "0"
-	url := fmt.Sprintf("http://hq.sinajs.cn/list=%s", sinaSymbol)
+	sinaSymbol := "nf_" + asset.Code + "0"
+	url := fmt.Sprintf("http://hq.sinajs.cn/rn=%d&list=%s", time.Now().UnixMilli(), sinaSymbol)
 
 	resp, err := SharedHTTPClient.SetTimeout(10*time.Second).R().
 		SetHeader("Referer", "https://finance.sina.com.cn").
@@ -123,7 +158,6 @@ func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*d
 	}
 
 	body := GB18030ToUTF8(resp.Body())
-	// Response format: var hq_str_NF_AU0="沪金0,571.98,572.78,571.52,572.90,570.26,2024-01-15,0,...";
 	if !strings.HasPrefix(body, "var hq_str_") {
 		return nil, fmt.Errorf("sina futures quote: unexpected response format for %s: %s", asset.Code, truncateStr(body, 120))
 	}
@@ -140,7 +174,6 @@ func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*d
 		return nil, fmt.Errorf("sina futures quote: empty data for %s (symbol may be delisted)", asset.Code)
 	}
 	parts := strings.Split(content, ",")
-	// Fields: 0=name,1=open,2=lastSettle,3=current,4=high,5=low,6=date,...
 	if len(parts) < 10 {
 		return nil, fmt.Errorf("sina futures quote: %d fields, need >=10 for %s", len(parts), asset.Code)
 	}
@@ -180,29 +213,140 @@ func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*d
 func (c *CommodityApi) getETFQuote(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
 	stockDataApi := NewStockDataApi()
 	infos, err := stockDataApi.GetStockCodeRealTimeData(asset.Symbol)
-	if err != nil || infos == nil || len(*infos) == 0 {
-		logger.SugaredLogger.Errorf("ETF quote failed for %s: %v", asset.Symbol, err)
-		return nil, fmt.Errorf("%w: %s (%s)", ErrETFDataUnavailable, asset.Name, asset.Symbol)
+	if err == nil && infos != nil && len(*infos) > 0 {
+		info := (*infos)[0]
+		price, _ := parseFloatToFloat(info.Price)
+		high, _ := parseFloatToFloat(info.High)
+		low, _ := parseFloatToFloat(info.Low)
+		open, _ := parseFloatToFloat(info.Open)
+		return &datasource.QuoteData{
+			Code:      asset.Code,
+			Name:      info.Name,
+			Price:     price,
+			Change:    info.ChangePrice,
+			ChangePct: info.ChangePercent,
+			High:      high,
+			Low:       low,
+			Open:      open,
+			Time:      time.Now(),
+		}, nil
 	}
-	info := (*infos)[0]
-	price, _ := parseFloatToFloat(info.Price)
-	high, _ := parseFloatToFloat(info.High)
-	low, _ := parseFloatToFloat(info.Low)
-	open, _ := parseFloatToFloat(info.Open)
-	return &datasource.QuoteData{
+	logger.SugaredLogger.Warnf("StockDataApi ETF quote failed for %s: %v, trying Tencent", asset.Symbol, err)
+
+	quote, err := c.getETFQuoteFromTencent(asset.Symbol)
+	if err == nil {
+		quote.Code = asset.Code
+		quote.Name = asset.Name
+		quote.Time = time.Now()
+		return quote, nil
+	}
+	logger.SugaredLogger.Warnf("Tencent ETF quote failed for %s: %v, trying Sina", asset.Symbol, err)
+
+	quote, err = c.getETFQuoteFromSina(asset)
+	if err == nil {
+		quote.Code = asset.Code
+		quote.Name = asset.Name
+		quote.Time = time.Now()
+		return quote, nil
+	}
+	logger.SugaredLogger.Errorf("Sina ETF quote failed for %s: %v", asset.Symbol, err)
+	return nil, fmt.Errorf("%w: %s (%s)", ErrETFDataUnavailable, asset.Name, asset.Symbol)
+}
+
+func (c *CommodityApi) getETFQuoteFromSina(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
+	url := fmt.Sprintf("http://hq.sinajs.cn/rn=%d&list=%s", time.Now().UnixMilli(), asset.Symbol)
+	resp, err := SharedHTTPClient.SetTimeout(10*time.Second).R().
+		SetHeader("Referer", "https://finance.sina.com.cn").
+		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
+		Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("sina etf quote request: %w", err)
+	}
+
+	body := GB18030ToUTF8(resp.Body())
+	if !strings.HasPrefix(body, "var hq_str_") {
+		return nil, fmt.Errorf("sina etf quote: unexpected response for %s: %s", asset.Symbol, truncateStr(body, 120))
+	}
+	startIdx := strings.Index(body, "\"")
+	if startIdx < 0 {
+		return nil, fmt.Errorf("sina etf quote: no quote data for %s", asset.Symbol)
+	}
+	endIdx := strings.LastIndex(body, "\"")
+	if endIdx <= startIdx {
+		return nil, fmt.Errorf("sina etf quote: malformed response for %s", asset.Symbol)
+	}
+	content := body[startIdx+1 : endIdx]
+	if content == "" {
+		return nil, fmt.Errorf("sina etf quote: empty data for %s", asset.Symbol)
+	}
+	parts := strings.Split(content, ",")
+	if len(parts) < 4 {
+		return nil, fmt.Errorf("sina etf quote: %d fields, need >=4 for %s", len(parts), asset.Symbol)
+	}
+
+	name := parts[0]
+	open, _ := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	prevClose, _ := strconv.ParseFloat(strings.TrimSpace(parts[2]), 64)
+	current, _ := strconv.ParseFloat(strings.TrimSpace(parts[3]), 64)
+	high, _ := strconv.ParseFloat(strings.TrimSpace(parts[4]), 64)
+	low, _ := strconv.ParseFloat(strings.TrimSpace(parts[5]), 64)
+	volume, _ := strconv.ParseInt(strings.TrimSpace(parts[8]), 10, 64)
+
+	change := current - prevClose
+	var changePct float64
+	if prevClose > 0 {
+		changePct = change / prevClose * 100
+	}
+
+	quote := &datasource.QuoteData{
 		Code:      asset.Code,
-		Name:      info.Name,
-		Price:     price,
-		Change:    info.ChangePrice,
-		ChangePct: info.ChangePercent,
+		Name:      name,
+		Price:     current,
+		Change:    change,
+		ChangePct: changePct,
 		High:      high,
 		Low:       low,
 		Open:      open,
+		Volume:    volume,
 		Time:      time.Now(),
-	}, nil
+	}
+	return quote, nil
 }
 
-// GetKLine 获取 K 线数据
+func (c *CommodityApi) getETFQuoteFromTencent(symbol string) (*datasource.QuoteData, error) {
+	url := fmt.Sprintf("http://qt.gtimg.cn/?_=%d&q=%s", time.Now().Unix(), strings.ToLower(symbol))
+	resp, err := SharedHTTPClient.SetTimeout(10*time.Second).R().
+		SetHeader("Host", "qt.gtimg.cn").
+		SetHeader("Referer", "https://gu.qq.com/").
+		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
+		Get(url)
+	if err != nil {
+		return nil, err
+	}
+	body := GB18030ToUTF8(resp.Body())
+	for _, line := range strings.Split(body, ";") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		info, err := ParseTxStockData(line)
+		if err != nil || info == nil {
+			continue
+		}
+		price, _ := parseFloatToFloat(info.Price)
+		return &datasource.QuoteData{
+			Code:      info.Code,
+			Name:      info.Name,
+			Price:     price,
+			Change:    info.ChangePrice,
+			ChangePct: info.ChangePercent,
+			Time:      time.Now(),
+		}, nil
+	}
+	return nil, fmt.Errorf("tencent etf quote no valid data for %s", symbol)
+}
+
+// GetKLine 获取 K 线数据（国内价格优先）
 func (c *CommodityApi) GetKLine(code string, period string, count int) ([]datasource.KLineBar, error) {
 	asset := FindCommodityByCode(code)
 	if asset == nil {
@@ -221,7 +365,28 @@ func (c *CommodityApi) GetKLine(code string, period string, count int) ([]dataso
 	return nil, fmt.Errorf("不支持的资产类型: %s", asset.AssetType)
 }
 
+// GetKLineIntl 获取国际参考 K 线（仅对期货/现货有意义）
+func (c *CommodityApi) GetKLineIntl(code string, period string, count int) ([]datasource.KLineBar, error) {
+	asset := FindCommodityByCode(code)
+	if asset == nil {
+		return nil, fmt.Errorf("%w: %s", ErrCommodityNotFound, code)
+	}
+	if asset.InternationalRef == "" {
+		return nil, fmt.Errorf("%s 无国际参考代码", asset.Code)
+	}
+
+	yahoo := &YahooFinanceApi{}
+	return yahoo.GetKLine(asset.Code, period, count)
+}
+
 func (c *CommodityApi) getSpotKLine(asset *models.CommodityAsset, period string, count int) ([]datasource.KLineBar, error) {
+	yahoo := &YahooFinanceApi{}
+	bars, err := yahoo.GetKLine(asset.Code, period, count)
+	if err == nil {
+		return bars, nil
+	}
+	logger.SugaredLogger.Warnf("Yahoo Finance spot K-line failed for %s: %v, trying WallStreetCN", asset.Code, err)
+
 	periodMap := map[string]int{
 		"day":   86400,
 		"week":  604800,
@@ -264,23 +429,29 @@ func (c *CommodityApi) getSpotKLine(asset *models.CommodityAsset, period string,
 		}
 	}
 
-	logger.SugaredLogger.Warnf("WallStreetCN spot K-line failed for %s, trying Yahoo Finance", asset.Code)
-	yahooFallback := &YahooFinanceApi{}
-	bars, err := yahooFallback.GetKLine(asset.Code, period, count)
-	if err == nil {
-		return bars, nil
-	}
-	logger.SugaredLogger.Errorf("Yahoo Finance spot K-line fallback failed for %s: %v", asset.Code, err)
+	logger.SugaredLogger.Errorf("All spot K-line sources failed for %s", asset.Code)
 	return nil, fmt.Errorf("%w: %s (%s)", ErrSpotDataUnavailable, asset.Name, asset.Symbol)
 }
 
 func (c *CommodityApi) getFuturesKLine(asset *models.CommodityAsset, period string, count int) ([]datasource.KLineBar, error) {
-	bars, err := c.getFuturesKLineFromYahoo(asset, period, count)
+	bars, err := c.getFuturesKLineFromSina(asset, period, count)
 	if err == nil {
 		return bars, nil
 	}
-	logger.SugaredLogger.Errorf("Yahoo Finance international futures K-line failed for %s: %v", asset.Code, err)
-	return nil, fmt.Errorf("%w: %s (%s) — domestic futures K-line unavailable, Yahoo international reference also failed", ErrFuturesDataUnavailable, asset.Name, asset.Symbol)
+	logger.SugaredLogger.Warnf("Sina futures K-line failed for %s: %v, trying EastMoney push2his", asset.Code, err)
+
+	bars, err = c.emFuturesClient.GetKLine(asset, period, count)
+	if err == nil {
+		return bars, nil
+	}
+	logger.SugaredLogger.Warnf("EastMoney futures K-line failed for %s: %v, trying Yahoo international", asset.Code, err)
+
+	bars, err = c.getFuturesKLineFromYahoo(asset, period, count)
+	if err == nil {
+		return bars, nil
+	}
+	logger.SugaredLogger.Errorf("All futures K-line sources failed for %s: %v", asset.Code, err)
+	return nil, fmt.Errorf("%w: %s (%s)", ErrFuturesDataUnavailable, asset.Name, asset.Symbol)
 }
 
 func (c *CommodityApi) getFuturesKLineFromYahoo(asset *models.CommodityAsset, period string, count int) ([]datasource.KLineBar, error) {
@@ -289,8 +460,7 @@ func (c *CommodityApi) getFuturesKLineFromYahoo(asset *models.CommodityAsset, pe
 }
 
 func (c *CommodityApi) getFuturesKLineFromSina(asset *models.CommodityAsset, period string, count int) ([]datasource.KLineBar, error) {
-	// Use Sina Finance for futures K-lines (EastMoney stock endpoint doesn't support futures secids)
-	sinaSymbol := asset.Code + "0"
+	sinaSymbol := "nf_" + asset.Code + "0"
 	url := fmt.Sprintf("http://stock.finance.sina.com.cn/futures/api/jsonp.php/InnerFuturesNewService.getDailyKLine?symbol=%s", sinaSymbol)
 
 	resp, err := SharedHTTPClient.SetTimeout(15*time.Second).R().
@@ -302,7 +472,6 @@ func (c *CommodityApi) getFuturesKLineFromSina(asset *models.CommodityAsset, per
 	}
 
 	body := GB18030ToUTF8(resp.Body())
-	// Response: InnerFuturesNewService.getDailyKLine([["2024-01-15","473.28","476.46","472.98","474.50","150220","0"],...]);
 	idx := strings.Index(body, "[")
 	if idx < 0 {
 		return nil, fmt.Errorf("sina futures kline: unexpected response for %s", asset.Symbol)
@@ -318,12 +487,10 @@ func (c *CommodityApi) getFuturesKLineFromSina(asset *models.CommodityAsset, per
 		return nil, fmt.Errorf("sina futures kline: parse error for %s: %w", asset.Symbol, err)
 	}
 
-	// Sina returns newest first, reverse to oldest-first
 	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
 		rows[i], rows[j] = rows[j], rows[i]
 	}
 
-	// Take the most recent `count` entries
 	if count <= 0 {
 		count = 120
 	}
@@ -370,29 +537,52 @@ func (c *CommodityApi) getETFKLine(asset *models.CommodityAsset, period string, 
 	}
 
 	kLines := c.emClient.GetKLineData(asset.Symbol, klt, "", count)
-	if kLines == nil || len(*kLines) == 0 {
-		return nil, fmt.Errorf("%w: %s (%s)", ErrETFDataUnavailable, asset.Name, asset.Symbol)
+	if kLines != nil && len(*kLines) > 0 {
+		result := make([]datasource.KLineBar, 0, len(*kLines))
+		for _, k := range *kLines {
+			o, _ := parseFloatToFloat(k.Open)
+			closeVal, _ := parseFloatToFloat(k.Close)
+			h, _ := parseFloatToFloat(k.High)
+			l, _ := parseFloatToFloat(k.Low)
+			v, _ := parseFloatToFloat(k.Volume)
+			a, _ := parseFloatToFloat(k.Amount)
+			result = append(result, datasource.KLineBar{
+				Time:   parseEastMoneyDay(k.Day),
+				Open:   o,
+				Close:  closeVal,
+				High:   h,
+				Low:    l,
+				Volume: int64(v),
+				Amount: a,
+			})
+		}
+		return result, nil
 	}
+	logger.SugaredLogger.Warnf("EastMoney ETF K-line failed for %s, trying Sina stock K-line", asset.Symbol)
 
-	result := make([]datasource.KLineBar, 0, len(*kLines))
-	for _, k := range *kLines {
-		o, _ := parseFloatToFloat(k.Open)
-		closeVal, _ := parseFloatToFloat(k.Close)
-		h, _ := parseFloatToFloat(k.High)
-		l, _ := parseFloatToFloat(k.Low)
-		v, _ := parseFloatToFloat(k.Volume)
-		a, _ := parseFloatToFloat(k.Amount)
-		result = append(result, datasource.KLineBar{
-			Time:   parseEastMoneyDay(k.Day),
-			Open:   o,
-			Close:  closeVal,
-			High:   h,
-			Low:    l,
-			Volume: int64(v),
-			Amount: a,
-		})
+	sinaKline := NewSinaKLineApi(GetSettingConfig())
+	sinaKLines := sinaKline.GetKLineData(asset.Symbol, klt, count)
+	if sinaKLines != nil && len(*sinaKLines) > 0 {
+		result := make([]datasource.KLineBar, 0, len(*sinaKLines))
+		for _, k := range *sinaKLines {
+			o, _ := parseFloatToFloat(k.Open)
+			closeVal, _ := parseFloatToFloat(k.Close)
+			h, _ := parseFloatToFloat(k.High)
+			l, _ := parseFloatToFloat(k.Low)
+			v, _ := parseFloatToFloat(k.Volume)
+			result = append(result, datasource.KLineBar{
+				Time:   parseEastMoneyDay(k.Day),
+				Open:   o,
+				Close:  closeVal,
+				High:   h,
+				Low:    l,
+				Volume: int64(v),
+			})
+		}
+		return result, nil
 	}
-	return result, nil
+	logger.SugaredLogger.Errorf("Sina ETF K-line empty for %s", asset.Symbol)
+	return nil, fmt.Errorf("%w: %s (%s)", ErrETFDataUnavailable, asset.Name, asset.Symbol)
 }
 
 func parseEastMoneyDay(day string) time.Time {

@@ -11,6 +11,7 @@ import {
 import {EventsOn, EventsOff} from '../../wailsjs/runtime'
 import {MdPreview} from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
+import CommodityPriceChart from './CommodityPriceChart.vue'
 
 const registry = ref([])
 const selectedCode = ref('XAUUSD')
@@ -23,6 +24,8 @@ const secondaryCodes = ref('XAGUSD,USCL')
 const deepLoading = ref(false)
 const aiConfigId = ref(0)
 const deepQuestion = ref('')
+const showInternationalRef = ref(false)
+const currentAsset = ref(null)
 
 const modeOptions = [
   {label: '技术面', value: 'technical'},
@@ -75,6 +78,7 @@ function scrollToBottom() {
 
 async function loadRegistry() {
   registry.value = await GetCommodityRegistry()
+  currentAsset.value = registry.value.find(i => i.code === selectedCode.value) || null
 }
 
 function assetOptions() {
@@ -84,6 +88,7 @@ function assetOptions() {
 function onCodeChange(val) {
   const item = registry.value.find(i => i.code === val)
   selectedName.value = item ? item.name : val
+  currentAsset.value = item || null
 }
 
 async function runAnalysis() {
@@ -216,6 +221,22 @@ onUnmounted(() => {
       <n-select v-model:value="period" :options="periodOptions" style="width: 120px"/>
     </n-space>
 
+    <n-divider style="margin: 4px 0">价格走势</n-divider>
+
+    <n-space align="center" style="margin-bottom: 4px" v-if="currentAsset && currentAsset.internationalRef">
+      <n-switch v-model:value="showInternationalRef" size="small" />
+      <n-text depth="3" style="font-size: 12px;">国际参考 (COMEX: {{ currentAsset.internationalRef }})</n-text>
+      <n-tag v-if="showInternationalRef" type="warning" size="tiny">COMEX 国际价</n-tag>
+    </n-space>
+
+    <CommodityPriceChart
+      :code="selectedCode"
+      :period="period"
+      :count="120"
+      :chart-height="280"
+      :international-ref="showInternationalRef"
+    />
+
     <n-divider style="margin: 4px 0">快速分析</n-divider>
 
     <n-space align="center">
@@ -230,7 +251,8 @@ onUnmounted(() => {
 
     <n-spin :show="loading">
       <n-card v-if="result" size="small">
-        <div class="whitespace-pre-wrap">{{ result }}</div>
+        <MdPreview v-if="result" :modelValue="result" :theme="'light'"/>
+        <div v-else class="whitespace-pre-wrap">{{ result }}</div>
       </n-card>
     </n-spin>
 

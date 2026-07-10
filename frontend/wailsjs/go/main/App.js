@@ -318,8 +318,16 @@ export function GetCommodityKLine(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetCommodityKLine'](arg1, arg2, arg3);
 }
 
+export function GetCommodityKLineIntl(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetCommodityKLineIntl'](arg1, arg2, arg3);
+}
+
 export function GetCommodityQuote(arg1) {
   return window['go']['main']['App']['GetCommodityQuote'](arg1);
+}
+
+export function GetCommodityQuoteIntl(arg1) {
+  return window['go']['main']['App']['GetCommodityQuoteIntl'](arg1);
 }
 
 export function GetCommodityRegistry() {

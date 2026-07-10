@@ -1,17 +1,130 @@
 package data
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"go-stock/backend/data/datasource"
+	"go-stock/backend/logger"
+	"net"
+	"net/http"
+	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
+
+	"github.com/go-resty/resty/v2"
 )
+
+// yahooHTTPClient 是 Yahoo 专用的 HTTP 客户端。
+var yahooHTTPClient *resty.Client
+var yahooClientOnce sync.Once
+var yahooRateLimited bool          // 记录 Yahoo HTTP 上次是否被限流，跳过重试
+var yahooRateLimitReset time.Time  // 限流标记重置时间
+
+func isYahooRateLimited() bool {
+	if !yahooRateLimited {
+		return false
+	}
+	// 每 5 分钟重置一次，周期性尝试 HTTP
+	if time.Since(yahooRateLimitReset) > 5*time.Minute {
+		yahooRateLimited = false
+		return false
+	}
+	return true
+}
+
+func markYahooRateLimited() {
+	yahooRateLimited = true
+	yahooRateLimitReset = time.Now()
+}
+
+func getYahooClient() *resty.Client {
+	yahooClientOnce.Do(func() {
+		tr := &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout:   10 * time.Second,
+				KeepAlive: 15 * time.Second,
+			}).DialContext,
+			MaxIdleConnsPerHost: 2,
+			IdleConnTimeout:     30 * time.Second,
+			TLSHandshakeTimeout: 10 * time.Second,
+			// 使用 TLS 1.2，禁用 HTTP/2
+			TLSNextProto: make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+		}
+		hc := &http.Client{Transport: tr, Timeout: 6 * time.Second}
+		yahooHTTPClient = resty.NewWithClient(hc).
+			SetTimeout(6 * time.Second).
+			SetRetryCount(0).
+			SetRetryWaitTime(0 * time.Millisecond)
+	})
+	return yahooHTTPClient
+}
 
 // YahooFinanceApi 提供 Yahoo Finance 行情与 K 线数据，作为商品现货 fallback。
 // Yahoo 商品代码：黄金 GC=F、白银 SI=F、原油 CL=F。
 type YahooFinanceApi struct{}
+
+// yahooFetch 使用专用 HTTP 客户端请求 Yahoo API，支持子域名轮询与超时重试。
+// 如果 HTTP 方式均被限流，降级到 PowerShell（WinHTTP，不受 TLS 指纹限流影响）。
+func (y *YahooFinanceApi) yahooFetch(url string) ([]byte, error) {
+	// 如果之前 HTTP 已被限流过，直接跳过 HTTP 尝试
+	if !isYahooRateLimited() {
+		for _, sub := range []string{"query1", "query2"} {
+			altURL := strings.Replace(url, "query1.finance.yahoo.com", sub+".finance.yahoo.com", 1)
+			body, err := y.yahooDoRequest(altURL)
+			if err == nil {
+				return body, nil
+			}
+		}
+		markYahooRateLimited() // 所有 HTTP 子域名均失败，标记限流
+	}
+	// HTTP 方式失败（通常是被限流），降级到 PowerShell WinHTTP
+	body, err := y.yahooFetchViaPowerShell(url)
+	if err == nil {
+		logger.SugaredLogger.Infof("Yahoo PowerShell fallback succeeded for %s", url)
+		return body, nil
+	}
+	return nil, fmt.Errorf("yahoo all subdomains (and PowerShell fallback) failed")
+}
+
+// yahooFetchViaPowerShell 通过 PowerShell 的 Invoke-WebRequest（WinHTTP）发起请求，
+// 绕过 Go TLS 指纹被 Yahoo 限流的问题。
+func (y *YahooFinanceApi) yahooFetchViaPowerShell(url string) ([]byte, error) {
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+		`try { $r = Invoke-WebRequest -Uri '`+url+`' -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop; Write-Output $r.Content } catch { exit 1 }`)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("yahoo powershell fallback: %w", err)
+	}
+	return out, nil
+}
+
+// yahooDoRequest 执行一次 Yahoo API 请求
+func (y *YahooFinanceApi) yahooDoRequest(url string) ([]byte, error) {
+	client := getYahooClient()
+	resp, err := client.R().
+		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
+		SetHeader("Accept", "application/json").
+		SetHeader("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8").
+		SetHeader("Accept-Encoding", "gzip, deflate").
+		Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("yahoo request: %w", err)
+	}
+	body := resp.Body()
+	if len(body) > 0 && body[0] == '<' {
+		snippet := string(body)
+		if len(snippet) > 200 {
+			snippet = snippet[:200]
+		}
+		return nil, fmt.Errorf("yahoo rate-limited (HTML: %s...)", snippet)
+	}
+	return body, nil
+}
 
 var yahooCommoditySymbols = map[string]string{
 	"XAUUSD": "GC=F",
@@ -38,14 +151,12 @@ func (y *YahooFinanceApi) GetQuote(code string) (*datasource.QuoteData, error) {
 	}
 
 	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=1d", symbol)
-	resp, err := SharedHTTPClient.SetTimeout(10*time.Second).R().
-		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
-		Get(url)
+	body, err := y.yahooFetch(url)
 	if err != nil {
-		return nil, fmt.Errorf("yahoo quote request: %w", err)
+		return nil, err
 	}
 
-	chart, err := parseYahooChart(resp.Body())
+	chart, err := parseYahooChart(body)
 	if err != nil {
 		return nil, fmt.Errorf("yahoo quote parse: %w", err)
 	}
@@ -114,15 +225,12 @@ func (y *YahooFinanceApi) GetKLine(code, period string, count int) ([]datasource
 
 	rangeParam := yahooRangeForCount(count, period)
 	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=%s&range=%s", symbol, interval, rangeParam)
-
-	resp, err := SharedHTTPClient.SetTimeout(15*time.Second).R().
-		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
-		Get(url)
+	body, err := y.yahooFetch(url)
 	if err != nil {
-		return nil, fmt.Errorf("yahoo kline request: %w", err)
+		return nil, err
 	}
 
-	chart, err := parseYahooChart(resp.Body())
+	chart, err := parseYahooChart(body)
 	if err != nil {
 		return nil, fmt.Errorf("yahoo kline parse: %w", err)
 	}

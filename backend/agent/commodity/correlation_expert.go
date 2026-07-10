@@ -83,6 +83,20 @@ func (e *CorrelationExpert) Run(ctx context.Context, cc *CommodityContext) (*Exp
 		}
 	}
 
+	// ETF flow data
+	etfApi := data.NewEtfFlowApi()
+	etfSymbol := data.GetCommodityEtfMapping(cc.Code)
+	if etfSymbol != "" {
+		etfData, etfErr := etfApi.GetEtfFlow(etfSymbol)
+		if etfErr == nil && etfData != nil {
+			dataStr.WriteString("\n## ETF 资金流向\n")
+			dataStr.WriteString(fmt.Sprintf("%s 总资产: $%s\n", etfSymbol, data.FormatFlow(etfData.TotalAssets)))
+			if etfData.Nav > 0 {
+				dataStr.WriteString(fmt.Sprintf("%s NAV: $%.2f\n", etfSymbol, etfData.Nav))
+			}
+		}
+	}
+
 	chatModel, err := multi.GetChatModelWithTier(ctx, "correlation", multi.LLMTierQuick, cc.AIConfigID)
 	if err != nil {
 		return &ExpertReport{Role: "correlation", Content: "", Summary: "模型加载失败", Rating: "neutral", Error: err.Error()}, nil
