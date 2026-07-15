@@ -179,11 +179,17 @@ func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*d
 	}
 
 	name := parts[0]
-	open, _ := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	// parts[1] = open interest/volume, not a price field — skip
 	lastSettle, _ := strconv.ParseFloat(strings.TrimSpace(parts[2]), 64)
-	current, _ := strconv.ParseFloat(strings.TrimSpace(parts[3]), 64)
-	high, _ := strconv.ParseFloat(strings.TrimSpace(parts[4]), 64)
-	low, _ := strconv.ParseFloat(strings.TrimSpace(parts[5]), 64)
+	open, _ := strconv.ParseFloat(strings.TrimSpace(parts[3]), 64)
+	current, _ := strconv.ParseFloat(strings.TrimSpace(parts[5]), 64)
+	low, _ := strconv.ParseFloat(strings.TrimSpace(parts[6]), 64)
+	high := current
+	if len(parts) > 10 {
+		if v, err := strconv.ParseFloat(strings.TrimSpace(parts[10]), 64); err == nil && v > high {
+			high = v
+		}
+	}
 
 	change := current - lastSettle
 	var changePct float64
@@ -191,7 +197,8 @@ func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*d
 		changePct = change / lastSettle * 100
 	}
 
-	quoteDate, _ := time.Parse("2006-01-02", strings.TrimSpace(parts[6]))
+	// parts[17] = date string "2006-01-02"
+	quoteDate, _ := time.Parse("2006-01-02", strings.TrimSpace(parts[17]))
 
 	quote := &datasource.QuoteData{
 		Code:      asset.Code,
