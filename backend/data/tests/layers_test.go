@@ -5,12 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"go-stock/backend/data/layers"
-	"go-stock/backend/data/utils"
+	"go-stock/backend/data/types"
 )
 
 func TestDataLayerInterface(t *testing.T) {
-	layer := &layers.MockDataLayer{}
+	layer := &MockDataLayer{}
 
 	// Test GetName
 	if layer.GetName() != "MockLayer" {
@@ -24,43 +23,43 @@ func TestDataLayerInterface(t *testing.T) {
 }
 
 func TestEndpointStructure(t *testing.T) {
-	endpoint := utils.Endpoint{
-		Name:    "test_endpoint",
+	endpoint := types.Endpoint{
+		Name:    "testEndpoint",
 		URL:     "http://example.com/api",
-		Method:  "GET",
+		Method:  types.MethodGet,
 		Timeout: time.Second * 10,
 	}
 
-	if endpoint.Name != "test_endpoint" {
-		t.Errorf("Endpoint.Name = %v, want test_endpoint", endpoint.Name)
+	if endpoint.Name != "testEndpoint" {
+		t.Errorf("Endpoint.Name = %v, want testEndpoint", endpoint.Name)
 	}
 }
 
 func TestDataSourceConfigValidation(t *testing.T) {
-	config := &utils.DataSourceConfig{
-		Primary: utils.Endpoint{
+	config := &types.DataSourceConfig{
+		Primary: types.Endpoint{
 			Name:   "primary",
 			URL:    "http://primary.api",
-			Method: "GET",
+			Method: types.MethodGet,
 		},
-		Fallbacks: []utils.Endpoint{
-			{Name: "fallback1", URL: "http://fallback1.api", Method: "GET"},
+		Fallbacks: []types.Endpoint{
+			{Name: "fallback1", URL: "http://fallback1.api", Method: types.MethodGet},
 		},
-		Strategy: utils.FailoverStrategy,
+		Strategy: types.FailoverStrategy,
 	}
 
-	if config.Strategy != utils.FailoverStrategy {
+	if config.Strategy != types.FailoverStrategy {
 		t.Errorf("Strategy = %v, want FAILOVER", config.Strategy)
 	}
 }
 
 func TestStandardizedResponseFormat(t *testing.T) {
-	response := &utils.StandardizedResponse{
+	response := &types.StandardizedResponse{
 		Code:    0,
 		Message: "success",
-		Data:    map[string]interface{}{"test": "data"},
-		Meta: utils.ResponseMeta{
-			Source:    "test_source",
+		Data:    map[string]any{"test": "data"},
+		Meta: types.ResponseMeta{
+			Source:    "testSource",
 			Latency:   100,
 			Cached:    false,
 			Timestamp: time.Now(),
@@ -71,7 +70,7 @@ func TestStandardizedResponseFormat(t *testing.T) {
 		t.Errorf("Code = %v, want 0", response.Code)
 	}
 
-	if response.Meta.Source != "test_source" {
-		t.Errorf("Meta.Source = %v, want test_source", response.Meta.Source)
+	if response.Meta.Source != "testSource" {
+		t.Errorf("Meta.Source = %v, want testSource", response.Meta.Source)
 	}
 }
