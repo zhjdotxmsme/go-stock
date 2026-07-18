@@ -470,6 +470,10 @@ export function GetMultiAgentPrompts() {
   return window['go']['main']['App']['GetMultiAgentPrompts']();
 }
 
+export function GetNewsBySector(arg1, arg2) {
+  return window['go']['main']['App']['GetNewsBySector'](arg1, arg2);
+}
+
 export function GetPromptTemplateList(arg1) {
   return window['go']['main']['App']['GetPromptTemplateList'](arg1);
 }
@@ -480,6 +484,10 @@ export function GetPromptTemplates(arg1, arg2) {
 
 export function GetRecentDaysMarketStatistic(arg1) {
   return window['go']['main']['App']['GetRecentDaysMarketStatistic'](arg1);
+}
+
+export function GetSectors() {
+  return window['go']['main']['App']['GetSectors']();
 }
 
 export function GetSkillByID(arg1) {
@@ -540,6 +548,10 @@ export function GetStockMoneyTrendByDay(arg1, arg2) {
 
 export function GetStockRealTimePrice(arg1) {
   return window['go']['main']['App']['GetStockRealTimePrice'](arg1);
+}
+
+export function GetStockRelatedNews(arg1, arg2) {
+  return window['go']['main']['App']['GetStockRelatedNews'](arg1, arg2);
 }
 
 export function GetTdxCallAuction(arg1, arg2, arg3) {
