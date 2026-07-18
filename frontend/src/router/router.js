@@ -14,6 +14,7 @@ import backtestPanel from "../components/BacktestPanel.vue"
 import dataManager from "../components/DataManager.vue"
 import dailyPickPanel from "../components/DailyPickPanel.vue"
 import commodityView from "../components/commodity.vue"
+import newsView from '../components/NewsPage.vue'
 
 const routes = [
     { path: '/', component: stockView,name: 'stock'},
@@ -30,6 +31,7 @@ const routes = [
     { path: '/data-manager', component: dataManager, name: 'data-manager' },
     { path: '/daily-pick', component: dailyPickPanel, name: 'dailyPick' },
     { path: '/commodity', component: commodityView, name: 'commodity' },
+    { path: '/news', component: newsView, name: 'news' },
 ]
 
 const router = createRouter({
