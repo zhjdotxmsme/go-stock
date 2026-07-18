@@ -182,14 +182,9 @@ func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*d
 	// parts[1] = open interest/volume, not a price field — skip
 	lastSettle, _ := strconv.ParseFloat(strings.TrimSpace(parts[2]), 64)
 	open, _ := strconv.ParseFloat(strings.TrimSpace(parts[3]), 64)
-	current, _ := strconv.ParseFloat(strings.TrimSpace(parts[5]), 64)
-	low, _ := strconv.ParseFloat(strings.TrimSpace(parts[6]), 64)
-	high := current
-	if len(parts) > 10 {
-		if v, err := strconv.ParseFloat(strings.TrimSpace(parts[10]), 64); err == nil && v > high {
-			high = v
-		}
-	}
+	high, _ := strconv.ParseFloat(strings.TrimSpace(parts[4]), 64)
+	low, _ := strconv.ParseFloat(strings.TrimSpace(parts[5]), 64)
+	current, _ := strconv.ParseFloat(strings.TrimSpace(parts[6]), 64)
 
 	change := current - lastSettle
 	var changePct float64
