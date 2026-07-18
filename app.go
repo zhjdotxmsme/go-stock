@@ -2500,6 +2500,20 @@ func (a *App) ReFleshTelegraphList(source string) *[]*models.Telegraph {
 	return telegraphs
 }
 
+func (a *App) GetNewsBySector(sectorID string, limit int) (*data.SectorNewsResponse, error) {
+	api := data.NewMarketNewsApi()
+	return api.GetNewsBySector(sectorID, limit)
+}
+
+func (a *App) GetStockRelatedNews(code string, limit int) ([]data.SectorNewsItem, error) {
+	api := data.NewMarketNewsApi()
+	return api.GetStockRelatedNews(code, limit)
+}
+
+func (a *App) GetSectors() []data.Sector {
+	return data.NewsSectors
+}
+
 func (a *App) GlobalStockIndexes() map[string]any {
 	return data.NewMarketNewsApi().GlobalStockIndexes(30)
 }
