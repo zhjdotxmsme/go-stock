@@ -1570,3 +1570,124 @@ func (m MarketNewsApi) GetUplimitHot(date string, limit int) map[string]any {
 	}
 	return result
 }
+
+// SectorNewsItem 赛道新闻条目
+type SectorNewsItem struct {
+	Title         string   `json:"title"`
+	Summary       string   `json:"summary"`
+	Source        string   `json:"source"`
+	Time          string   `json:"time"`
+	URL           string   `json:"url"`
+	RelatedStocks []string `json:"relatedStocks"`
+}
+
+// SectorNewsResponse 赛道新闻响应
+type SectorNewsResponse struct {
+	SectorID   string           `json:"sectorId"`
+	SectorName string           `json:"sectorName"`
+	Highlights []SectorNewsItem `json:"highlights"`
+	News       []SectorNewsItem `json:"news"`
+}
+
+// GetNewsBySector 按赛道获取新闻
+func (m MarketNewsApi) GetNewsBySector(sectorID string, limit int) (*SectorNewsResponse, error) {
+	sector := FindSectorByID(sectorID)
+	if sector == nil {
+		return nil, fmt.Errorf("unknown sector: %s", sectorID)
+	}
+
+	// 获取原始新闻
+	allNews := m.GetNewsList("telegraph", limit*3)
+	if allNews == nil || len(*allNews) == 0 {
+		allNews = m.GetTelegraphList("telegraph")
+	}
+
+	// 按关键词过滤
+	result := &SectorNewsResponse{
+		SectorID:   sector.ID,
+		SectorName: sector.Name,
+	}
+	seen := make(map[string]bool)
+
+	if allNews != nil {
+		for _, item := range *allNews {
+			if len(result.News) >= limit {
+				break
+			}
+			text := item.Title + " " + item.Content
+			if !matchSectorKeywords(text, sector.Keywords) {
+				continue
+			}
+			if seen[item.Title] {
+				continue
+			}
+			seen[item.Title] = true
+
+			newsItem := SectorNewsItem{
+				Title:   item.Title,
+				Summary: truncateStr(item.Content, 200),
+				Source:  item.Source,
+				Time:    item.Time,
+				URL:     item.Url,
+			}
+			result.News = append(result.News, newsItem)
+		}
+	}
+
+	// 前3条作为今日要点
+	if len(result.News) > 3 {
+		result.Highlights = result.News[:3]
+	} else {
+		result.Highlights = result.News
+	}
+
+	return result, nil
+}
+
+// matchSectorKeywords 匹配赛道关键词
+func matchSectorKeywords(text string, keywords []string) bool {
+	if len(keywords) == 0 {
+		return true
+	}
+	textLower := strings.ToLower(text)
+	for _, kw := range keywords {
+		if strings.Contains(textLower, strings.ToLower(kw)) {
+			return true
+		}
+	}
+	return false
+}
+
+// GetStockRelatedNews 获取个股关联新闻
+func (m MarketNewsApi) GetStockRelatedNews(code string, limit int) ([]SectorNewsItem, error) {
+	allNews := m.GetNewsList("telegraph", limit*3)
+	if allNews == nil || len(*allNews) == 0 {
+		allNews = m.GetTelegraphList("telegraph")
+	}
+
+	var result []SectorNewsItem
+	seen := make(map[string]bool)
+
+	if allNews != nil {
+		for _, item := range *allNews {
+			if len(result) >= limit {
+				break
+			}
+			if !strings.Contains(item.Title+item.Content, code) {
+				continue
+			}
+			if seen[item.Title] {
+				continue
+			}
+			seen[item.Title] = true
+			result = append(result, SectorNewsItem{
+				Title:   item.Title,
+				Summary: truncateStr(item.Content, 200),
+				Source:  item.Source,
+				Time:    item.Time,
+				URL:     item.Url,
+			})
+		}
+	}
+	return result, nil
+}
