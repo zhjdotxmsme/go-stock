@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <n-space vertical>
     <n-page-header>
       <template #title>
@@ -10,6 +10,7 @@
           <n-button type="primary" :loading="running" @click="runPick">
             <template #icon><n-icon><DownloadOutline /></n-icon></template>运行选股
           </n-button>
+          <n-text v-if="running && progressText" depth="3" style="font-size:12px">{{ progressText }}</n-text>
           <n-button :loading="reviewing" @click="runReview">
             <template #icon><n-icon><RefreshOutline /></n-icon></template>复盘
           </n-button>
@@ -60,7 +61,7 @@
         <n-text depth="3" style="font-size:12px">显示更多指标</n-text>
       </n-space>
     </n-space>
-    <n-data-table :columns="visibleColumns" :data="picks" :loading="loading" :bordered="true" :single-line="false" :max-height="520" striped />
+    <n-data-table remote :columns="visibleColumns" :data="picks" :loading="loading" :bordered="true" :single-line="false" :max-height="520" :pagination="tablePagination" striped @update:sorter="onSorterChange" />
     <n-drawer v-model:show="showDetail" placement="bottom" :height="'55vh'">
       <n-drawer-content :title="detailTitle" closable>
         <n-grid :cols="3" :x-gap="16" v-if="selectedPick">
@@ -96,7 +97,7 @@
 </template>
 
 <script setup lang="ts">
-import { h, onMounted, ref, reactive, computed } from 'vue'
+import { h, onMounted, onUnmounted, ref, reactive, computed } from 'vue'
 import { NInput, NTag, NText, useMessage, useDialog } from 'naive-ui'
 import { DownloadOutline, RefreshOutline } from '@vicons/ionicons5'
 import { format } from 'date-fns'
@@ -108,10 +109,11 @@ import RadarChart from './charts/RadarChart.vue'
 import FactorBar from './charts/FactorBar.vue'
 
 import {
-  RunDailyPick, GetDailyPicks, GetDailyPickStats,
+  RunDailyPickAsync, GetDailyPicks, GetDailyPickStats,
   UpdateDailyPickRemarks, RunDailyReview,
   GetReviewTrend,
 } from '../../wailsjs/go/data/DailyPickService'
+import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 
 const message = useMessage()
 const dialog = useDialog()
@@ -129,6 +131,25 @@ const stats = ref({
 const queryDate = ref<number | null>(null)
 const query = reactive({ page: 1, pageSize: 20, tradeDate: '', reviewed: null })
 const pagination = reactive({ page: 1, pageSize: 20, total: 0, pageCount: 0 })
+const progressText = ref('')
+
+// Remote pagination: the table renders one server page at a time.
+const tablePagination = computed(() => ({
+  page: pagination.page,
+  pageSize: pagination.pageSize,
+  itemCount: pagination.total,
+  pageCount: pagination.pageCount,
+  onUpdatePage: (p: number) => { pagination.page = p; loadPicks() },
+}))
+
+// With remote pagination, column sorters only re-order the current page.
+function onSorterChange(sorter: any) {
+  if (!sorter || sorter.order === false) { loadPicks(); return }
+  if (typeof sorter.sorter === 'function') {
+    const dir = sorter.order === 'ascend' ? 1 : -1
+    picks.value = [...picks.value].sort((a, b) => sorter.sorter(a, b) * dir)
+  }
+}
 
 const winRateData = ref<Array<{ date: string; value: number }>>([])
 const winRateLoading = ref(false)
@@ -283,7 +304,7 @@ async function loadWinRate() {
       date: d.date || d.Date,
       value: d.winRate ?? d.WinRate ?? 0,
     }))
-  } catch (_) { console.error('loadWinRate failed')
+  } catch (e) { console.error('loadWinRate failed', e); message.error('加载胜率趋势失败')
   } finally { winRateLoading.value = false }
 }
 
@@ -323,18 +344,58 @@ async function loadPicks() {
 }
 
 async function loadStats() {
-  try { const s = await GetDailyPickStats(); if (s) stats.value = s } catch (_) {}
+  try { const s = await GetDailyPickStats(); if (s) stats.value = s }
+  catch (e) { console.error('loadStats failed', e); message.error('加载统计信息失败') }
 }
 
+// Async daily-pick progress events pushed by the backend
+// (see DailyPickService.RunDailyPickAsync).
+EventsOn('dailyPickProgress', (msg: any) => {
+  if (!msg || typeof msg !== 'object') return
+  switch (msg.stage) {
+    case 'busy':
+      message.warning(msg.message || '选股任务正在运行中')
+      break
+    case 'baseline':
+      progressText.value = `K线初筛 ${msg.done}/${msg.total}`
+      break
+    case 'research':
+      progressText.value = `抓取研报 ${msg.done}/${msg.total}`
+      break
+    case 'final':
+      progressText.value = `综合打分 ${msg.done}/${msg.total}`
+      break
+    case 'done':
+      running.value = false
+      progressText.value = ''
+      message.success(`选股完成，入选 ${msg.count ?? 0} 只`)
+      loadPicks(); loadStats(); loadWinRate()
+      break
+    case 'error':
+      running.value = false
+      progressText.value = ''
+      message.error('选股失败: ' + (msg.message || '未知错误'))
+      break
+  }
+})
+
+onUnmounted(() => {
+  EventsOff('dailyPickProgress')
+})
+
 async function runPick() {
+  if (running.value) return
   running.value = true
+  progressText.value = '正在启动选股任务...'
   try {
     const date = queryDate.value ? format(new Date(queryDate.value), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')
-    await RunDailyPick(date, 5)
-    message.success('选股完成: ' + date)
-    await loadPicks(); await loadStats(); await loadWinRate()
-  } catch (e) { message.error('选股失败: ' + e)
-  } finally { running.value = false }
+    // Fire-and-forget: progress and completion arrive via dailyPickProgress events.
+    await RunDailyPickAsync(date, 5)
+  } catch (e) {
+    running.value = false
+    progressText.value = ''
+    message.error('选股启动失败: ' + e)
+  }
 }
 
 async function runReview() {
@@ -349,7 +410,7 @@ async function runReview() {
 
 function onDateChange(ts: number | null) {
   query.tradeDate = ts ? format(new Date(ts), 'yyyy-MM-dd') : ''
-  query.page = 1; loadPicks()
+  query.page = 1; pagination.page = 1; loadPicks()
 }
 
 function editRemarks(row: any) {

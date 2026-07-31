@@ -3,17 +3,26 @@ package data
 import (
 	"context"
 	"math"
+	"sync/atomic"
 	"time"
 
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// DailyPickProgressEvent is the Wails event name used to report async
+// daily-pick progress to the frontend.
+const DailyPickProgressEvent = "dailyPickProgress"
 
 // DailyPickService exposes Wails-bindable methods for the daily pick feature.
 type DailyPickService struct {
 	engine *DailyPickEngine
 	review *DailyPickReview
+
+	asyncRunning atomic.Bool // guards against concurrent async runs
 }
 
 // NewDailyPickService creates a new service instance.
@@ -37,14 +46,60 @@ func (s *DailyPickService) RunDailyPick(tradeDate string, topN int) ([]models.Da
 }
 
 // RunDailyPickAsync kicks off the pick in a goroutine and returns immediately.
+// Wails injects the application context as the first argument. Progress and the
+// final result are pushed to the frontend via "dailyPickProgress" events:
+//
+//	{stage:"start",    total:int}
+//	{stage:"baseline", done:int, total:int}  // stage-1 K-line scoring
+//	{stage:"research", done:int, total:int}  // stage-2 research report pre-fetch
+//	{stage:"final",    done:int, total:int}  // stage-2 full scoring
+//	{stage:"done",     count:int}            // success, count = persisted picks
+//	{stage:"error",    message:string}       // failure
+//	{stage:"busy",     message:string}       // another run is in progress
+//
 // The picks are persisted to the database as they complete.
-func (s *DailyPickService) RunDailyPickAsync(tradeDate string, topN int) {
+func (s *DailyPickService) RunDailyPickAsync(ctx context.Context, tradeDate string, topN int) {
+	if !s.asyncRunning.CompareAndSwap(false, true) {
+		runtime.EventsEmit(ctx, DailyPickProgressEvent, map[string]any{
+			"stage":   "busy",
+			"message": "选股任务正在运行中，请稍候",
+		})
+		return
+	}
 	go func() {
-		ctx := context.Background()
-		_, err := s.engine.RunDailyPick(ctx, tradeDate, topN)
+		defer s.asyncRunning.Store(false)
+		defer func() {
+			if err := recover(); err != nil {
+				logger.SugaredLogger.Errorf("daily_pick: async pick panic: %v", err)
+				runtime.EventsEmit(ctx, DailyPickProgressEvent, map[string]any{
+					"stage":   "error",
+					"message": "选股任务异常",
+				})
+			}
+		}()
+
+		s.engine.WithProgressHook(func(stage string, done, total int) {
+			runtime.EventsEmit(ctx, DailyPickProgressEvent, map[string]any{
+				"stage": stage,
+				"done":  done,
+				"total": total,
+			})
+		})
+		defer s.engine.WithProgressHook(nil)
+
+		picks, err := s.engine.RunDailyPick(ctx, tradeDate, topN)
 		if err != nil {
 			logger.SugaredLogger.Errorf("daily_pick: async pick failed: %v", err)
+			runtime.EventsEmit(ctx, DailyPickProgressEvent, map[string]any{
+				"stage":   "error",
+				"message": err.Error(),
+			})
+			return
 		}
+		runtime.EventsEmit(ctx, DailyPickProgressEvent, map[string]any{
+			"stage": "done",
+			"count": len(picks),
+		})
 	}()
 }
 

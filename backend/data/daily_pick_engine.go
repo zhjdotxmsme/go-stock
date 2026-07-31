@@ -32,6 +32,12 @@ type DailyPickEngine struct {
 	maxWorkers int
 	strategies []ScoringStrategy
 
+	// progressHook, if set, is called as scoring progresses: (stage, done, total).
+	// Stages: "baseline" (stage-1 K-line scoring), "research" (stage-2 report
+	// pre-fetch), "final" (stage-2 full scoring of the shortlist).
+	hookMu       sync.Mutex
+	progressHook func(stage string, done, total int)
+
 	// Pre-fetched data (populated once per RunDailyPick)
 	macroScore        float64               // 0-1 macro environment score
 	industryRankMap   map[string]float64    // industryName → score (0-1)
@@ -62,6 +68,24 @@ func (e *DailyPickEngine) WithStrategies(s []ScoringStrategy) *DailyPickEngine {
 	return e
 }
 
+// WithProgressHook sets a callback invoked as scoring progresses. Useful for
+// reporting progress to the frontend via Wails events.
+func (e *DailyPickEngine) WithProgressHook(fn func(stage string, done, total int)) *DailyPickEngine {
+	e.hookMu.Lock()
+	e.progressHook = fn
+	e.hookMu.Unlock()
+	return e
+}
+
+func (e *DailyPickEngine) reportProgress(stage string, done, total int) {
+	e.hookMu.Lock()
+	hook := e.progressHook
+	e.hookMu.Unlock()
+	if hook != nil {
+		hook(stage, done, total)
+	}
+}
+
 // RunDailyPick performs the full daily pick flow:
 //  1. Get candidate stock pool
 //  2. Parallel fetch K-line data and compute indicators
@@ -85,38 +109,24 @@ func (e *DailyPickEngine) RunDailyPick(ctx context.Context, tradeDate string, to
 	}
 	logger.SugaredLogger.Infof("daily_pick: %d candidates to score", len(candidates))
 
-	// Pre-fetch macro, industry, and research data
+	// Pre-fetch macro and industry data (one-off, cheap requests).
+	// Research reports are deliberately NOT pre-fetched here: they are the most
+	// expensive per-stock call and are deferred to stage 2 (shortlist only).
 	e.prefetchMacroData()
 	e.prefetchIndustryRankings(ctx)
-	e.prefetchResearchData(ctx, candidates)
 
-	// Step 2: Parallel score computation
-	type scored struct {
-		pick models.DailyPick
-		err  error
-	}
+	// Stage 1: baseline scoring from K-line data only (one HTTP request per
+	// stock). researchReportMap stays empty so all stocks get a uniform zero
+	// research bonus, keeping the ranking comparable.
+	e.researchReportMap = make(map[string]int)
+	stage1 := e.scoreCandidates(ctx, candidates, tradeDate, "baseline")
+	shortlist := shortlistCandidates(stage1, topN)
+	logger.SugaredLogger.Infof("daily_pick: %d/%d candidates shortlisted for full scoring", len(shortlist), len(candidates))
 
-	var (
-		mu     sync.Mutex
-		wg     sync.WaitGroup
-		sem    = make(chan struct{}, e.maxWorkers)
-		result []scored
-	)
-
-	for _, c := range candidates {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(candidate stockCandidate) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
-			p, err := e.scoreStock(ctx, candidate, tradeDate, nil, nil)
-			mu.Lock()
-			result = append(result, scored{pick: p, err: err})
-			mu.Unlock()
-		}(c)
-	}
-	wg.Wait()
+	// Stage 2: fetch research reports only for the shortlist, then re-score
+	// them with the exact same scoring logic as before.
+	e.prefetchResearchData(ctx, shortlist)
+	result := e.scoreCandidates(ctx, shortlist, tradeDate, "final")
 
 	// Step 3: Filter successful scores and rank
 	var picks []models.DailyPick
@@ -151,6 +161,75 @@ func (e *DailyPickEngine) RunDailyPick(ctx context.Context, tradeDate string, to
 	}
 
 	return picks, nil
+}
+
+// scored pairs a computed pick with its scoring error.
+type scored struct {
+	pick models.DailyPick
+	err  error
+}
+
+// scoreCandidates scores the given candidates in parallel, reporting progress
+// under the given stage name. The returned slice is unordered.
+func (e *DailyPickEngine) scoreCandidates(ctx context.Context, candidates []stockCandidate, tradeDate, stage string) []scored {
+	var (
+		mu     sync.Mutex
+		wg     sync.WaitGroup
+		sem    = make(chan struct{}, e.maxWorkers)
+		done   int
+		result = make([]scored, 0, len(candidates))
+	)
+
+	for _, c := range candidates {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(candidate stockCandidate) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			p, err := e.scoreStock(ctx, candidate, tradeDate, nil, nil)
+			mu.Lock()
+			result = append(result, scored{pick: p, err: err})
+			done++
+			e.reportProgress(stage, done, len(candidates))
+			mu.Unlock()
+		}(c)
+	}
+	wg.Wait()
+	return result
+}
+
+// shortlistMinSize is the minimum number of stage-1 scorers that advance to
+// stage 2. The research-report bonus is bounded (max 100 * 0.15 = 15 points),
+// so a shortlist well above topN keeps results effectively unchanged.
+const shortlistMinSize = 200
+
+// shortlistCandidates ranks stage-1 results by score and returns the top
+// candidates for full stage-2 scoring. It only narrows the candidate pool;
+// shortlisted stocks are re-scored with identical logic afterwards.
+func shortlistCandidates(results []scored, topN int) []stockCandidate {
+	var ok []scored
+	for _, r := range results {
+		if r.err != nil || r.pick.Score <= 0 {
+			continue
+		}
+		ok = append(ok, r)
+	}
+	sort.Slice(ok, func(i, j int) bool { return ok[i].pick.Score > ok[j].pick.Score })
+
+	size := topN * 40
+	if size < shortlistMinSize {
+		size = shortlistMinSize
+	}
+	if len(ok) > size {
+		ok = ok[:size]
+	}
+
+	shortlist := make([]stockCandidate, 0, len(ok))
+	for _, r := range ok {
+		shortlist = append(shortlist, stockCandidate{Code: r.pick.StockCode, Name: r.pick.StockName})
+	}
+	return shortlist
 }
 
 // stockCandidate holds minimal info about a candidate stock.
@@ -693,6 +772,7 @@ func (e *DailyPickEngine) prefetchResearchData(ctx context.Context, candidates [
 
 	var mu sync.Mutex
 	var wg sync.WaitGroup
+	done := 0
 	sem := make(chan struct{}, e.maxWorkers)
 
 	for _, c := range candidates {
@@ -702,19 +782,19 @@ func (e *DailyPickEngine) prefetchResearchData(ctx context.Context, candidates [
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			done := make(chan int, 1)
+			doneCh := make(chan int, 1)
 			go func() {
 				reports := NewMarketNewsApi().StockResearchReport(code, 30)
 				if reports != nil {
-					done <- len(reports)
+					doneCh <- len(reports)
 				} else {
-					done <- 0
+					doneCh <- 0
 				}
 			}()
 
 			var count int
 			select {
-			case count = <-done:
+			case count = <-doneCh:
 			case <-time.After(12 * time.Second):
 				logger.SugaredLogger.Warnf("daily_pick: research report timeout for %s", code)
 				count = 0
@@ -724,6 +804,8 @@ func (e *DailyPickEngine) prefetchResearchData(ctx context.Context, candidates [
 
 			mu.Lock()
 			e.researchReportMap[code] = count
+			done++
+			e.reportProgress("research", done, len(candidates))
 			mu.Unlock()
 		}(c.Code)
 	}
@@ -775,11 +857,6 @@ func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, c
 	}
 
 	// Step 4: Parallel score computation (same pattern as RunDailyPick)
-	type scored struct {
-		pick models.DailyPick
-		err  error
-	}
-
 	var (
 		mu     sync.Mutex
 		wg     sync.WaitGroup
