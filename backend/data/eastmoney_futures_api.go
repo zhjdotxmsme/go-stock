@@ -1,8 +1,11 @@
 package data
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -10,7 +13,29 @@ import (
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+
+	"github.com/go-resty/resty/v2"
 )
+
+// emFuturesHTTPClient 是东方财富期货专用客户端，强制 HTTP/1.1 以避免 push2 服务器对 HTTP/2 的 EOF 问题。
+var emFuturesHTTPClient = func() *resty.Client {
+	tr := &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:          10,
+		MaxIdleConnsPerHost:   5,
+		IdleConnTimeout:       60 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
+		TLSNextProto:          make(map[string]func(string, *tls.Conn) http.RoundTripper),
+	}
+	return resty.NewWithClient(&http.Client{Transport: tr, Timeout: 30 * time.Second}).
+		SetTimeout(30 * time.Second).
+		SetRetryCount(0)
+}()
 
 // EastMoneyFuturesApi 东方财富期货行情 API
 type EastMoneyFuturesApi struct{}
@@ -24,11 +49,11 @@ func (e *EastMoneyFuturesApi) GetQuote(asset *models.CommodityAsset) (*datasourc
 	}
 
 	url := fmt.Sprintf(
-		"https://push2.eastmoney.com/api/qt/stock/get?secid=%s&fields=f43,f44,f45,f46,f57,f58,f60,f169,f170,f86",
+		"https://push2.eastmoney.com/api/qt/stock/get?secid=%s&fields=f43,f44,f45,f46,f57,f58,f60,f169,f170,f86&fltt=2&invt=2",
 		secid,
 	)
 
-	resp, err := SharedHTTPClient.SetTimeout(15 * time.Second).R().
+	resp, err := emFuturesHTTPClient.R().
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
 		SetHeader("Referer", "https://quote.eastmoney.com/").
 		Get(url)
@@ -116,11 +141,11 @@ func (e *EastMoneyFuturesApi) GetKLine(asset *models.CommodityAsset, period stri
 	}
 
 	url := fmt.Sprintf(
-		"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=%s&klt=%s&fqt=1&lmt=%d",
+		"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=%s&klt=%s&fqt=1&lmt=%d&fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
 		secid, klt, count,
 	)
 
-	resp, err := SharedHTTPClient.SetTimeout(15 * time.Second).R().
+	resp, err := emFuturesHTTPClient.R().
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
 		SetHeader("Referer", "https://quote.eastmoney.com/").
 		Get(url)

@@ -242,11 +242,15 @@ export function GetMoneyRankSina(arg1:string):Promise<Array<Record<string, any>>
 
 export function GetMultiAgentPrompts():Promise<Array<models.PromptTemplate>>;
 
+export function GetNewsBySector(arg1:string,arg2:number):Promise<data.SectorNewsResponse>;
+
 export function GetPromptTemplateList(arg1:models.PromptTemplateQuery):Promise<models.PromptTemplatePageData>;
 
 export function GetPromptTemplates(arg1:string,arg2:string):Promise<any>;
 
 export function GetRecentDaysMarketStatistic(arg1:number):Promise<Array<models.MarketStatistic>>;
+
+export function GetSectors():Promise<Array<data.Sector>>;
 
 export function GetSkillByID(arg1:number):Promise<models.Skill>;
 
@@ -277,6 +281,8 @@ export function GetStockMinutePriceLineData(arg1:string,arg2:string):Promise<Rec
 export function GetStockMoneyTrendByDay(arg1:string,arg2:number):Promise<Array<Record<string, any>>>;
 
 export function GetStockRealTimePrice(arg1:string):Promise<Record<string, any>>;
+
+export function GetStockRelatedNews(arg1:string,arg2:number):Promise<Array<data.SectorNewsItem>>;
 
 export function GetTdxCallAuction(arg1:string,arg2:number,arg3:number):Promise<any>;
 

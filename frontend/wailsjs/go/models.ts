@@ -1200,6 +1200,84 @@ export namespace data {
 		}
 	}
 	
+	export class Sector {
+	    id: string;
+	    name: string;
+	    keywords: string[];
+	    stockSector: string[];
+	    icon: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Sector(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.keywords = source["keywords"];
+	        this.stockSector = source["stockSector"];
+	        this.icon = source["icon"];
+	    }
+	}
+	export class SectorNewsItem {
+	    title: string;
+	    summary: string;
+	    source: string;
+	    time: string;
+	    url: string;
+	    relatedStocks: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SectorNewsItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.summary = source["summary"];
+	        this.source = source["source"];
+	        this.time = source["time"];
+	        this.url = source["url"];
+	        this.relatedStocks = source["relatedStocks"];
+	    }
+	}
+	export class SectorNewsResponse {
+	    sectorId: string;
+	    sectorName: string;
+	    highlights: SectorNewsItem[];
+	    news: SectorNewsItem[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SectorNewsResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sectorId = source["sectorId"];
+	        this.sectorName = source["sectorName"];
+	        this.highlights = this.convertValues(source["highlights"], SectorNewsItem);
+	        this.news = this.convertValues(source["news"], SectorNewsItem);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	export class SettingConfig {
 	    ID: number;

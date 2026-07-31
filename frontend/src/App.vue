@@ -676,6 +676,15 @@ const menuOptions = ref([
   },
   {
     label: () =>
+        h(RouterLink, {
+            to: { name: 'news' },
+            onClick: () => { activeKey.value = 'news' },
+        }, { default: () => '投资资讯' }),
+    key: 'news',
+    icon: renderIcon(NewspaperOutline),
+  },
+  {
+    label: () =>
         h(
             RouterLink,
             {

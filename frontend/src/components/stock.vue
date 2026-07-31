@@ -74,6 +74,7 @@ import vueDanmaku from 'vue3-danmaku'
 import {keys, padStart} from "lodash";
 import {useRoute, useRouter} from 'vue-router'
 import MoneyTrend from "./moneyTrend.vue";
+import StockNews from "./StockNews.vue";
 import StockSparkLine from "./stockSparkLine.vue";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
 import MultiAgentResult from "./MultiAgentResult.vue";
@@ -116,6 +117,16 @@ const modalShow3 = ref(false)
 const modalShow4 = ref(false)
 const modalShow5 = ref(false)
 const modalShow6 = ref(false)
+const modalShowNews = ref(false)
+const newsCode = ref('')
+const newsName = ref('')
+
+function showNews(code, name) {
+  newsCode.value = code
+  newsName.value = name
+  modalShowNews.value = true
+}
+
 const lwKlineCode = ref('')
 const lwKlineName = ref('')
 const currentStockTradingPrice = ref({
@@ -2732,6 +2743,10 @@ watch(modalShow6, (newVal) => {
               <n-button size="tiny" v-if="data.openAiEnable" secondary type="warning"
                         @click="aiCheckStock(result['股票名称'],result['股票代码'])">
                 AI分析
+              </n-button>&nbsp;
+              <n-button size="tiny" secondary type="info"
+                        @click="showNews(result['股票代码'], result['股票名称'])">
+                资讯
               </n-button>
               <n-button secondary type="error" size="tiny"
                         @click="delStockGroup(result['股票代码'],result['股票名称'],group.ID)">移出分组
@@ -3067,6 +3082,9 @@ watch(modalShow6, (newVal) => {
       @update:longTakeProfitPrice="handleLongTakeProfitPriceUpdate"
       @update:costPrice="handleCostPriceUpdate"
     />
+  </n-modal>
+  <n-modal v-model:show="modalShowNews" :title="newsName + ' - 关联资讯'" style="width: 800px;max-width: calc(100vw - 32px);" :preset="'card'">
+    <StockNews :code="newsCode" />
   </n-modal>
 </template>
 
