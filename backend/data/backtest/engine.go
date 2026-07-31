@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"go-stock/backend/data/datasource"
+	"go-stock/backend/models"
 )
 
 type Input struct {
@@ -47,18 +48,42 @@ func NewEngine() *Engine {
 	return &Engine{store: datasource.NewKLineStore()}
 }
 
+// queryCacheKLines 按候选存储格式依次做精确等值查询，命中第一种有数据的格式即返回。
+// 历史数据可能同时存在裸码（600519）与前缀格式（sh600519）两种存量记录，
+// 候选格式均为等值条件，仍命中 kline_bars 的复合索引。
+func (e *Engine) queryCacheKLines(ctx context.Context, code, period, startDate, endDate string, adjusted bool) ([]models.KLineBar, error) {
+	var lastErr error
+	for _, candidate := range StockCodeCandidates(code) {
+		bars, err := e.store.QueryKLines(ctx, candidate, period, startDate, endDate, adjusted)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if len(bars) > 0 {
+			return bars, nil
+		}
+	}
+	return nil, lastErr
+}
+
 // limitUpDown 返回给定 Input 的涨跌停阈值系数。
 // 返回 (upThreshold, downThreshold)，例如 (1.099, 0.901) 表示 10% 涨跌停。
 func (e *Engine) limitUpDown(in Input) (upFactor, downFactor float64) {
 	if in.IsST {
 		return 1.049, 0.951 // ST 股 5%
 	}
-	// 根据代码前缀判断板块
-	code := in.StockCode
-	if strings.HasPrefix(code, "sh688") || strings.HasPrefix(code, "sz300") || strings.HasPrefix(code, "sz301") {
-		return 1.199, 0.801 // 科创板/创业板 20%
+	// 根据 6 位数字代码前缀判断板块，任意输入格式（600519.SH / sh600519 / 600519）都正确
+	digits, _, ok := ParseStockCode(in.StockCode)
+	if !ok {
+		return 1.099, 0.901 // 无法识别的代码（如指数/测试 mock），按主板处理
 	}
-	if strings.HasPrefix(code, "sh4") || strings.HasPrefix(code, "sh8") || strings.HasPrefix(code, "sz8") || strings.HasPrefix(code, "bj8") {
+	if strings.HasPrefix(digits, "688") {
+		return 1.199, 0.801 // 科创板 20%
+	}
+	if strings.HasPrefix(digits, "300") || strings.HasPrefix(digits, "301") {
+		return 1.199, 0.801 // 创业板 20%
+	}
+	if digits[0] == '4' || digits[0] == '8' || strings.HasPrefix(digits, "920") {
 		return 1.299, 0.701 // 北交所 30%
 	}
 	return 1.099, 0.901 // 主板 10%
@@ -86,7 +111,8 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 		return nil, fmt.Errorf("invalid lot size: %d shares (must be multiple of 100)", in.Shares)
 	}
 
-	bars, err := e.store.QueryKLines(ctx, in.StockCode, "day", in.SignalDate, "", in.Adjusted)
+	// endDate 传 "" 时 SQLite BETWEEN 'date' AND '' 恒为空集，这里用上界日期保证缓存可查
+	bars, err := e.queryCacheKLines(ctx, in.StockCode, "day", in.SignalDate, "9999-12-31", in.Adjusted)
 	if err != nil || len(bars) == 0 {
 		router := datasource.GetRouter()
 		data, fallbackErr := router.GetKLine(ctx, in.StockCode, "day", 500)
@@ -123,7 +149,7 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 
 	// DB 路径：如果第一条 bar 没有 PrevClose，尝试查询前一日记录补充
 	if len(bars) > 0 && bars[0].PrevClose == 0 {
-		prevBars, _ := e.store.QueryKLines(ctx, in.StockCode, "day", "1900-01-01", in.SignalDate, in.Adjusted)
+		prevBars, _ := e.queryCacheKLines(ctx, in.StockCode, "day", "1900-01-01", in.SignalDate, in.Adjusted)
 		if len(prevBars) >= 2 {
 			bars[0].PrevClose = prevBars[len(prevBars)-2].Close
 		}
@@ -207,7 +233,7 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 
 	benchRet := 0.0
 	var benchValues []float64
-	benchBars, _ := e.store.QueryKLines(ctx, in.Benchmark, "day", in.SignalDate, bars[exitIdx].TradeDate, in.Adjusted)
+	benchBars, _ := e.queryCacheKLines(ctx, in.Benchmark, "day", in.SignalDate, bars[exitIdx].TradeDate, in.Adjusted)
 	if len(benchBars) >= 2 {
 		benchRet = (benchBars[len(benchBars)-1].Close - benchBars[0].Close) / benchBars[0].Close
 		for i := 1; i < len(benchBars) && i <= exitIdx; i++ {

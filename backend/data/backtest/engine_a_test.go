@@ -269,6 +269,7 @@ func setupAEngineTestDB(t *testing.T) func() {
 	require.NoError(t, conn.AutoMigrate(&models.KLineBar{}))
 	db.Dao = conn
 	return func() {
+		time.Sleep(50 * time.Millisecond) // 等待 router 异步持久化 goroutine 结束，避免与 db.Dao 复原竞争
 		db.Dao = orig
 	}
 }
