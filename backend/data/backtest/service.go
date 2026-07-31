@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"go-stock/backend/data/history"
@@ -116,14 +117,122 @@ func (s *Service) StartHistoricalSync(years int) error {
 		return err
 	}
 
+	// Stocks whose sync is already in flight are left untouched, so re-clicking
+	// the button while workers are running does not reset running tasks.
+	running := make(map[string]struct{})
+	var runningLogs []models.KLineSyncLog
+	if err := db.Dao.WithContext(ctx).
+		Where("status = ?", history.SyncStatusRunning).
+		Find(&runningLogs).Error; err == nil {
+		for _, l := range runningLogs {
+			running[l.StockCode] = struct{}{}
+		}
+	}
+
+	created := 0
 	for _, info := range infos {
+		if _, ok := running[info.SECUCODE]; ok {
+			continue
+		}
 		if err := history.CreateSyncTask(ctx, info.SECUCODE, "day", startDate, endDate, true); err != nil {
 			logger.SugaredLogger.Errorf("create sync task failed for %s: %v", info.SECUCODE, err)
 			continue
 		}
+		created++
 	}
 
-	logger.SugaredLogger.Infof("created %d sync tasks for historical data sync (%d years)", len(infos), years)
+	logger.SugaredLogger.Infof("created %d sync tasks for historical data sync (%d years)", created, years)
+
+	startSyncWorkers()
+	return nil
+}
+
+// syncWorkerCount is the number of goroutines consuming pending sync tasks.
+const syncWorkerCount = 3
+
+var (
+	syncWorkersMu      sync.Mutex
+	syncWorkersRunning bool
+)
+
+// startSyncWorkers launches background workers to consume pending sync tasks.
+// It is a no-op if a batch of workers is already running.
+func startSyncWorkers() {
+	syncWorkersMu.Lock()
+	if syncWorkersRunning {
+		syncWorkersMu.Unlock()
+		logger.SugaredLogger.Infof("sync workers already running, skip starting a new batch")
+		return
+	}
+	syncWorkersRunning = true
+	syncWorkersMu.Unlock()
+
+	go func() {
+		defer func() {
+			syncWorkersMu.Lock()
+			syncWorkersRunning = false
+			syncWorkersMu.Unlock()
+		}()
+
+		var wg sync.WaitGroup
+		for i := 0; i < syncWorkerCount; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				syncWorkerLoop()
+			}()
+		}
+		wg.Wait()
+		logger.SugaredLogger.Infof("all sync workers finished, no pending tasks left")
+	}()
+}
+
+// syncWorkerLoop claims and executes pending sync tasks until none remain.
+func syncWorkerLoop() {
+	ctx := context.Background()
+	for {
+		task := claimNextPendingSyncTask(ctx)
+		if task == nil {
+			return
+		}
+		if err := history.RunSyncTask(ctx, task); err != nil {
+			logger.SugaredLogger.Errorf("sync task failed for %s: %v", task.StockCode, err)
+		}
+	}
+}
+
+// claimNextPendingSyncTask atomically marks the oldest pending task as running
+// and returns it. Returns nil when no pending task is left.
+func claimNextPendingSyncTask(ctx context.Context) *history.SyncTask {
+	// Retry a few times in case several workers race for the same task.
+	for i := 0; i < 10; i++ {
+		var log models.KLineSyncLog
+		err := db.Dao.WithContext(ctx).
+			Where("status = ?", history.SyncStatusPending).
+			Order("id ASC").
+			First(&log).Error
+		if err != nil {
+			return nil
+		}
+
+		res := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
+			Where("id = ? AND status = ?", log.ID, history.SyncStatusPending).
+			Updates(map[string]interface{}{
+				"status":     history.SyncStatusRunning,
+				"updated_at": time.Now(),
+			})
+		if res.Error == nil && res.RowsAffected == 1 {
+			return &history.SyncTask{
+				ID:        log.ID,
+				StockCode: log.StockCode,
+				Period:    log.Period,
+				StartDate: log.StartDate,
+				EndDate:   log.EndDate,
+				Adjusted:  log.Adjusted,
+				Status:    history.SyncStatusRunning,
+			}
+		}
+	}
 	return nil
 }
 
@@ -139,6 +248,9 @@ func (s *Service) GetSyncProgress() ([]syncTaskItem, error) {
 		progress := 0
 		if l.ExpectedCount > 0 {
 			progress = l.SyncedCount * 100 / l.ExpectedCount
+			if progress > 100 {
+				progress = 100
+			}
 		} else if l.Status == history.SyncStatusDone {
 			progress = 100
 		}

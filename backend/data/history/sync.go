@@ -46,7 +46,7 @@ func SyncKLineForStock(ctx context.Context, stockCode, period, startDate, endDat
 	store := datasource.NewKLineStore()
 	router := datasource.GetRouter()
 
-	missingRanges, err := store.FindMissingDateRanges(ctx, stockCode, period, startDate, endDate, adjusted)
+	missingRanges, err := findMissingRangesLocal(ctx, store, stockCode, period, startDate, endDate, adjusted)
 	if err != nil {
 		return fmt.Errorf("failed to find missing ranges for %s: %w", stockCode, err)
 	}
@@ -76,10 +76,76 @@ func SyncKLineForStock(ctx context.Context, stockCode, period, startDate, endDat
 	return nil
 }
 
+// findMissingRangesLocal computes missing date intervals using a local trading-day
+// approximation (weekdays only). Unlike KLineStore.FindMissingDateRanges it does not
+// call the holiday HTTP API per day, which would be prohibitively slow for multi-year
+// ranges. Holidays simply yield no bars from the datasource and are skipped on upsert.
+func findMissingRangesLocal(ctx context.Context, store *datasource.KLineStore, stockCode, period, startDate, endDate string, adjusted bool) ([]datasource.DateRange, error) {
+	bars, err := store.QueryKLines(ctx, stockCode, period, startDate, endDate, adjusted)
+	if err != nil {
+		return nil, fmt.Errorf("query existing bars: %w", err)
+	}
+
+	existing := make(map[string]struct{}, len(bars))
+	for _, b := range bars {
+		existing[b.TradeDate] = struct{}{}
+	}
+
+	startT, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		return nil, fmt.Errorf("parse start date: %w", err)
+	}
+	endT, err := time.Parse("2006-01-02", endDate)
+	if err != nil {
+		return nil, fmt.Errorf("parse end date: %w", err)
+	}
+
+	var missing []datasource.DateRange
+	var rangeStart *time.Time
+
+	for d := startT; !d.After(endT); d = d.AddDate(0, 0, 1) {
+		dateStr := d.Format("2006-01-02")
+
+		// Skip non-trading days (weekends)
+		if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
+			continue
+		}
+
+		_, exists := existing[dateStr]
+		if !exists {
+			if rangeStart == nil {
+				ts := d
+				rangeStart = &ts
+			}
+		} else if rangeStart != nil {
+			prev := d.AddDate(0, 0, -1)
+			missing = append(missing, datasource.DateRange{
+				Start: rangeStart.Format("2006-01-02"),
+				End:   prev.Format("2006-01-02"),
+			})
+			rangeStart = nil
+		}
+	}
+
+	if rangeStart != nil {
+		missing = append(missing, datasource.DateRange{
+			Start: rangeStart.Format("2006-01-02"),
+			End:   endT.Format("2006-01-02"),
+		})
+	}
+
+	return missing, nil
+}
+
 // RunSyncTask executes a single sync task with checkpointing.
 func RunSyncTask(ctx context.Context, task *SyncTask) error {
 	if task == nil {
 		return fmt.Errorf("sync task cannot be nil")
+	}
+
+	if task.Status == SyncStatusDone {
+		logger.SugaredLogger.Infof("Task already completed: %s", task.StockCode)
+		return nil
 	}
 
 	task.Status = SyncStatusRunning
@@ -89,11 +155,6 @@ func RunSyncTask(ctx context.Context, task *SyncTask) error {
 	}
 
 	logger.SugaredLogger.Infof("Running sync task: %s %s [%s - %s] adjusted=%v", task.StockCode, task.Period, task.StartDate, task.EndDate, task.Adjusted)
-
-	if task.Status == SyncStatusDone && task.LastSyncDate == task.EndDate {
-		logger.SugaredLogger.Infof("Task already completed: %s", task.StockCode)
-		return nil
-	}
 
 	startDate := task.StartDate
 	if task.LastSyncDate != "" && task.LastSyncDate >= startDate {
@@ -153,6 +214,7 @@ func CreateSyncTask(ctx context.Context, stockCode, period, startDate, endDate s
 	if err == nil {
 		existing.StartDate = startDate
 		existing.EndDate = endDate
+		existing.ExpectedCount = estimateExpectedCount(period, startDate, endDate)
 		existing.Status = SyncStatusPending
 		existing.ErrorMsg = ""
 		existing.UpdatedAt = time.Now()
@@ -176,7 +238,7 @@ func CreateSyncTask(ctx context.Context, stockCode, period, startDate, endDate s
 		StartDate:     startDate,
 		EndDate:       endDate,
 		SyncedCount:   0,
-		ExpectedCount: 0,
+		ExpectedCount: estimateExpectedCount(period, startDate, endDate),
 		Status:        SyncStatusPending,
 		ErrorMsg:      "",
 		UpdatedAt:     time.Now(),
@@ -246,10 +308,6 @@ func updateCheckpoint(stockCode, period string, adjusted bool, lastDate string, 
 		"updated_at":   time.Now(),
 	}
 
-	if lastDate > log.StartDate {
-		updates["end_date"] = lastDate
-	}
-
 	if err := db.Dao.Model(&log).Updates(updates).Error; err != nil {
 		logger.SugaredLogger.Errorf("Failed to update checkpoint for %s: %v", stockCode, err)
 	}
@@ -269,7 +327,7 @@ func updateSyncTask(task *SyncTask) error {
 				StartDate:     task.StartDate,
 				EndDate:       task.EndDate,
 				SyncedCount:   0,
-				ExpectedCount: 0,
+				ExpectedCount: estimateExpectedCount(task.Period, task.StartDate, task.EndDate),
 				Status:        task.Status,
 				ErrorMsg:      task.ErrorMsg,
 				UpdatedAt:     time.Now(),
@@ -287,6 +345,8 @@ func updateSyncTask(task *SyncTask) error {
 }
 
 // syncLogToTask converts a KLineSyncLog to a SyncTask.
+// LastSyncDate is left empty: the log has no dedicated checkpoint column, and
+// resume is handled by gap detection inside SyncKLineForStock.
 func syncLogToTask(log *models.KLineSyncLog) *SyncTask {
 	return &SyncTask{
 		ID:           log.ID,
@@ -297,9 +357,29 @@ func syncLogToTask(log *models.KLineSyncLog) *SyncTask {
 		Adjusted:     log.Adjusted,
 		Status:       log.Status,
 		ErrorMsg:     log.ErrorMsg,
-		LastSyncDate: log.EndDate,
+		LastSyncDate: "",
 		CreatedAt:    log.UpdatedAt,
 		UpdatedAt:    log.UpdatedAt,
+	}
+}
+
+// estimateExpectedCount estimates the number of K-line bars in [startDate, endDate].
+// day: weekdays (~5/7 of days); week: weekly bars; month: monthly bars.
+func estimateExpectedCount(period, startDate, endDate string) int {
+	start, err1 := time.Parse("2006-01-02", startDate)
+	end, err2 := time.Parse("2006-01-02", endDate)
+	if err1 != nil || err2 != nil || end.Before(start) {
+		return 0
+	}
+
+	days := int(end.Sub(start).Hours()/24) + 1
+	switch period {
+	case "week":
+		return days/7 + 1
+	case "month":
+		return (end.Year()-start.Year())*12 + int(end.Month()-start.Month()) + 1
+	default: // day
+		return days * 5 / 7
 	}
 }
 

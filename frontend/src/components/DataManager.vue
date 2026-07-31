@@ -69,12 +69,12 @@ const progressColumns = [
   {
     title: '状态', key: 'status', width: 90,
     render(row) {
-      const type = row.status === 'done' ? 'success' : row.status === 'error' ? 'error' : 'info'
+      const type = row.status === 'done' ? 'success' : (row.status === 'failed' || row.status === 'error') ? 'error' : 'info'
       return h(NTag, { type, bordered: false, size: 'small' }, { default: () => row.status })
     },
   },
   { title: '进度', key: 'progress', width: 80 },
-  { title: '错误信息', key: 'error', ellipsis: { tooltip: true } },
+  { title: '错误信息', key: 'errorMsg', ellipsis: { tooltip: true } },
 ]
 
 async function startSync() {
@@ -109,10 +109,10 @@ const selectedStockIds = ref([])
 
 const stockColumns = [
   { type: 'selection', width: 40 },
-  { title: '代码', key: 'ts_code', width: 120 },
-  { title: '名称', key: 'name', width: 130 },
-  { title: '市场', key: 'market', width: 70 },
-  { title: '上市日期', key: 'list_date', width: 100 },
+  { title: '代码', key: 'SECUCODE', width: 120 },
+  { title: '名称', key: 'SECURITY_NAME_ABBR', width: 130 },
+  { title: '市场', key: 'MARKET', width: 70 },
+  { title: '数据日期', key: 'MAX_TRADE_DATE', width: 100 },
 ]
 
 async function searchStocks() {
@@ -307,7 +307,7 @@ onMounted(() => {
         size="small"
         :max-height="400"
         @update:checked-row-keys="selectedStockIds = $event"
-        row-key="id"
+        :row-key="(row) => row.ID"
       />
       <n-text v-if="!stockLoading && stockList.length === 0 && !stockError" depth="3" style="display: block; text-align: center; padding: 24px 0">
         输入关键词搜索个股数据

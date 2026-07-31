@@ -58,3 +58,15 @@ func TestValidateSyncParams_StartAfterEnd(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "start date cannot be after end date")
 }
+
+func TestEstimateExpectedCount(t *testing.T) {
+	// day: 2024-01-01 ~ 2024-01-07 is 7 days -> 5 weekdays
+	assert.Equal(t, 5, estimateExpectedCount("day", "2024-01-01", "2024-01-07"))
+	// week: 7 days -> about 2 weekly bars
+	assert.Equal(t, 2, estimateExpectedCount("week", "2024-01-01", "2024-01-07"))
+	// month: Jan 2024 ~ Mar 2024 -> 3 monthly bars
+	assert.Equal(t, 3, estimateExpectedCount("month", "2024-01-01", "2024-03-31"))
+	// invalid range -> 0
+	assert.Equal(t, 0, estimateExpectedCount("day", "2024-06-30", "2024-01-01"))
+	assert.Equal(t, 0, estimateExpectedCount("day", "bad", "2024-01-01"))
+}
