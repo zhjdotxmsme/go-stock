@@ -28,6 +28,8 @@ type Manager struct {
 	ok            bool
 	availableTTL  time.Duration
 	probeInterval time.Duration // 健康检查间隔（测试可注入）
+
+	startMu sync.Mutex // 串行化 Start，防止并发双拉起
 }
 
 func NewManager(cfg Config) *Manager {
@@ -62,17 +64,20 @@ func killCmd(cmd *exec.Cmd) {
 }
 
 // Start：已在运行则直接采用；否则按配置拉起并做健康检查（probeInterval × 10 次）。
-// 返回 error 时保证不留本进程拉起的后台进程。
+// 返回 error 时保证不留本进程拉起的后台进程。全程持有 startMu 串行化，防止并发双拉起。
 func (m *Manager) Start(ctx context.Context) error {
+	m.startMu.Lock()
+	defer m.startMu.Unlock()
 	if !m.cfg.Enabled {
 		return nil
 	}
-	// 回收上次拉起残留的旧实例，避免重复 Start 泄漏进程
-	killCmd(m.takeCmd())
+	// 先探测：已运行（含本进程上次拉起的）则直接采用，不重启
 	if m.client.Ping(ctx) {
 		m.setOK(true)
 		return nil
 	}
+	// 确认不响应后才回收上次拉起残留的旧实例，避免重复 Start 泄漏进程
+	killCmd(m.takeCmd())
 	if !m.cfg.AutoStart || m.cfg.ExePath == "" {
 		return fmt.Errorf("freestockdb: %s 未响应且未配置自动拉起", m.cfg.Addr)
 	}

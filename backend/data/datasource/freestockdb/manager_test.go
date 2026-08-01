@@ -98,3 +98,30 @@ func TestManagerConcurrentStartStop(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestManagerConcurrentStartAdoptsRunning(t *testing.T) {
+	// 假服务模拟 7899 已在运行；AutoStart=false，并发 Start 都应"采用已运行实例"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"0":["000001"]}`))
+	}))
+	defer srv.Close()
+	m := NewManager(Config{Enabled: true, Addr: srv.URL[len("http://"):]})
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 20; j++ {
+				if err := m.Start(context.Background()); err != nil {
+					t.Errorf("concurrent Start: %v", err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if !m.Available(context.Background()) {
+		t.Error("should be available after concurrent Starts")
+	}
+	m.Stop() // 未拉起进程，不应 panic
+}
