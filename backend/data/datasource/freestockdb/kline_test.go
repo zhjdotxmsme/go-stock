@@ -19,7 +19,7 @@ func TestBuildTimeExpr(t *testing.T) {
 		{"20260620", "20260626", false, "20260620>20260626"},
 		{"20260620", "20260626", true, "20260620<20260626"},
 		{"", "20260626", false, "N>20260626"},
-		{"20260620", "", true, "20260620<N"},
+		{"20260620", "", true, "20260620"},
 	}
 	for _, c := range cases {
 		if got := BuildTimeExpr(c.start, c.end, c.desc); got != c.want {

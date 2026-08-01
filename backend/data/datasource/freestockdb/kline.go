@@ -45,7 +45,7 @@ func BuildTimeExpr(start, end string, desc bool) string {
 	if start == "" && end == "" {
 		return "*"
 	}
-	if start != "" && (start == end || (end == "" && !desc)) {
+	if start != "" && (end == "" || start == end) {
 		return start
 	}
 	op := ">"
