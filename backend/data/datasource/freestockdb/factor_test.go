@@ -9,8 +9,8 @@ import (
 
 func TestFactorStoreLoad(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// [key, cum] 对；key = 复权:code:date
-		w.Write([]byte(`[["复权:600633:20240101",1.0],["复权:600633:20250610",1.2],["复权:000001:20230101",1.0]]`))
+		// [key, cum] 对；key = 复权:code:date。故意乱序返回，验证 Load 的防御性排序。
+		w.Write([]byte(`[["复权:600633:20250610",1.2],["复权:600633:20240101",1.0],["复权:000001:20230101",1.0]]`))
 	}))
 	defer srv.Close()
 	f := NewFactorStore()
@@ -38,8 +38,8 @@ func TestAdjustBarsQFQ(t *testing.T) {
 	}
 	out := f.AdjustBars("600633", bars, FQQFQ)
 	// qfq: ratio = latest(1.2)/f_current；20250105 的 f_current=1.0 → 12.4/1.2≈10.33
-	if out[0].Close != round(12.4/1.2, 2) {
-		t.Errorf("qfq close = %v, want %v", out[0].Close, round(12.4/1.2, 2))
+	if out[0].Close != 10.33 {
+		t.Errorf("qfq close = %v, want %v", out[0].Close, 10.33)
 	}
 	// 最后一根 ratio=1 不动
 	if out[1].Close != 10.3 {
@@ -53,11 +53,18 @@ func TestAdjustBarsQFQ(t *testing.T) {
 func TestAdjustBarsHFQ(t *testing.T) {
 	f := NewFactorStore()
 	f.setFactors("600633", []string{"20240101", "20250610"}, []float64{1.0, 1.2})
-	bars := []Bar{{Date: 20250105, Close: 12.4}}
+	bars := []Bar{
+		{Date: 20250105, Close: 12.4},
+		{Date: 20250701, Close: 12.4},
+	}
 	out := f.AdjustBars("600633", bars, FQHFQ)
 	// hfq: ratio = 1/f_current = 1 → 不变（f_current=1.0）
 	if out[0].Close != 12.4 {
 		t.Errorf("hfq close = %v", out[0].Close)
+	}
+	// 20250701 的 fc=1.2 → 12.4*1.2=14.88，覆盖实际折算路径
+	if out[1].Close != 14.88 {
+		t.Errorf("hfq adjusted close = %v, want 14.88", out[1].Close)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -79,6 +80,23 @@ func (f *FactorStore) Load(ctx context.Context, c *Client) error {
 		dates[code] = append(dates[code], date)
 		cums[code] = append(cums[code], cum)
 	}
+	// 防御性排序：二分查找与 latest=cums[len-1] 依赖日期升序。
+	// 服务端通常按 key 字典序返回，但乱序时把 (dates, cums) 平行数组一起排。
+	for code := range dates {
+		if !slices.IsSorted(dates[code]) {
+			d, c := dates[code], cums[code]
+			idx := make([]int, len(d))
+			for i := range idx {
+				idx[i] = i
+			}
+			sort.Slice(idx, func(a, b int) bool { return d[idx[a]] < d[idx[b]] })
+			sd, sc := make([]string, len(d)), make([]float64, len(c))
+			for i, j := range idx {
+				sd[i], sc[i] = d[j], c[j]
+			}
+			dates[code], cums[code] = sd, sc
+		}
+	}
 	f.mu.Lock()
 	f.dates, f.cums = dates, cums
 	f.mu.Unlock()
@@ -139,6 +157,12 @@ func (f *FactorStore) AdjustBars(code string, bars []Bar, fq FQ) []Bar {
 	if fq == FQNone || len(bars) == 0 {
 		return bars
 	}
+	switch fq {
+	case FQQFQ, FQHFQ:
+	default:
+		// 非法 fq 值显式透传，不做折算。
+		return bars
+	}
 	f.mu.RLock()
 	dates, ok := f.dates[code]
 	cums := f.cums[code]
@@ -162,9 +186,12 @@ func (f *FactorStore) AdjustBars(code string, bars []Bar, fq FQ) []Bar {
 		if idx >= 0 {
 			fc = cums[idx]
 		}
-		ratio := 1 / fc
-		if fq == FQQFQ {
+		var ratio float64
+		switch fq {
+		case FQQFQ:
 			ratio = latest / fc
+		default: // FQHFQ
+			ratio = 1 / fc
 		}
 		if math.Abs(ratio-1) < 1e-6 {
 			out[i] = b
