@@ -39,7 +39,7 @@ func newTestProvider(t *testing.T, dayResp string) *Provider {
 
 func TestProviderInterface(t *testing.T) {
 	p := newTestProvider(t, `[]`)
-	if p.Name() != "freestockdb" || p.Priority() != 5 {
+	if p.Name() != "freestockdb" || p.Priority() != 1 {
 		t.Errorf("name=%s priority=%d", p.Name(), p.Priority())
 	}
 }
@@ -58,7 +58,7 @@ func TestProviderGetKLine(t *testing.T) {
 	if kd.Bars[0].Time.Format("2006-01-02") != "2026-06-24" {
 		t.Errorf("bar time = %v", kd.Bars[0].Time)
 	}
-	if kd.Bars[0].Volume != 233130000 {
+	if kd.Bars[0].Volume != 233130000/100 { // freestockdb 单位为股，链上口径为手
 		t.Errorf("volume = %d", kd.Bars[0].Volume)
 	}
 }
@@ -93,8 +93,9 @@ func TestProviderGetSectorData(t *testing.T) {
 	}
 }
 
-// TestSetupRegistersProviders 验证 Setup 同步完成三条链注册（Enabled=false 时
+// TestSetupRegistersProviders 验证 Setup 同步完成 kline/sector 两条链注册（Enabled=false 时
 // 引擎不启动，但 Provider 必须已在链上，Available=false 由 Router 自然跳过）。
+// 日内实时报价仍由东财/腾讯链承担，freestockdb 不注册 quote 链（规格 §5.5）。
 func TestSetupRegistersProviders(t *testing.T) {
 	router := &datasource.Router{}
 	m := Setup(router, Config{Enabled: false})
@@ -102,9 +103,12 @@ func TestSetupRegistersProviders(t *testing.T) {
 		t.Fatal("Setup returned nil Manager")
 	}
 	rv := reflect.ValueOf(router).Elem()
-	for _, field := range []string{"klineProviders", "quoteProviders", "sectorProviders"} {
+	for _, field := range []string{"klineProviders", "sectorProviders"} {
 		if n := rv.FieldByName(field).Len(); n != 1 {
 			t.Errorf("%s len = %d, want 1", field, n)
 		}
+	}
+	if n := rv.FieldByName("quoteProviders").Len(); n != 0 {
+		t.Errorf("quoteProviders len = %d, want 0", n)
 	}
 }

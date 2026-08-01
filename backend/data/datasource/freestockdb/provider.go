@@ -3,6 +3,7 @@ package freestockdb
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"go-stock/backend/data/datasource"
@@ -14,15 +15,22 @@ type Provider struct {
 	m      *Manager
 	svc    *KLineService
 	boards *BoardIndex
+	// ready 在 Setup 后台 goroutine 完成复权因子与板块索引预载后置位；
+	// 未就绪时 Available=false，避免 qfq 请求拿到未复权透传数据并被 Router 缓存/落盘。
+	ready atomic.Bool
 }
 
 func NewProvider(m *Manager, svc *KLineService, bi *BoardIndex) *Provider {
 	return &Provider{m: m, svc: svc, boards: bi}
 }
 
-func (p *Provider) Name() string                       { return "freestockdb" }
-func (p *Provider) Priority() int                      { return 5 }
-func (p *Provider) Available(ctx context.Context) bool { return p.m.Available(ctx) }
+func (p *Provider) Name() string { return "freestockdb" }
+
+// Priority 取 1：free_data 链上已有 priority=5 的 provider，并列时排序稳定性无保障。
+func (p *Provider) Priority() int { return 1 }
+
+// Available 要求引擎可用且因子/板块索引预载完成（见 ready 注释）。
+func (p *Provider) Available(ctx context.Context) bool { return p.m.Available(ctx) && p.ready.Load() }
 
 var periodFreq = map[string]Frequency{
 	"101": Freq1d, "102": Freq1w, "103": Freq1M,
@@ -46,6 +54,11 @@ func (p *Provider) GetKLine(ctx context.Context, code, period string, count int)
 	return toKLineData(code, period, bars), nil
 }
 
+// sharesPerLot 股/手换算系数。实证口径：freestockdb 服务端 volume 单位为股，
+// 而现有 K 线链（东财 push2his，见 eastmoney_kline_api.go parseKLine 注释
+// "成交量 (手)"；TDX 协议 K 线 Vol 同为手）对外统一为手，故此处换算对齐。
+const sharesPerLot = 100.0
+
 // GetQuote 用最新一根日K（不复权）实现报价。
 func (p *Provider) GetQuote(ctx context.Context, code string) (*datasource.QuoteData, error) {
 	bars, err := p.svc.LastN(ctx, code, Freq1d, 1, FQNone)
@@ -62,7 +75,7 @@ func (p *Provider) GetQuote(ctx context.Context, code string) (*datasource.Quote
 		Price:     b.Close,
 		Change:    round(b.Close-b.PreClose, 2),
 		ChangePct: round(pctChg(b), 2),
-		Volume:    int64(b.Volume),
+		Volume:    int64(b.Volume / sharesPerLot), // 股 → 手，与东财/腾讯 quote 链口径一致
 		Amount:    b.Amount,
 		High:      b.High,
 		Low:       b.Low,
@@ -100,6 +113,7 @@ func barTime(date int64) time.Time {
 	return time.Time{}
 }
 
+// toKLineData 转换 Bar 为链上 KLineData。Volume 由股换算为手（见 sharesPerLot 注释）。
 func toKLineData(code, period string, bars []Bar) *datasource.KLineData {
 	dst := &datasource.KLineData{Code: code, Period: period, Bars: make([]datasource.KLineBar, 0, len(bars))}
 	for _, b := range bars {
@@ -110,16 +124,17 @@ func toKLineData(code, period string, bars []Bar) *datasource.KLineData {
 			Low:       b.Low,
 			Close:     b.Close,
 			PrevClose: b.PreClose,
-			Volume:    int64(b.Volume),
+			Volume:    int64(b.Volume / sharesPerLot),
 			Amount:    b.Amount,
 		})
 	}
 	return dst
 }
 
-// Setup 同步把 Provider 注册进三条链（Router 链立刻存在，引擎未就绪时
+// Setup 同步把 Provider 注册进 kline/sector 两条链（Router 链立刻存在，引擎未就绪时
 // Available=false 自然降级到 TDX → 东财），拉起引擎与预载因子/板块索引
 // 在后台 goroutine 中异步完成，避免阻塞启动路径。
+// 日内实时报价仍由东财/腾讯链承担，故不注册 quote 链（规格 §5.5）。
 func Setup(router *datasource.Router, cfg Config) *Manager {
 	m := NewManager(cfg)
 	client := m.Client()
@@ -127,7 +142,6 @@ func Setup(router *datasource.Router, cfg Config) *Manager {
 	bi := NewBoardIndex()
 	p := NewProvider(m, NewKLineService(client, factors), bi)
 	router.RegisterKLineProvider(p)
-	router.RegisterQuoteProvider(p)
 	router.RegisterSectorProvider(p)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -142,6 +156,8 @@ func Setup(router *datasource.Router, cfg Config) *Manager {
 			if err := bi.Load(ctx, client); err != nil {
 				logger.SugaredLogger.Warnf("freestockdb: 板块索引加载失败: %v", err)
 			}
+			// 因子与板块索引预载完成后才对外可用，防止 qfq 未复权透传被 Router 缓存/落盘。
+			p.ready.Store(true)
 		}
 	}()
 	return m
