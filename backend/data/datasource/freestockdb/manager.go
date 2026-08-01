@@ -22,28 +22,53 @@ type Manager struct {
 	cfg    Config
 	client *Client
 
-	cmd *exec.Cmd // 仅当由本进程拉起时非空
-
-	mu           sync.Mutex
-	checkedAt    time.Time
-	ok           bool
-	availableTTL time.Duration
+	mu            sync.Mutex // 保护 cmd/checkedAt/ok
+	cmd           *exec.Cmd  // 仅当由本进程拉起且健康检查通过时非空
+	checkedAt     time.Time
+	ok            bool
+	availableTTL  time.Duration
+	probeInterval time.Duration // 健康检查间隔（测试可注入）
 }
 
 func NewManager(cfg Config) *Manager {
 	if cfg.Addr == "" {
 		cfg.Addr = "127.0.0.1:7899"
 	}
-	return &Manager{cfg: cfg, client: NewClient(cfg.Addr), availableTTL: 30 * time.Second}
+	return &Manager{
+		cfg:           cfg,
+		client:        NewClient(cfg.Addr),
+		availableTTL:  30 * time.Second,
+		probeInterval: 5 * time.Second,
+	}
 }
 
 func (m *Manager) Client() *Client { return m.client }
 
-// Start：已在运行则直接采用；否则按配置拉起并做健康检查（5s × 10 次）。
+// takeCmd 取出并清空当前持有的子进程（锁内读写字段，进程操作留给调用方在锁外做）。
+func (m *Manager) takeCmd() *exec.Cmd {
+	m.mu.Lock()
+	cmd := m.cmd
+	m.cmd = nil
+	m.mu.Unlock()
+	return cmd
+}
+
+// killCmd 回收子进程：Kill 后 Wait 释放进程句柄。
+func killCmd(cmd *exec.Cmd) {
+	if cmd != nil && cmd.Process != nil {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}
+}
+
+// Start：已在运行则直接采用；否则按配置拉起并做健康检查（probeInterval × 10 次）。
+// 返回 error 时保证不留本进程拉起的后台进程。
 func (m *Manager) Start(ctx context.Context) error {
 	if !m.cfg.Enabled {
 		return nil
 	}
+	// 回收上次拉起残留的旧实例，避免重复 Start 泄漏进程
+	killCmd(m.takeCmd())
 	if m.client.Ping(ctx) {
 		m.setOK(true)
 		return nil
@@ -56,27 +81,28 @@ func (m *Manager) Start(ctx context.Context) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("freestockdb: 拉起 %s 失败: %w", m.cfg.ExePath, err)
 	}
-	m.cmd = cmd
 	for i := 0; i < 10; i++ {
 		select {
 		case <-ctx.Done():
+			killCmd(cmd)
 			return ctx.Err()
-		case <-time.After(5 * time.Second):
+		case <-time.After(m.probeInterval):
 		}
 		if m.client.Ping(ctx) {
+			m.mu.Lock()
+			m.cmd = cmd
+			m.mu.Unlock()
 			m.setOK(true)
 			return nil
 		}
 	}
+	killCmd(cmd)
 	return fmt.Errorf("freestockdb: 健康检查超时（%s）", m.cfg.Addr)
 }
 
 // Stop 回收由本进程拉起的 stockdb；用户自行启动的实例不动。
 func (m *Manager) Stop() {
-	if m.cmd != nil && m.cmd.Process != nil {
-		_ = m.cmd.Process.Kill()
-		m.cmd = nil
-	}
+	killCmd(m.takeCmd())
 }
 
 // Available 带 30s 缓存的可用性探测（Router 每次调用都会走这里）。
