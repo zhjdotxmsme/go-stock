@@ -177,7 +177,7 @@ func TestAggregateWeeklyFields(t *testing.T) {
 
 func TestAggregateWeeklyCrossYear(t *testing.T) {
 	daily := []Bar{
-		dayBar(20251229, 10, 11, 9.5, 10.5, 100, 1000),     // 2026-W01 周一
+		dayBar(20251229, 10, 11, 9.5, 10.5, 100, 1000),      // 2026-W01 周一
 		dayBar(20260102, 10.5, 11.2, 10.4, 11.0, 200, 2000), // 2026-W01 周五
 		dayBar(20260105, 11, 11.5, 10.8, 11.3, 150, 1500),   // 2026-W02 周一
 	}

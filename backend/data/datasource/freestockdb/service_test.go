@@ -93,18 +93,31 @@ func TestGoldenCompare(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := NewKLineService(c, f)
-	bars, err := svc.GetData(context.Background(), "600633", Freq1d, "20250101", "20260701", FQQFQ, false, 0)
+	compareGolden(t, svc, ref, Freq1d, "day_qfq", "20250101", "20260701")
+	compareGolden(t, svc, ref, Freq1w, "week_qfq", "20250101", "20260701")
+	compareGolden(t, svc, ref, Freq30m, "30m_qfq", "20260625", "20260626")
+}
+
+// compareGolden 对拍一组黄金数据：先比行数，再逐行比 date 与 OHLC（容差 1e-3）。
+func compareGolden(t *testing.T, svc *KLineService, ref map[string][]map[string]interface{}, freq Frequency, goldenKey, start, end string) {
+	t.Helper()
+	bars, err := svc.GetData(context.Background(), "600633", freq, start, end, FQQFQ, false, 0)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("%s: %v", goldenKey, err)
 	}
-	refRows := ref["day_qfq"]
+	refRows := ref[goldenKey]
 	if len(bars) != len(refRows) {
-		t.Fatalf("row count %d != golden %d", len(bars), len(refRows))
+		t.Fatalf("%s row count %d != golden %d", goldenKey, len(bars), len(refRows))
 	}
 	for i, b := range bars {
-		rc, _ := refRows[i]["close"].(float64)
-		if math.Abs(b.Close-rc) > 1e-3 {
-			t.Fatalf("row %d close %v != golden %v", i, b.Close, rc)
+		if int64(refRows[i]["date"].(float64)) != b.Date {
+			t.Fatalf("%s row %d date %v != golden %v", goldenKey, i, b.Date, refRows[i]["date"])
+		}
+		for field, got := range map[string]float64{"open": b.Open, "high": b.High, "low": b.Low, "close": b.Close} {
+			rc, _ := refRows[i][field].(float64)
+			if math.Abs(got-rc) > 1e-3 {
+				t.Fatalf("%s row %d %s %v != golden %v", goldenKey, i, field, got, rc)
+			}
 		}
 	}
 }

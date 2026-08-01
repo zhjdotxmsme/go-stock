@@ -142,6 +142,7 @@ func (s *KLineService) GetData(ctx context.Context, code string, freq Frequency,
 
 // LastN 返回按时间升序的最后 count 根（Provider 的主要调用方式）。
 // 聚合周期先按 count*multiplier 截取底层数据再聚合，避免全量历史聚合。
+// 注意：聚合周期返回值数量不保证等于 count（multiplier 为估算值，截断点可能落在组中间）。
 func (s *KLineService) LastN(ctx context.Context, code string, freq Frequency, count int, fq FQ) ([]Bar, error) {
 	if count <= 0 {
 		count = 1
