@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"go-stock/backend/data/datasource"
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
@@ -54,36 +55,34 @@ func GetTechnicalIndicators(ctx context.Context, code string, period string, cou
 		}
 	}
 
-	// Compute indicators from K-line data (existing local computation path)
-	return computeIndicatorsFromKLine(code, period, count)
+	// Compute indicators from K-line data (fetched via the datasource router)
+	return computeIndicatorsFromKLine(ctx, code, period, count)
 }
 
-// computeIndicatorsFromKLine fetches K-line data and computes technical indicators locally.
-func computeIndicatorsFromKLine(code string, period string, count int) (*IndicatorResult, error) {
-	// Fetch K-line data from the datasource layer
-	stockApi := NewStockDataApi()
-	klineData := stockApi.GetKLineData(code, period, int64(count))
-	if klineData == nil || len(*klineData) == 0 {
-		logger.SugaredLogger.Warnf("indicators: no kline data for %s", code)
+// computeIndicatorsFromKLine fetches K-line data via the datasource router and computes indicators locally.
+func computeIndicatorsFromKLine(ctx context.Context, code string, period string, count int) (*IndicatorResult, error) {
+	klineData, err := datasource.GetRouter().GetKLine(ctx, code, period, count)
+	if err != nil || klineData == nil || len(klineData.Bars) == 0 {
+		logger.SugaredLogger.Warnf("indicators: no kline data for %s: %v", code, err)
 		return &IndicatorResult{}, nil
 	}
 
-	klines := *klineData
-	n := len(klines)
+	bars := klineData.Bars
+	n := len(bars)
 	if n < 5 {
 		return &IndicatorResult{}, nil
 	}
 
-	// Extract close prices (string → float64)
+	// KLineBar fields are already float64, no parseFloat64 needed
 	close := make([]float64, n)
 	high := make([]float64, n)
 	low := make([]float64, n)
 	volume := make([]float64, n)
-	for i, k := range klines {
-		close[i] = parseFloat64(k.Close)
-		high[i] = parseFloat64(k.High)
-		low[i] = parseFloat64(k.Low)
-		volume[i] = parseFloat64(k.Volume)
+	for i, k := range bars {
+		close[i] = k.Close
+		high[i] = k.High
+		low[i] = k.Low
+		volume[i] = float64(k.Volume)
 	}
 
 	result := &IndicatorResult{}
