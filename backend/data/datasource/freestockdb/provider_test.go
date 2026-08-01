@@ -93,6 +93,38 @@ func TestProviderGetSectorData(t *testing.T) {
 	}
 }
 
+// TestProviderReadinessGate 验证 ready 门控：
+// ① 未预载时 Available=false；② 预载成功后 Available=true；
+// ③ factors.Load 失败（复权* 返回 500）时不置位，防止 qfq 静默透传未复权数据。
+func TestProviderReadinessGate(t *testing.T) {
+	ctx := context.Background()
+
+	p := newTestProvider(t, `[]`)
+	if p.Available(ctx) {
+		t.Error("未预载时 Available 应为 false")
+	}
+	p.preload(ctx)
+	if !p.Available(ctx) {
+		t.Error("预载成功后 Available 应为 true")
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Query().Get("t"), "复权") {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprint(w, `[]`)
+	}))
+	defer srv.Close()
+	m := NewManager(Config{Enabled: true, Addr: srv.URL[len("http://"):]})
+	c := m.Client()
+	p2 := NewProvider(m, NewKLineService(c, NewFactorStore()), NewBoardIndex())
+	p2.preload(ctx)
+	if p2.Available(ctx) {
+		t.Error("复权因子加载失败时不应置位 ready（qfq 会透传未复权数据）")
+	}
+}
+
 // TestSetupRegistersProviders 验证 Setup 同步完成 kline/sector 两条链注册（Enabled=false 时
 // 引擎不启动，但 Provider 必须已在链上，Available=false 由 Router 自然跳过）。
 // 日内实时报价仍由东财/腾讯链承担，freestockdb 不注册 quote 链（规格 §5.5）。

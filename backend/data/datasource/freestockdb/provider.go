@@ -10,14 +10,17 @@ import (
 	"go-stock/backend/logger"
 )
 
-// Provider 同时实现 KLineProvider / QuoteProvider / SectorProvider。
+// Provider 实现 KLineProvider / SectorProvider，并保留 GetQuote（QuoteProvider 能力）备用：
+// quote 不注册进链，日内实时报价仍由东财/腾讯链承担（规格 §5.5）。
 type Provider struct {
 	m      *Manager
 	svc    *KLineService
 	boards *BoardIndex
-	// ready 在 Setup 后台 goroutine 完成复权因子与板块索引预载后置位；
-	// 未就绪时 Available=false，避免 qfq 请求拿到未复权透传数据并被 Router 缓存/落盘。
+	// ready 在复权因子预载成功后置位；未就绪时 Available=false，
+	// 避免 qfq 请求拿到未复权透传数据并被 Router 缓存/落盘。
 	ready atomic.Bool
+	// loading 是惰性预载的 CAS 守卫：防并发重复加载，失败后可重试。
+	loading atomic.Bool
 }
 
 func NewProvider(m *Manager, svc *KLineService, bi *BoardIndex) *Provider {
@@ -29,8 +32,47 @@ func (p *Provider) Name() string { return "freestockdb" }
 // Priority 取 1：free_data 链上已有 priority=5 的 provider，并列时排序稳定性无保障。
 func (p *Provider) Priority() int { return 1 }
 
-// Available 要求引擎可用且因子/板块索引预载完成（见 ready 注释）。
-func (p *Provider) Available(ctx context.Context) bool { return p.m.Available(ctx) && p.ready.Load() }
+// Available 要求引擎可用且复权因子预载完成（见 ready 注释）。
+// 引擎后启动（如用户手动拉起）而尚未就绪时，惰性触发一次异步预载：
+// 本轮仍返回 false，预载成功后下轮探测（30s TTL 刷新）即就绪。
+func (p *Provider) Available(ctx context.Context) bool {
+	if !p.m.Available(ctx) {
+		return false
+	}
+	if p.ready.Load() {
+		return true
+	}
+	p.triggerLazyLoad()
+	return false
+}
+
+// preload 预载复权因子与板块索引，因子就绪后才置位 ready。
+// factors.Load 失败时不置位（因子为空会让 qfq 静默透传未复权数据）；
+// bi.Load 失败仅 Warn 仍置位（板块缺失只影响 sector 查询降级，不污染 K 线数据）。
+func (p *Provider) preload(ctx context.Context) {
+	if err := p.svc.factors.Load(ctx, p.svc.c); err != nil {
+		logger.SugaredLogger.Warnf("freestockdb: 复权因子加载失败: %v（保持不可用，等待重试）", err)
+		return
+	}
+	if err := p.boards.Load(ctx, p.svc.c); err != nil {
+		logger.SugaredLogger.Warnf("freestockdb: 板块索引加载失败: %v", err)
+	}
+	p.ready.Store(true)
+}
+
+// triggerLazyLoad 异步触发一次预载；loading CAS 守卫防并发重复加载，
+// 失败（未置位 ready）时下轮 Available 会再次触发，实现可重试。
+func (p *Provider) triggerLazyLoad() {
+	if !p.loading.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer p.loading.Store(false)
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		p.preload(ctx)
+	}()
+}
 
 var periodFreq = map[string]Frequency{
 	"101": Freq1d, "102": Freq1w, "103": Freq1M,
@@ -132,8 +174,8 @@ func toKLineData(code, period string, bars []Bar) *datasource.KLineData {
 }
 
 // Setup 同步把 Provider 注册进 kline/sector 两条链（Router 链立刻存在，引擎未就绪时
-// Available=false 自然降级到 TDX → 东财），拉起引擎与预载因子/板块索引
-// 在后台 goroutine 中异步完成，避免阻塞启动路径。
+// Available=false 自然降级到 TDX → 东财），拉起引擎在后台 goroutine 中异步完成，
+// 预载走与 Available 惰性恢复相同的 triggerLazyLoad 路径，避免阻塞启动路径。
 // 日内实时报价仍由东财/腾讯链承担，故不注册 quote 链（规格 §5.5）。
 func Setup(router *datasource.Router, cfg Config) *Manager {
 	m := NewManager(cfg)
@@ -150,14 +192,7 @@ func Setup(router *datasource.Router, cfg Config) *Manager {
 			logger.SugaredLogger.Warnf("freestockdb: %v（降级使用远程数据源）", err)
 		}
 		if m.Available(ctx) {
-			if err := factors.Load(ctx, client); err != nil {
-				logger.SugaredLogger.Warnf("freestockdb: 复权因子加载失败: %v", err)
-			}
-			if err := bi.Load(ctx, client); err != nil {
-				logger.SugaredLogger.Warnf("freestockdb: 板块索引加载失败: %v", err)
-			}
-			// 因子与板块索引预载完成后才对外可用，防止 qfq 未复权透传被 Router 缓存/落盘。
-			p.ready.Store(true)
+			p.triggerLazyLoad()
 		}
 	}()
 	return m
