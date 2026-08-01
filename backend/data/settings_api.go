@@ -61,6 +61,11 @@ type Settings struct {
 	WindowWidth            int    `json:"windowWidth"`
 	WindowHeight           int    `json:"windowHeight"`
 	PromptPlazaApiBase     string `json:"promptPlazaApiBase" gorm:"column:prompt_plaza_api_base"`
+	// free-stockdb 本地数据引擎
+	FreeStockDBEnable    bool   `json:"freeStockDBEnable" gorm:"column:free_stock_db_enable"`
+	FreeStockDBPath      string `json:"freeStockDBPath" gorm:"column:free_stock_db_path"`
+	FreeStockDBAddr      string `json:"freeStockDBAddr" gorm:"column:free_stock_db_addr"`
+	FreeStockDBAutoStart bool   `json:"freeStockDBAutoStart" gorm:"column:free_stock_db_auto_start"`
 }
 
 func (receiver Settings) TableName() string {
