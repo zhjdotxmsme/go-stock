@@ -69,13 +69,16 @@ var VersionCommit string
 var OFFICIAL_STATEMENT string
 var BuildKey string
 
+// freestockdbManager 持有本地行情引擎句柄，供退出时回收子进程。
+var freestockdbManager *freestockdb.Manager
+
 func initDataSources() {
 	router := datasource.GetRouter()
 	cache := datasource.NewCacheLayer(256)
 	router.SetCache(cache)
 
 	cfg := data.GetSettingConfig()
-	freestockdb.Setup(router, freestockdb.Config{
+	freestockdbManager = freestockdb.Setup(router, freestockdb.Config{
 		Enabled:   cfg.FreeStockDBEnable,
 		ExePath:   cfg.FreeStockDBPath,
 		Addr:      cfg.FreeStockDBAddr,

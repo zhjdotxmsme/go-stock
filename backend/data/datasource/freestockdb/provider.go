@@ -117,29 +117,32 @@ func toKLineData(code, period string, bars []Bar) *datasource.KLineData {
 	return dst
 }
 
-// Setup 拉起引擎、预载因子与板块索引，并把 Provider 注册进三条链。
-// 引擎不可用时仅记录日志，Router 会自然降级到 TDX → 东财。
+// Setup 同步把 Provider 注册进三条链（Router 链立刻存在，引擎未就绪时
+// Available=false 自然降级到 TDX → 东财），拉起引擎与预载因子/板块索引
+// 在后台 goroutine 中异步完成，避免阻塞启动路径。
 func Setup(router *datasource.Router, cfg Config) *Manager {
 	m := NewManager(cfg)
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-	if err := m.Start(ctx); err != nil {
-		logger.SugaredLogger.Warnf("freestockdb: %v（降级使用远程数据源）", err)
-	}
 	client := m.Client()
 	factors := NewFactorStore()
 	bi := NewBoardIndex()
-	if m.Available(ctx) {
-		if err := factors.Load(ctx, client); err != nil {
-			logger.SugaredLogger.Warnf("freestockdb: 复权因子加载失败: %v", err)
-		}
-		if err := bi.Load(ctx, client); err != nil {
-			logger.SugaredLogger.Warnf("freestockdb: 板块索引加载失败: %v", err)
-		}
-	}
 	p := NewProvider(m, NewKLineService(client, factors), bi)
 	router.RegisterKLineProvider(p)
 	router.RegisterQuoteProvider(p)
 	router.RegisterSectorProvider(p)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		if err := m.Start(ctx); err != nil {
+			logger.SugaredLogger.Warnf("freestockdb: %v（降级使用远程数据源）", err)
+		}
+		if m.Available(ctx) {
+			if err := factors.Load(ctx, client); err != nil {
+				logger.SugaredLogger.Warnf("freestockdb: 复权因子加载失败: %v", err)
+			}
+			if err := bi.Load(ctx, client); err != nil {
+				logger.SugaredLogger.Warnf("freestockdb: 板块索引加载失败: %v", err)
+			}
+		}
+	}()
 	return m
 }

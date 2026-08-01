@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
+
+	"go-stock/backend/data/datasource"
 )
 
 func newTestProvider(t *testing.T, dayResp string) *Provider {
@@ -87,5 +90,21 @@ func TestProviderGetSectorData(t *testing.T) {
 	}
 	if sd.Sector != "5G" { // boardFixture 中 600633 的第一个概念
 		t.Errorf("sector = %q", sd.Sector)
+	}
+}
+
+// TestSetupRegistersProviders 验证 Setup 同步完成三条链注册（Enabled=false 时
+// 引擎不启动，但 Provider 必须已在链上，Available=false 由 Router 自然跳过）。
+func TestSetupRegistersProviders(t *testing.T) {
+	router := &datasource.Router{}
+	m := Setup(router, Config{Enabled: false})
+	if m == nil {
+		t.Fatal("Setup returned nil Manager")
+	}
+	rv := reflect.ValueOf(router).Elem()
+	for _, field := range []string{"klineProviders", "quoteProviders", "sectorProviders"} {
+		if n := rv.FieldByName(field).Len(); n != 1 {
+			t.Errorf("%s len = %d, want 1", field, n)
+		}
 	}
 }

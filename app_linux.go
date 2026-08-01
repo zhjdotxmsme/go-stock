@@ -141,6 +141,9 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 
 // shutdown is called at application termination
 func (a *App) shutdown(ctx context.Context) {
+	if freestockdbManager != nil {
+		freestockdbManager.Stop()
+	}
 	// Perform your teardown here
 }
 
