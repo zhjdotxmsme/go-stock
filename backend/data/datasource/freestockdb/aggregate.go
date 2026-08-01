@@ -66,10 +66,8 @@ func AggregatePeriod(daily []Bar, weekly bool) []Bar {
 		if m.PreClose == 0 {
 			m.PreClose = m.Open
 		}
-		if m.PreClose != 0 {
-			m.Turnover = round(sumField(items, func(b Bar) float64 { return b.Turnover }), 3)
-			m.VolRatio = round(avgField(items, func(b Bar) float64 { return b.VolRatio }), 3)
-		}
+		m.Turnover = round(sumField(items, func(b Bar) float64 { return b.Turnover }), 3)
+		m.VolRatio = round(avgField(items, func(b Bar) float64 { return b.VolRatio }), 3)
 		out = append(out, m)
 	}
 	return out
