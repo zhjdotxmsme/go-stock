@@ -2,13 +2,12 @@ package multi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"go-stock/backend/agent/multi/signal"
 	"go-stock/backend/agent/strategy"
 	"go-stock/backend/logger"
 	"io"
-	"strings"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -181,81 +180,76 @@ func aggregateRatings(reports []AgentReport) string {
 }
 
 // extractStructuredFields 从已生成的 Conclusion 文本中提取结构化字段。
-// 使用轻量 LLM 调用，失败不影响主流程（降级使用默认值）。
+// 使用多层降级策略：
+// Tier 1: 轻量 LLM 调用提取 JSON
+// Tier 2: 关键词提取
+// Tier 3: 中文价格正则模式匹配
+// Tier 4: 智能估算 (基于分析师评级)
 func extractStructuredFields(ctx context.Context, ac *AgentContext, report *FinalReport) {
+	// 首先尝试 LLM 提取 (Tier 1)
 	chatModel, err := GetChatModelWithTier(ctx, "struct_extract", LLMTierQuick, ac.AIConfigID)
-	if err != nil {
-		logger.SugaredLogger.Warnf("struct extract LLM unavailable, skipping: %v", err)
-		return
-	}
-
-	messages := []*schema.Message{
-		{Role: schema.System, Content: GetRolePrompt("multi_struct_extract", StructExtractPrompt)},
-		{Role: schema.User, Content: report.Conclusion},
-	}
-
-	result, err := chatModel.Generate(ctx, messages)
-	if err != nil {
-		logger.SugaredLogger.Warnf("struct extract LLM error, skipping: %v", err)
-		return
-	}
-
-	content := result.Content
-	if content == "" {
-		return
-	}
-
-	// Try to extract JSON from the response (the LLM should output pure JSON)
-	// Handle the case where the LLM wraps JSON in markdown codeblocks
-	jsonStr := content
-	if idx := strings.Index(content, "```json\n"); idx >= 0 {
-		content = content[idx+8:]
-		if end := strings.Index(content, "\n```"); end >= 0 {
-			jsonStr = content[:end]
+	if err == nil {
+		messages := []*schema.Message{
+			{Role: schema.System, Content: GetRolePrompt("multi_struct_extract", StructExtractPrompt)},
+			{Role: schema.User, Content: report.Conclusion},
 		}
-	} else if idx := strings.Index(content, "```"); idx >= 0 {
-		content = content[idx+3:]
-		if end := strings.Index(content, "```"); end >= 0 {
-			jsonStr = content[:end]
+
+		result, err := chatModel.Generate(ctx, messages)
+		if err == nil && result.Content != "" {
+			// 使用多层降级提取器解析 LLM 响应
+			reportWriter := &reportWriterAdapter{report}
+			provider := &analystReportProviderAdapter{ac}
+			signal.ExtractStructured(result.Content, reportWriter, provider)
+			logger.SugaredLogger.Infof("struct extract successful: score=%.1f trend=%s risk=%s",
+				report.Score, report.Trend, report.RiskLevel)
+			return
 		}
 	}
 
-	var extracted struct {
-		Score     float64         `json:"score"`
-		Trend     string          `json:"trend"`
-		EntryZone *PriceZone      `json:"entryZone"`
-		ExitZone  *PriceZone      `json:"exitZone"`
-		RiskLevel string          `json:"riskLevel"`
-		Checklist []ChecklistItem `json:"checklist"`
-	}
+	// Tier 1 失败，降级到 Tier 2-4 (纯模式匹配)
+	logger.SugaredLogger.Warnf("LLM struct extract failed, using pattern-based fallback")
+	reportWriter := &reportWriterAdapter{report}
+	provider := &analystReportProviderAdapter{ac}
+	signal.ExtractStructured(report.Conclusion, reportWriter, provider)
+}
 
-	if err := json.Unmarshal([]byte(jsonStr), &extracted); err != nil {
-		logger.SugaredLogger.Warnf("struct extract JSON parse error: %v", err)
-		return
-	}
+// reportWriterAdapter 实现 signal.ReportWriter 接口 (避免循环依赖)
+type reportWriterAdapter struct {
+	report *FinalReport
+}
 
-	// Apply extracted values (validate ranges)
-	if extracted.Score >= 1 && extracted.Score <= 10 {
-		report.Score = extracted.Score
-	}
-	switch extracted.Trend {
-	case "up", "down", "sideways":
-		report.Trend = extracted.Trend
-	}
-	if extracted.EntryZone != nil && extracted.EntryZone.Low > 0 && extracted.EntryZone.High > 0 {
-		report.EntryZone = extracted.EntryZone
-	}
-	if extracted.ExitZone != nil && extracted.ExitZone.Low > 0 && extracted.ExitZone.High > 0 {
-		report.ExitZone = extracted.ExitZone
-	}
-	switch extracted.RiskLevel {
-	case "low", "medium", "high":
-		report.RiskLevel = extracted.RiskLevel
-	}
-	if len(extracted.Checklist) > 0 {
-		report.Checklist = extracted.Checklist
-	}
+func (a *reportWriterAdapter) SetScore(score float64) {
+	a.report.Score = score
+}
 
-	logger.SugaredLogger.Infof("struct extract successful: score=%.1f trend=%s risk=%s items=%d",
-		report.Score, report.Trend, report.RiskLevel, len(report.Checklist))
+func (a *reportWriterAdapter) SetTrend(trend string) {
+	a.report.Trend = trend
+}
+
+func (a *reportWriterAdapter) SetEntryZone(low, high float64) {
+	a.report.EntryZone = &PriceZone{Low: low, High: high}
+}
+
+func (a *reportWriterAdapter) SetExitZone(low, high float64) {
+	a.report.ExitZone = &PriceZone{Low: low, High: high}
+}
+
+func (a *reportWriterAdapter) SetRiskLevel(risk string) {
+	a.report.RiskLevel = risk
+}
+
+// analystReportProviderAdapter 实现 signal.AnalystReportProvider 接口
+type analystReportProviderAdapter struct {
+	ac *AgentContext
+}
+
+func (a *analystReportProviderAdapter) GetReportCount() int {
+	return len(a.ac.Reports)
+}
+
+func (a *analystReportProviderAdapter) GetReportRating(index int) string {
+	if index < 0 || index >= len(a.ac.Reports) {
+		return ""
+	}
+	return a.ac.Reports[index].Rating
 }
