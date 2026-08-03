@@ -13,8 +13,6 @@ import StockChangesMonitor from "./stockChangesMonitor.vue";
 import MCPServiceManager from "./mcp-server-manager.vue";
 import SkillManager from "./skill-manager.vue";
 import UplimitLadder from "./uplimitLadder.vue";
-import PromptPlaza from "./promptPlaza.vue";
-import PromptQa from "./promptQa.vue";
 import SelectStock from "./SelectStock.vue";
 import {EventsOff, EventsOn} from "../../wailsjs/runtime";
 import {useRoute} from 'vue-router'
@@ -60,12 +58,6 @@ function updateTab(name) {
       </n-tab-pane>
       <n-tab-pane name="提示词模板">
         <PromptTemplateList/>
-      </n-tab-pane>
-      <n-tab-pane name="提示词广场">
-        <PromptPlaza/>
-      </n-tab-pane>
-      <n-tab-pane name="问答广场">
-        <PromptQa/>
       </n-tab-pane>
       <n-tab-pane name="形态选股">
         <AllStockList/>

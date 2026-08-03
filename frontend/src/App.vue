@@ -29,7 +29,6 @@ import {
   WarningOutline, TimeOutline, SearchOutline,
 } from '@vicons/ionicons5'
 import {AnalyzeSentiment, GetConfig, GetGroupList, GetVersionInfo, IsTradingTime, IsHKTradingTime, IsUSTradingTime} from "../wailsjs/go/main/App";
-import FloatingAiAssistant from "./components/FloatingAiAssistant.vue";
 import FloatingAgentAssistant from "./components/FloatingAgentAssistant.vue";
 import {Dragon, Fire, FirefoxBrowser, Gripfire, Robot} from "@vicons/fa";
 import {Prompt, ReportAnalytics, ReportMoney, ReportSearch, TrendingUp} from "@vicons/tabler";
@@ -818,52 +817,6 @@ const menuOptions = ref([
                     to: {
                       name: 'research',
                       query: {
-                        name:"提示词广场",
-                      },
-                    },
-                    onClick: () => {
-                      activeKey.value = 'research'
-                      setTimeout(() => {
-                        EventsEmit("changeResearchTab", {ID: 10, name: '提示词广场'})
-                      }, 100)
-                    },
-                  },
-                  {default: () => '提示词广场'}
-              ),
-          key: 'promptPlaza',
-          icon: renderIcon(GlobeOutline),
-        },
-        {
-          label: () =>
-              h(
-                  RouterLink,
-                  {
-                    to: {
-                      name: 'research',
-                      query: {
-                        name:"问答广场",
-                      },
-                    },
-                    onClick: () => {
-                      activeKey.value = 'research'
-                      setTimeout(() => {
-                        EventsEmit("changeResearchTab", {ID: 11, name: '问答广场'})
-                      }, 100)
-                    },
-                  },
-                  {default: () => '问答广场'}
-              ),
-          key: 'promptQa',
-          icon: renderIcon(ChatbubblesOutline),
-        },
-        {
-          label: () =>
-              h(
-                  RouterLink,
-                  {
-                    to: {
-                      name: 'research',
-                      query: {
                         name:"形态选股",
                       },
                     },
@@ -1282,7 +1235,6 @@ onMounted(() => {
                 :y-offset="150"
                 :rotate="-15"
             >
-<!--              <FloatingAiAssistant />-->
               <FloatingAgentAssistant />
               <n-flex>
                 <n-grid x-gap="12" :cols="1">
