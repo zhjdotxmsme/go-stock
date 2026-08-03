@@ -1,35 +1,68 @@
 package tools
 
 import (
-	"github.com/duke-git/lancet/v2/strutil"
+	"context"
 	"strings"
+
+	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/schema"
+	"github.com/duke-git/lancet/v2/strutil"
 )
 
-// @Author spark
-// @Date 2025/8/5 17:20
-// @Desc
-//-----------------------------------------------------------------------------------
+// ToolWrapper is the base wrapper for all data tools
+type ToolWrapper struct {
+	name        string
+	description string
+	params      map[string]*schema.ParameterInfo
+	handler     func(args string) (string, error)
+}
 
-func GetStockCode(dcCode string) string {
-	if strutil.ContainsAny(dcCode, []string{"."}) {
-		sp := strings.Split(dcCode, ".")
-		return strings.ToLower(sp[1] + sp[0])
+// NewToolWrapper creates a new ToolWrapper
+func NewToolWrapper(name, description string, params map[string]*schema.ParameterInfo, handler func(args string) (string, error)) *ToolWrapper {
+	return &ToolWrapper{
+		name:        name,
+		description: description,
+		params:      params,
+		handler:     handler,
+	}
+}
+
+// Info returns the tool metadata
+func (t *ToolWrapper) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name:        t.name,
+		Desc:        t.description,
+		ParamsOneOf: schema.NewParamsOneOfByParams(t.params),
+	}, nil
+}
+
+// InvokableRun executes the tool with the given arguments
+func (t *ToolWrapper) InvokableRun(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
+	return t.handler(argumentsInJSON)
+}
+
+// GetStockCode normalizes stock code to internal format
+// Expected input: sh600519, sz000001, hk00700, usAAPL
+func GetStockCode(code string) string {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return ""
 	}
 
-	//北京证券交易所	8（83、87、88 等）	创新型中小企业（专精特新为主）
-	//上海证券交易所	6（60、688 等）	大盘蓝筹、科创板（高新技术）
-	//深圳证券交易所	0、3（000、002、30 等）	中小盘、创业板（成长型创新企业）
-	switch dcCode[0:1] {
-	case "8":
-		return "bj" + dcCode
-	case "9":
-		return "bj" + dcCode
-	case "6":
-		return "sh" + dcCode
-	case "0":
-		return "sz" + dcCode
-	case "3":
-		return "sz" + dcCode
+	// Already lowercase prefix
+	if strutil.HasPrefixAny(code, []string{"sh", "sz", "bj", "hk", "us", "gb_"}) {
+		return code
 	}
-	return dcCode
+
+	// Try uppercase prefix
+	if len(code) >= 2 {
+		lower := strings.ToLower(code[:2])
+		for _, p := range []string{"sh", "sz", "bj", "hk", "us"} {
+			if lower == p {
+				return p + code[2:]
+			}
+		}
+	}
+
+	return code
 }
