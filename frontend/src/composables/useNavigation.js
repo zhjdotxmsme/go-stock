@@ -9,24 +9,21 @@ import { EventsEmit, Quit, Hide, WindowFullscreen, WindowUnfullscreen } from '..
 import { NIcon } from 'naive-ui'
 import { createMenuOptions } from '../config/navigation'
 
-// 图标导入 - 集中管理
+// 图标导入 - 集中管理（多源图标库）
 import {
-  AlarmOutline,
   AnalyticsOutline,
   BarChartSharp,
   BonfireOutline,
   DiamondOutline,
   ExpandOutline,
   Flag,
+  FlameSharp,
   FlaskOutline,
   GlobeOutline,
   NewspaperOutline,
   NewspaperSharp,
-  Notifications,
-  报告
-  ReportSearch,
-  ReportAnalytics,
-  MoneyCollectOutlined,
+  PowerOutline,
+  Pulse,
   ServerOutline,
   SettingsOutline,
   SparklesOutline,
@@ -34,7 +31,17 @@ import {
   StatsChartOutline,
   TimeOutline,
   WarningOutline,
+  FlashOutline,
 } from '@vicons/ionicons5'
+
+// Tabler 图标
+import { ReportSearch, ReportAnalytics } from '@vicons/tabler'
+
+// Ant Design 图标
+import { MoneyCollectOutlined } from '@vicons/antd'
+
+// Fluent UI 图标
+import { SlideHide24Filled } from '@vicons/fluent'
 
 /**
  * 图标映射表
@@ -56,10 +63,16 @@ export const NAV_ICONS = {
   SparklesOutline,
   TimeOutline,
   WarningOutline,
+  FlameSharp,
   ReportSearch,
   ReportAnalytics,
   MoneyCollectOutlined,
   ServerOutline,
+  FlashOutline,
+  SettingsOutline,
+  ExpandOutline,
+  SlideHide24Filled,
+  PowerOutline,
 }
 
 /**

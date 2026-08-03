@@ -22,7 +22,6 @@ export const ICON_NAMES = {
   GlobeOutline: 'GlobeOutline',
   BonfireOutline: 'BonfireOutline',
   SparklesOutline: 'SparklesOutline',
-  Robot: 'Robot',
   FlameSharp: 'FlameSharp',
   ReportSearch: 'ReportSearch',
   ReportAnalytics: 'ReportAnalytics',
