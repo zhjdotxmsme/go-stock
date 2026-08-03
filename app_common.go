@@ -630,3 +630,12 @@ func (a *App) GetCommodityReport(codes string, reportType string) (string, error
 	b, _ := json.Marshal(output)
 	return string(b), nil
 }
+
+func (a *App) GetMacroIndicatorsEnhanced() (*data.MacroSnapshotEnhanced, error) {
+	api := data.NewCommodityApi()
+	return api.GetMacroIndicatorsEnhanced()
+}
+
+func (a *App) GetTradableCommodities() []models.CommodityAsset {
+	return data.TradableCommodities()
+}
