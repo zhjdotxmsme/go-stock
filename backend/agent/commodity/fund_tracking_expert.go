@@ -79,21 +79,25 @@ func (e *FundTrackingExpert) Run(ctx context.Context, cc *CommodityContext) (*Ex
 		}
 		for i := len(klines) - showCount; i < len(klines); i++ {
 			k := klines[i]
+			changePct := 0.0
+			if k.PrevClose > 0 {
+				changePct = (k.Close - k.PrevClose) / k.PrevClose * 100
+			}
 			dataStr.WriteString(fmt.Sprintf("%s  %.4f  %+.2f%%\n",
-				k.Date.Format("01-02"), k.Close, k.ChangePct))
+				k.Time.Format("01-02"), k.Close, changePct))
 		}
 
 		// Volume analysis
 		totalVol := 0.0
 		avgVol := 0.0
 		for _, k := range klines {
-			totalVol += k.Volume
+			totalVol += float64(k.Volume)
 		}
 		if len(klines) > 0 {
 			avgVol = totalVol / float64(len(klines))
 		}
 		if len(klines) > 0 && klines[len(klines)-1].Volume > 0 {
-			lastVol := klines[len(klines)-1].Volume
+			lastVol := float64(klines[len(klines)-1].Volume)
 			volRatio := lastVol / avgVol
 			dataStr.WriteString(fmt.Sprintf("\n成交量分析: 最新成交量=%.0f, 20日均量=%.0f, 量比=%.2f\n",
 				lastVol, avgVol, volRatio))

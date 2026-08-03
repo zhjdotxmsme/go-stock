@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"go-stock/backend/agent/multi"
 	"go-stock/backend/data"
@@ -31,7 +32,7 @@ func (e *MacroExpert) Run(ctx context.Context, cc *CommodityContext) (*ExpertRep
 	// Use enhanced macro indicators (TIPS multi-tenor, break-even, TLT/TIP)
 	macro, err := commodityApi.GetMacroIndicatorsEnhanced()
 	if err != nil {
-		dataStr += fmt.Sprintf("宏观指标获取失败: %v\n\n将基于有限信息进行分析。\n", err)
+		dataStr.WriteString(fmt.Sprintf("宏观指标获取失败: %v\n\n将基于有限信息进行分析。\n", err))
 	} else {
 		dataStr.WriteString(fmt.Sprintf("美元指数(DXY): %.2f\n", macro.DXY))
 		dataStr.WriteString(fmt.Sprintf("美国国债收益率:\n"))

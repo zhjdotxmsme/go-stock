@@ -245,16 +245,3 @@ func formatNumber(n int64) string {
 func parseFloatFromAny(v interface{}) (float64, error) {
 	return strconv.ParseFloat(fmt.Sprintf("%v", v), 64)
 }
-	in := strconv.FormatInt(n, 10)
-	if len(in) <= 3 {
-		return in
-	}
-	var out []byte
-	for i := 0; i < len(in); i++ {
-		if i > 0 && (len(in)-i)%3 == 0 {
-			out = append(out, ',')
-		}
-		out = append(out, in[i])
-	}
-	return string(out)
-}

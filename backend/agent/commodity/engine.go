@@ -183,7 +183,7 @@ func buildResultContent(cc *CommodityContext) string {
 	combined.WriteString(fmt.Sprintf("品种类别: %s\n\n", cc.Category))
 	combined.WriteString(fmt.Sprintf("提问: %s\n\n", cc.UserQuery))
 
-	for _, r := range.Reports {
+	for _, r := range cc.Reports {
 		if r.Error != "" {
 			combined.WriteString(fmt.Sprintf("### %s - 数据不可用\n\n", r.Role))
 			continue
