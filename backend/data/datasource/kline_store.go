@@ -8,6 +8,7 @@ import (
 
 	"go-stock/backend/db"
 	"go-stock/backend/models"
+	"go-stock/backend/stockcode"
 
 	"github.com/go-resty/resty/v2"
 	"gorm.io/gorm/clause"
@@ -28,11 +29,13 @@ func NewKLineStore() *KLineStore {
 }
 
 // QueryKLines returns bars for (code, period, adjusted) in [start, end].
+// Uses StockCodeCandidates to handle historical data with mixed code formats.
 func (s *KLineStore) QueryKLines(ctx context.Context, stockCode, period, startDate, endDate string, adjusted bool) ([]models.KLineBar, error) {
+	candidates := stockcode.StockCodeCandidates(stockCode)
 	var bars []models.KLineBar
 	err := db.Dao.WithContext(ctx).
-		Where("stock_code = ? AND period = ? AND adjusted = ? AND trade_date BETWEEN ? AND ?",
-			stockCode, period, adjusted, startDate, endDate).
+		Where("stock_code IN ? AND period = ? AND adjusted = ? AND trade_date BETWEEN ? AND ?",
+			candidates, period, adjusted, startDate, endDate).
 		Order("trade_date ASC").
 		Find(&bars).Error
 	return bars, err

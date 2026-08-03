@@ -9,6 +9,7 @@ import (
 
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
+	"go-stock/backend/stockcode"
 )
 
 // Router manages data source providers per data type, routing to the highest-priority
@@ -85,6 +86,7 @@ func (r *Router) RegisterSectorProvider(p SectorProvider) {
 
 // GetQuote gets quote data with automatic fallback through all registered providers.
 func (r *Router) GetQuote(ctx context.Context, code string) (*QuoteData, error) {
+	code = stockcode.Normalize(code)
 	r.mu.RLock()
 	providers := r.quoteProviders
 	r.mu.RUnlock()
@@ -121,6 +123,7 @@ func (r *Router) GetQuote(ctx context.Context, code string) (*QuoteData, error) 
 
 // GetKLine gets K-line data with automatic fallback.
 func (r *Router) GetKLine(ctx context.Context, code string, period string, count int) (*KLineData, error) {
+	code = stockcode.Normalize(code)
 	r.mu.RLock()
 	providers := r.klineProviders
 	r.mu.RUnlock()
@@ -186,6 +189,7 @@ func (r *Router) GetStockKLineMonthData(ctx context.Context, stockCode string, c
 
 // GetNews gets news data with automatic fallback.
 func (r *Router) GetNews(ctx context.Context, code string, count int) ([]NewsItem, error) {
+	code = stockcode.Normalize(code)
 	r.mu.RLock()
 	providers := r.newsProviders
 	r.mu.RUnlock()
@@ -218,6 +222,7 @@ func (r *Router) GetNews(ctx context.Context, code string, count int) ([]NewsIte
 
 // GetFundamental gets fundamental data with automatic fallback.
 func (r *Router) GetFundamental(ctx context.Context, code string) (*FundamentalData, error) {
+	code = stockcode.Normalize(code)
 	r.mu.RLock()
 	providers := r.fundamentalProviders
 	r.mu.RUnlock()
@@ -250,6 +255,7 @@ func (r *Router) GetFundamental(ctx context.Context, code string) (*FundamentalD
 
 // GetSectorData gets sector data with automatic fallback.
 func (r *Router) GetSectorData(ctx context.Context, code string) (*SectorData, error) {
+	code = stockcode.Normalize(code)
 	r.mu.RLock()
 	providers := r.sectorProviders
 	r.mu.RUnlock()
