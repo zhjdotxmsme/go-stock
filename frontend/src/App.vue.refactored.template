@@ -1,0 +1,207 @@
+<!--
+App.vue 重构后版本 - 简化模板
+Phase 4 重构目标：将 1279 行精简到 < 200 行
+
+核心改动：
+1. 状态使用 Pinia Stores (appStore, stockStore, settingsStore)
+2. 逻辑使用 Composables (useNavigation, useMarketStatus, useWailsEvents)
+3. 菜单配置抽离至 config/navigation.js
+4. 错误处理统一移至全局
+-->
+<script setup>
+import { onMounted, ref } from 'vue'
+import { NIcon, NText } from 'naive-ui'
+import { RouterView } from 'vue-router'
+
+// Stores
+import { useAppStore, useStockStore, useSettingsStore } from './stores'
+
+// Composables
+import { useNavigation } from './composables/useNavigation'
+import { useMarketStatus } from './composables/useMarketStatus'
+import { useWailsEvents } from './composables/useWailsEvents'
+
+// Wails 运行时
+import { Quit, Hide, WindowFullscreen, WindowUnfullscreen } from '../wailsjs/runtime'
+import { GetVersionInfo, GetGroupList } from '../wailsjs/go/main/App'
+
+// 初始化 Stores
+const appStore = useAppStore()
+const stockStore = useStockStore()
+const settingsStore = useSettingsStore()
+
+// 使用 Composables
+const { menuOptions, activeKey, toggleFullscreen } = useNavigation()
+const { marketStatus } = useMarketStatus({ interval: 30000 })
+const { registerEvents } = useWailsEvents()
+
+// 局部状态
+const siderCollapsed = ref(false)
+
+/**
+ * 应用初始化
+ */
+async function initApp() {
+  try {
+    // 1. 获取版本信息
+    const versionResult = await GetVersionInfo()
+    if (versionResult) {
+      appStore.setOfficialStatement(versionResult.officialStatement || '')
+    }
+
+    // 2. 获取群组列表
+    const groupResult = await GetGroupList()
+    if (groupResult) {
+      stockStore.setGroupList(groupResult)
+    }
+
+    // 3. 加载设置
+    const settingsResult = await settingsStore.loadSettings()
+
+    // 4. 注册事件监听器
+    registerEvents()
+
+  } catch (err) {
+    console.error('App initialization failed:', err)
+  } finally {
+    appStore.setLoading(false, '加载完成...')
+  }
+}
+
+// 退出应用
+function handleQuit() {
+  Quit()
+}
+
+// 隐藏至托盘
+function handleHide() {
+  Hide()
+}
+
+onMounted(() => {
+  initApp()
+})
+</script>
+
+<template>
+  <n-config-provider>
+    <n-layout style="height: 100vh">
+      <!-- 侧边栏 -->
+      <n-layout-sider
+        width="220"
+        collapsed-width="48"
+        collapsible
+        v-model:collapsed="siderCollapsed"
+        show-trigger
+      >
+        <div class="logo-area">
+          <n-icon size="28">
+            <!-- 图标 -->
+          </n-icon>
+          <span v-if="!siderCollapsed">go-stock</span>
+        </div>
+
+        <!-- 导航菜单 -->
+        <n-menu
+          v-model:value="activeKey"
+          :options="menuOptions"
+          :collapsed="siderCollapsed"
+          :collapsed-width="48"
+          @update:value="(key) => activeKey = key"
+        />
+
+        <!-- 底部操作区 -->
+        <div class="sider-footer">
+          <n-button
+            v-if="!siderCollapsed"
+            text
+            block
+            @click="toggleFullscreen"
+          >
+            全屏
+          </n-button>
+          <n-button
+            v-if="!siderCollapsed"
+            text
+            block
+            @click="handleHide"
+          >
+            隐藏到托盘
+          </n-button>
+          <n-button
+            v-if="!siderCollapsed"
+            text
+            block
+            type="error"
+            @click="handleQuit"
+          >
+            退出
+          </n-button>
+        </div>
+      </n-layout-sider>
+
+      <!-- 主内容区 -->
+      <n-layout>
+        <!-- 顶部状态栏 -->
+        <n-layout-header bordered>
+          <div class="header-content">
+            <span class="market-status">{{ marketStatus }}</span>
+            <span class="current-motto">{{ appStore.currentMotto }}</span>
+          </div>
+        </n-layout-header>
+
+        <!-- 内容区 -->
+        <n-layout-content content-style="height: calc(100vh - 64px); overflow: auto">
+          <!-- 加载遮罩 -->
+          <n-spin v-if="appStore.loading" :show="true" description="appStore.loadingMsg">
+            <div class="loading-placeholder"></div>
+          </n-spin>
+
+          <!-- 路由视图 -->
+          <RouterView v-else />
+        </n-layout-content>
+      </n-layout>
+    </n-layout>
+  </n-config-provider>
+</template>
+
+<style scoped>
+.logo-area {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.sider-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px;
+  border-top: 1px solid var(--n-border-color);
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 100%;
+  padding: 0 16px;
+}
+
+.market-status {
+  font-weight: 500;
+}
+
+.current-motto {
+  color: var(--n-text-color-2);
+  font-size: 14px;
+}
+
+.loading-placeholder {
+  height: 400px;
+}
+</style>

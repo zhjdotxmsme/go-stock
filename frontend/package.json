@@ -21,6 +21,7 @@
     "lightweight-charts": "^5.2.0",
     "lodash": "^4.18.1",
     "md-editor-v3": "^5.8.5",
+    "pinia": "^2.3.1",
     "tdesign-icons-vue-next": "^0.3.7",
     "vue": "^3.5.33",
     "vue-echarts": "^7.0.3",
