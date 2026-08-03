@@ -1,12 +1,17 @@
 package commodity
 
-import "github.com/cloudwego/eino/schema"
+import (
+	"github.com/cloudwego/eino/schema"
+	"go-stock/backend/models"
+)
 
 type CommodityContext struct {
 	Code        string
 	Name        string
 	UserQuery   string
 	AIConfigID  int
+	Category    models.CommodityCategory
+	AssetType   models.AssetType
 	Reports     []ExpertReport
 	Debate      *DebateResult
 	FinalReport *CommodityReport

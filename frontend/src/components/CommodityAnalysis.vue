@@ -1,5 +1,5 @@
 <script setup>
-import {ref, reactive, onMounted, onUnmounted, nextTick} from 'vue'
+import {ref, reactive, onMounted, onUnmounted, nextTick, computed} from 'vue'
 import {
   GetCommodityRegistry,
   GetCommodityTechnicals,
@@ -8,6 +8,7 @@ import {
   GetCommodityReport,
   NewCommodityAnalysisStream,
 } from '../../wailsjs/go/main/App'
+import {GetTradableCommodities} from '../../wailsjs/go/main/App'
 import {EventsOn, EventsOff} from '../../wailsjs/runtime'
 import {MdPreview} from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
@@ -38,6 +39,25 @@ const periodOptions = [
   {label: '周线', value: 'week'},
 ]
 
+// All possible expert role titles (dynamic routing)
+const expertTitles = {
+  macro: '宏观',
+  technical: '技术面',
+  sentiment: '情绪',
+  // 贵金属专属
+  monetary: '货币属性',
+  safehaven: '避险情绪',
+  // 能源专属
+  oil_supply: '供需基本面',
+  oil_geo: '地缘政治',
+  // 基金专属
+  fund_tracking: '基金跟踪',
+  // debate/synthesis
+  bull: '看多',
+  bear: '看空',
+  synthesis: '综合',
+}
+
 const expertState = reactive({
   active: false,
   currentPhase: '',
@@ -49,18 +69,12 @@ const expertState = reactive({
   done: false,
 })
 
-const expertTitles = {
-  macro: '宏观',
-  technical: '技术面',
-  correlation: '关联',
-  sentiment: '情绪',
-  supply: '供需',
-  bull: '看多',
-  bear: '看空',
-  synthesis: '综合',
-}
-
-const expertOrder = ['macro', 'technical', 'correlation', 'sentiment', 'supply']
+// Dynamic expert order: use the order tokens arrive via SSE
+const expertOrder = computed(() => {
+  return Object.keys(expertState.reports).filter(key =>
+    !['bull', 'bear', 'synthesis'].includes(key)
+  )
+})
 
 function expertTitle(role) {
   return expertTitles[role] || role
@@ -77,12 +91,16 @@ function scrollToBottom() {
 }
 
 async function loadRegistry() {
-  registry.value = await GetCommodityRegistry()
-  currentAsset.value = registry.value.find(i => i.code === selectedCode.value) || null
+  const all = await GetCommodityRegistry()
+  registry.value = all
+  // 仅展示可交易标的（排除宏观指标）
+  const tradable = await GetTradableCommodities()
+  currentAsset.value = tradable.find(i => i.code === selectedCode.value) || null
 }
 
 function assetOptions() {
-  return registry.value.map(item => ({label: item.name, value: item.code}))
+  // 仅展示可交易标的
+  return registry.value.filter(i => i.isTradable).map(item => ({label: item.name, value: item.code}))
 }
 
 function onCodeChange(val) {
@@ -279,10 +297,10 @@ onUnmounted(() => {
               {{ expertState.done ? '分析完成' : (expertState.phaseLabel || '准备中...') }}
             </n-alert>
 
+            <!-- Dynamic expert cards: rendered in SSE arrival order -->
             <n-card
               v-for="role in expertOrder"
               :key="role"
-              v-if="expertState.reports[role]"
               size="small"
               :title="`${expertTitle(role)}专家`"
             >

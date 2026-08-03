@@ -165,9 +165,39 @@ func (f *FredApi) GetTIPSRate() (float64, error) {
 	return f.GetLatestValue("DFII10")
 }
 
+// GetTIPS5YRate fetches the latest 5-year TIPS rate
+func (f *FredApi) GetTIPS5YRate() (float64, error) {
+	return f.GetLatestValue("DFII5")
+}
+
+// GetTIPS20YRate fetches the latest 20-year TIPS rate
+func (f *FredApi) GetTIPS20YRate() (float64, error) {
+	return f.GetLatestValue("DFII20")
+}
+
+// GetTIPS30YRate fetches the latest 30-year TIPS rate
+func (f *FredApi) GetTIPS30YRate() (float64, error) {
+	return f.GetLatestValue("DFII30")
+}
+
 // GetBreakEvenInflation fetches 5-Year Breakeven Inflation Rate
 func (f *FredApi) GetBreakEvenInflation() (float64, error) {
 	return f.GetLatestValue("T5YIE")
+}
+
+// GetBreakEvenInflation10Y fetches 10-Year Breakeven Inflation Rate
+func (f *FredApi) GetBreakEvenInflation10Y() (float64, error) {
+	return f.GetLatestValue("T10YIE")
+}
+
+// GetBreakEvenInflation30Y fetches 30-Year Breakeven Inflation Rate
+func (f *FredApi) GetBreakEvenInflation30Y() (float64, error) {
+	return f.GetLatestValue("T30YIE")
+}
+
+// GetVIX fetches the latest CBOE Volatility Index (VIX)
+func (f *FredApi) GetVIX() (float64, error) {
+	return f.GetLatestValue("VIXCLS")
 }
 
 // CalculateRealRate calculates real interest rate: nominal - TIPS

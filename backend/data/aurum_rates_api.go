@@ -63,12 +63,14 @@ func (a *AurumRatesApi) fetchSpot() (*SpotResponse, error) {
 
 func codeToAurumSymbol(code string) string {
 	switch strings.ToUpper(code) {
-	case "XAUUSD":
+	case "XAUUSD", "XAU":
 		return "gold"
-	case "XAGUSD":
+	case "XAGUSD", "XAG":
 		return "silver"
 	case "USCL":
 		return "crude-wti"
+	case "USCO":
+		return "crude-brent"
 	default:
 		return ""
 	}
@@ -94,6 +96,8 @@ func (a *AurumRatesApi) GetQuote(code string) (*datasource.QuoteData, error) {
 		m = spot.Data.Silver
 	case "crude-wti":
 		m = spot.Data.CrudeWTI
+	case "crude-brent":
+		m = spot.Data.CrudeBrent
 	}
 	if m == nil {
 		return nil, fmt.Errorf("aurum rates missing %s data", symbol)

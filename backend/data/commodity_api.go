@@ -76,6 +76,18 @@ func (c *CommodityApi) GetQuoteIntl(code string) (*datasource.QuoteData, error) 
 }
 
 func (c *CommodityApi) getSpotQuote(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
+	// 伦敦金银: XAU/XAG 优先使用 AURUM Rates（XAU=X/XAG=X 在 Yahoo 上有限制）
+	if asset.Code == "XAU" || asset.Code == "XAG" {
+		aurum := &AurumRatesApi{}
+		quote, err := aurum.GetQuote(asset.Code)
+		if err == nil {
+			quote.Name = asset.Name
+			return quote, nil
+		}
+		logger.SugaredLogger.Warnf("AURUM Rates quote failed for %s: %v, trying Yahoo", asset.Code, err)
+	}
+
+	// 其他现货: Yahoo 优先
 	yahoo := &YahooFinanceApi{}
 	quote, err := yahoo.GetQuote(asset.Code)
 	if err == nil {
@@ -607,6 +619,40 @@ type MacroSnapshot struct {
 	Timestamp  time.Time `json:"timestamp"`
 }
 
+// MacroSnapshotEnhanced 扩展宏观指标快照
+type MacroSnapshotEnhanced struct {
+	// 美元指数
+	DXY float64 `json:"dxy"`
+
+	// 美债收益率
+	US2YR  float64 `json:"us2yr"`
+	US5YR  float64 `json:"us5yr"`
+	US7YR  float64 `json:"us7yr"`
+	US10YR float64 `json:"us10yr"`
+	US30YR float64 `json:"us30yr"`
+
+	// 收益率曲线形态: normal / inverted / steep
+	YieldCurve string `json:"yieldCurve"`
+
+	// 美债 ETF
+	TLTPrice     float64 `json:"tltPrice"`
+	TLTChangePct float64 `json:"tltChangePct"`
+	TIPPrice     float64 `json:"tipPrice"`
+	TIPChangePct float64 `json:"tipChangePct"`
+
+	// TIPS 实际利率 (多期限)
+	TIPS5Y  float64 `json:"tips5y"`
+	TIPS10Y float64 `json:"tips10y"`
+	TIPS20Y float64 `json:"tips20y"`
+	TIPS30Y float64 `json:"tips30y"`
+
+	// 盈亏平衡通胀率
+	BreakEven5Y  float64 `json:"breakEven5y"`
+	BreakEven10Y float64 `json:"breakEven10y"`
+
+	Timestamp time.Time `json:"timestamp"`
+}
+
 func (c *CommodityApi) GetMacroIndicators() (*MacroSnapshot, error) {
 	ws := WallstreetcnApi{}
 	resp := ws.GetMarketReal([]string{"DXY.OTC", "US2YR.OTC", "US10YR.OTC", "US30YR.OTC"}, nil)
@@ -644,4 +690,80 @@ func (c *CommodityApi) GetMacroIndicators() (*MacroSnapshot, error) {
 		YieldCurve: curve,
 		Timestamp:  time.Now(),
 	}, nil
+}
+
+// GetMacroIndicatorsEnhanced 获取扩展宏观指标（含多期限美债收益率 + TIPS + 盈亏平衡通胀 + TLT/TIP ETF）
+func (c *CommodityApi) GetMacroIndicatorsEnhanced() (*MacroSnapshotEnhanced, error) {
+	enhanced := &MacroSnapshotEnhanced{Timestamp: time.Now()}
+
+	// 1. WallStreetCN: DXY + 多期限美债收益率
+	ws := WallstreetcnApi{}
+	resp := ws.GetMarketReal([]string{
+		"DXY.OTC", "US2YR.OTC", "US5YR.OTC", "US7YR.OTC", "US10YR.OTC", "US30YR.OTC",
+	}, nil)
+
+	if resp != nil && len(resp.Data.Snapshot) > 0 {
+		snap := resp.Data.Snapshot
+		parsePx := func(code string) float64 {
+			if row, ok := snap[code]; ok && len(row) > 1 {
+				s := fmt.Sprintf("%v", row[1])
+				v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
+				return v
+			}
+			return 0
+		}
+		enhanced.DXY = parsePx("DXY.OTC")
+		enhanced.US2YR = parsePx("US2YR.OTC")
+		enhanced.US5YR = parsePx("US5YR.OTC")
+		enhanced.US7YR = parsePx("US7YR.OTC")
+		enhanced.US10YR = parsePx("US10YR.OTC")
+		enhanced.US30YR = parsePx("US30YR.OTC")
+
+		// 收益率曲线判断
+		if enhanced.US2YR > enhanced.US10YR && enhanced.US10YR > 0 {
+			enhanced.YieldCurve = "inverted"
+		} else if enhanced.US30YR > 0 && enhanced.US10YR > 0 && (enhanced.US30YR-enhanced.US2YR) > 0.02 {
+			enhanced.YieldCurve = "steep"
+		} else {
+			enhanced.YieldCurve = "normal"
+		}
+	}
+
+	// 2. Yahoo Finance: TLT + TIP ETF 实时价格
+	yahoo := &YahooFinanceApi{}
+	if tltQuote, err := yahoo.GetQuote("TLT"); err == nil {
+		enhanced.TLTPrice = tltQuote.Price
+		enhanced.TLTChangePct = tltQuote.ChangePct
+	} else {
+		logger.SugaredLogger.Warnf("Yahoo TLT quote failed: %v", err)
+	}
+	if tipQuote, err := yahoo.GetQuote("TIP"); err == nil {
+		enhanced.TIPPrice = tipQuote.Price
+		enhanced.TIPChangePct = tipQuote.ChangePct
+	} else {
+		logger.SugaredLogger.Warnf("Yahoo TIP quote failed: %v", err)
+	}
+
+	// 3. FRED: TIPS 多期限 + 盈亏平衡通胀率
+	fred := NewFredApi()
+	if v, err := fred.GetTIPS5YRate(); err == nil {
+		enhanced.TIPS5Y = v
+	}
+	if v, err := fred.GetTIPSRate(); err == nil {
+		enhanced.TIPS10Y = v
+	}
+	if v, err := fred.GetTIPS20YRate(); err == nil {
+		enhanced.TIPS20Y = v
+	}
+	if v, err := fred.GetTIPS30YRate(); err == nil {
+		enhanced.TIPS30Y = v
+	}
+	if v, err := fred.GetBreakEvenInflation(); err == nil {
+		enhanced.BreakEven5Y = v
+	}
+	if v, err := fred.GetBreakEvenInflation10Y(); err == nil {
+		enhanced.BreakEven10Y = v
+	}
+
+	return enhanced, nil
 }

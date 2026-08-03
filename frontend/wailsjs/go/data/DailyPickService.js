@@ -42,8 +42,8 @@ export function RunDailyPick(arg1, arg2) {
   return window['go']['data']['DailyPickService']['RunDailyPick'](arg1, arg2);
 }
 
-export function RunDailyPickAsync(arg1, arg2) {
-  return window['go']['data']['DailyPickService']['RunDailyPickAsync'](arg1, arg2);
+export function RunDailyPickAsync(arg1, arg2, arg3) {
+  return window['go']['data']['DailyPickService']['RunDailyPickAsync'](arg1, arg2, arg3);
 }
 
 export function RunDailyReview(arg1, arg2) {

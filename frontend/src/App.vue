@@ -26,7 +26,7 @@ import {
   SparklesOutline, FlashOutline, Star,
   StarOutline,
   StatsChartOutline,
-  Wallet, WarningOutline, TimeOutline, SearchOutline,
+  WarningOutline, TimeOutline, SearchOutline,
 } from '@vicons/ionicons5'
 import {AnalyzeSentiment, GetConfig, GetGroupList, GetVersionInfo, IsTradingTime, IsHKTradingTime, IsUSTradingTime} from "../wailsjs/go/main/App";
 import FloatingAiAssistant from "./components/FloatingAiAssistant.vue";
@@ -623,38 +623,6 @@ const menuOptions = ref([
             ),
         key: 'commodityOverview',
         icon: renderIcon(StatsChartOutline),
-      },
-      {
-        label: () =>
-            h(
-                RouterLink,
-                {
-                  to: {name: 'commodity', query: {name: '商品期货'}},
-                  onClick: () => {
-                    activeKey.value = 'commodity'
-                    EventsEmit("changeCommodityTab", {name: '商品期货'})
-                  },
-                },
-                {default: () => '商品期货'}
-            ),
-        key: 'commodityFutures',
-        icon: renderIcon(BarChartSharp),
-      },
-      {
-        label: () =>
-            h(
-                RouterLink,
-                {
-                  to: {name: 'commodity', query: {name: '商品基金'}},
-                  onClick: () => {
-                    activeKey.value = 'commodity'
-                    EventsEmit("changeCommodityTab", {name: '商品基金'})
-                  },
-                },
-                {default: () => '商品基金'}
-            ),
-        key: 'commodityFunds',
-        icon: renderIcon(Wallet),
       },
       {
         label: () =>

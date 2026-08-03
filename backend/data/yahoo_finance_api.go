@@ -127,13 +127,22 @@ func (y *YahooFinanceApi) yahooDoRequest(url string) ([]byte, error) {
 }
 
 var yahooCommoditySymbols = map[string]string{
-	"XAUUSD": "GC=F",
-	"XAGUSD": "SI=F",
-	"USCL":   "CL=F",
+	// 国际现货
+	"XAUUSD": "GC=F",  // COMEX 黄金期货
+	"XAGUSD": "SI=F",  // COMEX 白银期货
+	"USCL":   "CL=F",  // WTI 原油期货
+	"XAU":    "XAU=X", // 伦敦金现货
+	"XAG":    "XAG=X", // 伦敦银现货
+	"USCO":   "BZ=F",  // 布伦特原油期货
 	// 国内期货主力合约映射到国际期货，作为 Sina 失效时的 fallback。
 	"AU": "GC=F",
 	"AG": "SI=F",
 	"SC": "CL=F",
+	// 基金
+	"161226": "161226.SZ", // 国投白银LOF
+	// 宏观指标 ETF
+	"TLT": "TLT", // iShares 20+ Year Treasury Bond ETF
+	"TIP": "TIP", // iShares TIPS Bond ETF
 }
 
 func (y *YahooFinanceApi) resolveSymbol(code string) (string, error) {

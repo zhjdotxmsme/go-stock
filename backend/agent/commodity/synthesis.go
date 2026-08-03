@@ -15,6 +15,7 @@ import (
 
 func RunSynthesis(ctx context.Context, cc *CommodityContext) (*CommodityReport, error) {
 	var contextStr string
+	contextStr += fmt.Sprintf("品种: %s(%s)  类别: %s\n\n", cc.Name, cc.Code, cc.Category)
 	contextStr += "## 各维度分析报告\n\n"
 	for _, r := range cc.Reports {
 		if r.Error != "" {
@@ -62,7 +63,7 @@ func RunSynthesis(ctx context.Context, cc *CommodityContext) (*CommodityReport, 
 
 	messages := []*schema.Message{
 		{Role: schema.System, Content: GetRolePrompt("commodity_synthesis", SynthesisPrompt)},
-		{Role: schema.User, Content: fmt.Sprintf("请基于以下分析数据生成最终大宗商品投资分析报告:\n\n品种: %s(%s)\n用户问题: %s\n\n%s", cc.Name, cc.Code, cc.UserQuery, contextStr)},
+		{Role: schema.User, Content: fmt.Sprintf("请基于以下分析数据生成最终大宗商品投资分析报告:\n\n%s", contextStr)},
 	}
 
 	streamResult, err := chatModel.Stream(ctx, messages)

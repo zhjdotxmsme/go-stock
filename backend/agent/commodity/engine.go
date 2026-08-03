@@ -38,8 +38,16 @@ func (e *CommodityEngine) Run(ctx context.Context, code, name, userQuery string)
 			StreamCh:   ch,
 		}
 
-		// Phase 1: Run 5 experts in parallel
-		emitPhase(cc, "experts", "start", "5位专家并行分析中...")
+		// Inject asset metadata from registry
+		asset := data.FindCommodityByCode(code)
+		if asset != nil {
+			cc.Category = asset.Category
+			cc.AssetType = asset.AssetType
+		}
+
+		// Phase 1: Run experts in parallel (routed by category)
+		expertNames := describeExperts(cc.Category)
+		emitPhase(cc, "experts", "start", fmt.Sprintf("%s 并行分析中...", expertNames))
 
 		reports := e.runParallelExperts(ctx, cc)
 		cc.Reports = reports
@@ -84,7 +92,7 @@ func (e *CommodityEngine) Run(ctx context.Context, code, name, userQuery string)
 }
 
 func (e *CommodityEngine) runParallelExperts(ctx context.Context, cc *CommodityContext) []ExpertReport {
-	experts := GetDefaultExperts()
+	experts := GetExpertsForCategory(cc.Category)
 
 	type result struct {
 		report *ExpertReport
@@ -126,6 +134,16 @@ func (e *CommodityEngine) runParallelExperts(ctx context.Context, cc *CommodityC
 	return reports
 }
 
+// describeExperts returns a human-readable description of the experts for the given category
+func describeExperts(cat models.CommodityCategory) string {
+	experts := GetExpertsForCategory(cat)
+	names := make([]string, 0, len(experts))
+	for _, exp := range experts {
+		names = append(names, exp.Role())
+	}
+	return fmt.Sprintf("%d位专家(%s)", len(experts), strings.Join(names, "/"))
+}
+
 func emitFinalReport(ch chan<- *schema.Message, report *CommodityReport) {
 	payload := map[string]interface{}{
 		"type":   "agent:final",
@@ -162,9 +180,10 @@ func buildResultContent(cc *CommodityContext) string {
 	var combined strings.Builder
 	combined.WriteString(fmt.Sprintf("## 大宗商品多专家分析报告 - %s(%s)\n\n", cc.Name, cc.Code))
 	combined.WriteString(fmt.Sprintf("分析时间: %s\n\n", time.Now().Format("2006-01-02 15:04:05")))
+	combined.WriteString(fmt.Sprintf("品种类别: %s\n\n", cc.Category))
 	combined.WriteString(fmt.Sprintf("提问: %s\n\n", cc.UserQuery))
 
-	for _, r := range cc.Reports {
+	for _, r := range.Reports {
 		if r.Error != "" {
 			combined.WriteString(fmt.Sprintf("### %s - 数据不可用\n\n", r.Role))
 			continue

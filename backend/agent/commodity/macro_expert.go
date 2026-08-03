@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+
 	"go-stock/backend/agent/multi"
 	"go-stock/backend/data"
 	"go-stock/backend/logger"
-	"io"
+	"go-stock/backend/models"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -22,63 +24,83 @@ func (e *MacroExpert) Role() string { return "macro" }
 
 func (e *MacroExpert) Run(ctx context.Context, cc *CommodityContext) (*ExpertReport, error) {
 	commodityApi := data.NewCommodityApi()
-	fredApi := data.NewFredApi()
 
-	macro, err := commodityApi.GetMacroIndicators()
-	dataStr := fmt.Sprintf("品种: %s(%s)\n\n## 宏观指标\n", cc.Name, cc.Code)
+	var dataStr strings.Builder
+	dataStr.WriteString(fmt.Sprintf("品种: %s(%s)\n\n## 宏观指标\n", cc.Name, cc.Code))
+
+	// Use enhanced macro indicators (TIPS multi-tenor, break-even, TLT/TIP)
+	macro, err := commodityApi.GetMacroIndicatorsEnhanced()
 	if err != nil {
 		dataStr += fmt.Sprintf("宏观指标获取失败: %v\n\n将基于有限信息进行分析。\n", err)
 	} else {
-		dataStr += fmt.Sprintf("美元指数(DXY): %.2f\n", macro.DXY)
-		dataStr += fmt.Sprintf("美国2年期国债收益率: %.4f%%\n", macro.US2YR)
-		dataStr += fmt.Sprintf("美国10年期国债收益率: %.4f%%\n", macro.US10YR)
-		dataStr += fmt.Sprintf("美国30年期国债收益率: %.4f%%\n", macro.US30YR)
-		dataStr += fmt.Sprintf("收益率曲线形态: %s\n", macro.YieldCurve)
+		dataStr.WriteString(fmt.Sprintf("美元指数(DXY): %.2f\n", macro.DXY))
+		dataStr.WriteString(fmt.Sprintf("美国国债收益率:\n"))
+		dataStr.WriteString(fmt.Sprintf("  2Y: %.2f%%\n", macro.US2YR))
+		dataStr.WriteString(fmt.Sprintf("  5Y: %.2f%%\n", macro.US5YR))
+		dataStr.WriteString(fmt.Sprintf("  7Y: %.2f%%\n", macro.US7YR))
+		dataStr.WriteString(fmt.Sprintf("  10Y: %.2f%%\n", macro.US10YR))
+		dataStr.WriteString(fmt.Sprintf("  30Y: %.2f%%\n", macro.US30YR))
+		dataStr.WriteString(fmt.Sprintf("收益率曲线形态: %s\n", macro.YieldCurve))
 		if macro.US10YR > 0 && macro.US2YR > 0 {
 			spread := macro.US10YR - macro.US2YR
-			dataStr += fmt.Sprintf("2s10s利差: %.4f%%\n", spread)
+			dataStr.WriteString(fmt.Sprintf("2s10s利差: %.2f%%\n", spread))
+			if spread < 0 {
+				dataStr.WriteString("曲线倒挂 → 衰退预警\n")
+			}
+		}
+
+		// TIPS multi-tenor
+		dataStr.WriteString(fmt.Sprintf("\n## 实际利率（TIPS多期限）\n"))
+		dataStr.WriteString(fmt.Sprintf("5年TIPS: %.2f%%\n", macro.TIPS5Y))
+		dataStr.WriteString(fmt.Sprintf("10年TIPS: %.2f%%\n", macro.TIPS10Y))
+		dataStr.WriteString(fmt.Sprintf("20年TIPS: %.2f%%\n", macro.TIPS20Y))
+		dataStr.WriteString(fmt.Sprintf("30年TIPS: %.2f%%\n", macro.TIPS30Y))
+
+		// Real rates
+		if macro.US10YR > 0 && macro.TIPS10Y > 0 {
+			realRate := data.CalculateRealRate(macro.US10YR, macro.TIPS10Y)
+			dataStr.WriteString(fmt.Sprintf("\n10年实际利率: %.2f%%\n", realRate))
+			switch {
+			case realRate > 2:
+				dataStr.WriteString("实际利率高位（>2%），持有商品机会成本较高\n")
+			case realRate < 0:
+				dataStr.WriteString("实际利率为负，持有无息资产有优势\n")
+			default:
+				dataStr.WriteString("实际利率处于正常区间\n")
+			}
+		}
+
+		// Break-even inflation
+		dataStr.WriteString(fmt.Sprintf("\n## 盈亏平衡通胀率\n"))
+		dataStr.WriteString(fmt.Sprintf("5年: %.2f%%\n", macro.BreakEven5Y))
+		dataStr.WriteString(fmt.Sprintf("10年: %.2f%%\n", macro.BreakEven10Y))
+		switch {
+		case macro.BreakEven10Y > 2.5:
+			dataStr.WriteString("通胀预期较高（>2.5%），支撑抗通胀商品\n")
+		case macro.BreakEven10Y < 2:
+			dataStr.WriteString("通胀预期较低（<2%），抑制商品需求\n")
+		default:
+			dataStr.WriteString("通胀预期处于正常区间\n")
+		}
+
+		// TLT/TIP ETF
+		dataStr.WriteString(fmt.Sprintf("\n## 债券ETF价格\n"))
+		if macro.TLTPrice > 0 {
+			dataStr.WriteString(fmt.Sprintf("TLT(20+年美债ETF): $%.2f\n", macro.TLTPrice))
+		}
+		if macro.TIPPrice > 0 {
+			dataStr.WriteString(fmt.Sprintf("TIP(TIPS ETF): $%.2f\n", macro.TIPPrice))
 		}
 	}
 
-	// Fetch TIPS from FRED
-	tipsRate, tipsErr := fredApi.GetTIPSRate()
-	if tipsErr == nil {
-		realRate := data.CalculateRealRate(macro.US10YR, tipsRate)
-		dataStr += fmt.Sprintf("\n## 实际利率（TIPS）\n")
-		dataStr += fmt.Sprintf("10年TIPS收益率: %.4f%%\n", tipsRate)
-		dataStr += fmt.Sprintf("10年实际利率: %.4f%%\n", realRate)
-		
-		// TIPS interpretation
-		tipsSignal := ""
-		switch {
-		case realRate > 2:
-			tipsSignal = "实际利率处于高位（>2%），持有黄金的机会成本较高，对黄金形成压力"
-		case realRate < 0:
-			tipsSignal = "实际利率为负，持有黄金相对现金有优势，对黄金形成支撑"
-		default:
-			tipsSignal = "实际利率处于正常区间"
-		}
-		dataStr += fmt.Sprintf("实际利率解读: %s\n", tipsSignal)
-	} else {
-		dataStr += fmt.Sprintf("\n## 实际利率（TIPS）\n")
-		dataStr += fmt.Sprintf("TIPS数据获取失败: %v\n\n注：实际利率是影响黄金价格的关键宏观指标\n", tipsErr)
-	}
-
-	// Fetch break-even inflation
-	beInflation, beErr := fredApi.GetBreakEvenInflation()
-	if beErr == nil {
-		dataStr += fmt.Sprintf("\n## 通胀预期\n")
-		dataStr += fmt.Sprintf("5年盈亏平衡通胀: %.4f%%\n", beInflation)
-		beSignal := ""
-		switch {
-		case beInflation > 2.5:
-			beSignal = "通胀预期较高（>2.5%），对黄金白银形成支撑"
-		case beInflation < 2:
-			beSignal = "通胀预期较低（<2%），可能抑制贵金属需求"
-		default:
-			beSignal = "通胀预期处于正常区间"
-		}
-		dataStr += fmt.Sprintf("通胀预期解读: %s\n", beSignal)
+	// Category-specific analysis hint
+	switch cc.Category {
+	case models.CategoryPreciousMetal:
+		dataStr.WriteString("\n> 分析侧重: 实际利率和美元是贵金属定价的核心驱动\n")
+	case models.CategoryEnergy:
+		dataStr.WriteString("\n> 分析侧重: 美元强弱和全球需求预期（收益率曲线→衰退信号）对原油影响显著\n")
+	case models.CategoryFund:
+		dataStr.WriteString("\n> 分析侧重: 宏观环境对底层资产的传导效应\n")
 	}
 
 	chatModel, err := multi.GetChatModelWithTier(ctx, "macro", multi.LLMTierQuick, cc.AIConfigID)
@@ -88,7 +110,7 @@ func (e *MacroExpert) Run(ctx context.Context, cc *CommodityContext) (*ExpertRep
 
 	messages := []*schema.Message{
 		{Role: schema.System, Content: GetRolePrompt("commodity_macro", MacroExpertPrompt)},
-		{Role: schema.User, Content: fmt.Sprintf("请分析商品 %s(%s) 的宏观环境\n\n数据:\n%s\n\n用户问题: %s", cc.Name, cc.Code, dataStr, cc.UserQuery)},
+		{Role: schema.User, Content: fmt.Sprintf("请分析商品 %s(%s) 的宏观环境\n\n数据:\n%s\n\n用户问题: %s", cc.Name, cc.Code, dataStr.String(), cc.UserQuery)},
 	}
 
 	streamResult, err := chatModel.Stream(ctx, messages)
