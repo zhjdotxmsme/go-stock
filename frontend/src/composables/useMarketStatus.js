@@ -4,7 +4,8 @@
  */
 
 import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { IsTradingTime, IsHKTradingTime, IsUSTradingTime, WindowSetTitle } from '../../wailsjs/go/main/App'
+import { IsTradingTime, IsHKTradingTime, IsUSTradingTime } from '../../wailsjs/go/main/App'
+import { WindowSetTitle } from '../../wailsjs/runtime'
 import { useAppStore } from '../stores'
 
 /**
