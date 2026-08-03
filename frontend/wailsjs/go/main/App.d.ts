@@ -178,6 +178,10 @@ export function GetCommodityReport(arg1:string,arg2:string):Promise<string>;
 
 export function GetCommodityTechnicals(arg1:string,arg2:string):Promise<string>;
 
+export function GetMacroIndicatorsEnhanced():Promise<any>;
+
+export function GetTradableCommodities():Promise<Array<models.CommodityAsset>>;
+
 export function GetConceptFundFlowList(arg1:string,arg2:number):Promise<Array<models.ConceptFundFlowPoint>>;
 
 export function GetConceptFundFlowListByDate(arg1:string,arg2:string):Promise<Array<models.ConceptFundFlowPoint>>;

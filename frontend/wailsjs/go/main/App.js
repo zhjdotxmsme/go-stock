@@ -342,6 +342,14 @@ export function GetCommodityTechnicals(arg1, arg2) {
   return window['go']['main']['App']['GetCommodityTechnicals'](arg1, arg2);
 }
 
+export function GetMacroIndicatorsEnhanced() {
+  return window['go']['main']['App']['GetMacroIndicatorsEnhanced']();
+}
+
+export function GetTradableCommodities() {
+  return window['go']['main']['App']['GetTradableCommodities']();
+}
+
 export function GetConceptFundFlowList(arg1, arg2) {
   return window['go']['main']['App']['GetConceptFundFlowList'](arg1, arg2);
 }

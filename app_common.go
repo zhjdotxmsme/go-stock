@@ -622,6 +622,11 @@ func (a *App) GetCommodityCorrelation(primaryCode string, secondaryCodes string)
 	return string(b), nil
 }
 
+func (a *App) GetMacroIndicatorsEnhanced() (*data.MacroSnapshotEnhanced, error) {
+	api := data.NewCommodityApi()
+	return api.GetMacroIndicatorsEnhanced()
+}
+
 func (a *App) GetCommodityReport(codes string, reportType string) (string, error) {
 	output, err := data.GetCommodityReportOutput(codes, reportType)
 	if err != nil {
