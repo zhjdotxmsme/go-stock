@@ -27,10 +27,12 @@ export async function getGlobalIndices() {
 
 /**
  * 获取行业排名
+ * @param {string} sort - 排序字段
+ * @param {number} count - 数量
  * @returns {Promise<ApiResult>}
  */
-export async function getIndustryRank() {
-  return callApi(App.GetIndustryRank)
+export async function getIndustryRank(sort = '', count = 50) {
+  return callApi(App.GetIndustryRank, sort, count)
 }
 
 /**
@@ -57,6 +59,29 @@ export async function getSectorMoneyFlow() {
  */
 export async function getLongHuBang(date = '') {
   return callApi(App.GetLongHuBang, date)
+}
+
+/**
+ * 概括股票新闻 (AI 总结)
+ * @param {string} stockCode
+ * @param {number} count
+ * @param {any} template
+ * @param {boolean} arg4
+ * @param {boolean} arg5
+ * @param {string} arg6
+ * @param {string} arg7
+ * @returns {Promise<ApiResult>}
+ */
+export async function summaryStockNews(stockCode, count, template, arg4, arg5, arg6, arg7) {
+  return callApi(App.SummaryStockNews, stockCode, count, template, arg4, arg5, arg6, arg7)
+}
+
+/**
+ * 中止股票新闻概括
+ * @returns {Promise<ApiResult>}
+ */
+export async function abortSummaryStockNews() {
+  return callApi(App.AbortSummaryStockNews)
 }
 
 // ========== 异动监控 ==========
@@ -92,6 +117,32 @@ export async function getChangeStats() {
  */
 export async function getTelegraph(count = 50, offset = 0) {
   return callApi(App.GetTelegraph, count, offset)
+}
+
+/**
+ * 获取电报列表（按来源）
+ * @param {string} source - 来源（财联社电报/新浪财经/外媒）
+ * @returns {Promise<ApiResult>}
+ */
+export async function getTelegraphList(source) {
+  return callApi(App.GetTelegraphList, source)
+}
+
+/**
+ * 刷新电报列表
+ * @param {string} source - 来源
+ * @returns {Promise<ApiResult>}
+ */
+export async function refreshTelegraphList(source) {
+  return callApi(App.ReFleshTelegraphList, source)
+}
+
+/**
+ * 获取全球股指行情
+ * @returns {Promise<ApiResult>}
+ */
+export async function getGlobalStockIndexes() {
+  return callApi(App.GlobalStockIndexes)
 }
 
 /**
@@ -156,6 +207,8 @@ export default {
 
   // 电报/新闻
   getTelegraph,
+  getTelegraphList,
+  refreshTelegraphList,
   getNewsList,
 
   // 交易时间
@@ -163,6 +216,13 @@ export default {
   isHKTradingTime,
   isUSTradingTime,
 
+  // AI 新闻概括
+  summaryStockNews,
+  abortSummaryStockNews,
+
   // 实时价格
   getRealtimeQuote,
+
+  // 全球股指
+  getGlobalStockIndexes,
 }

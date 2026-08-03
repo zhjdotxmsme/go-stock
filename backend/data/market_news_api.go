@@ -1596,10 +1596,13 @@ func (m MarketNewsApi) GetNewsBySector(sectorID string, limit int) (*SectorNewsR
 		return nil, fmt.Errorf("unknown sector: %s", sectorID)
 	}
 
-	// 获取原始新闻
-	allNews := m.GetNewsList("telegraph", limit*3)
+	// 先触发数据抓取，确保 DB 有最新新闻
+	m.TelegraphList(30)
+
+	// 获取所有新闻（不按 source 过滤，DB 中 source 存的是"财联社电报"等中文名）
+	allNews := m.GetNewsList("", limit*3)
 	if allNews == nil || len(*allNews) == 0 {
-		allNews = m.GetTelegraphList("telegraph")
+		allNews = m.GetTelegraphList("")
 	}
 
 	// 按关键词过滤
@@ -1660,9 +1663,12 @@ func matchSectorKeywords(text string, keywords []string) bool {
 
 // GetStockRelatedNews 获取个股关联新闻
 func (m MarketNewsApi) GetStockRelatedNews(code string, limit int) ([]SectorNewsItem, error) {
-	allNews := m.GetNewsList("telegraph", limit*3)
+	// 先触发数据抓取，确保 DB 有最新新闻
+	m.TelegraphList(30)
+
+	allNews := m.GetNewsList("", limit*3)
 	if allNews == nil || len(*allNews) == 0 {
-		allNews = m.GetTelegraphList("telegraph")
+		allNews = m.GetTelegraphList("")
 	}
 
 	var result []SectorNewsItem

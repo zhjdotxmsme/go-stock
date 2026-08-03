@@ -1,23 +1,9 @@
 <script setup>
 import * as echarts from "echarts";
 import {computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted,onUnmounted, ref} from 'vue'
-import {
-  GetAIResponseResult,
-  GetConfig,
-  GetIndustryRank,
-  GetPromptTemplates,
-  GetTelegraphList,
-  GlobalStockIndexes,
-  IsTradingTime,
-  IsHKTradingTime,
-  IsUSTradingTime,
-  ReFleshTelegraphList,
-  SaveAIResponseResult,
-  SaveAsMarkdown,
-  ShareAnalysis,
-  SummaryStockNews,
-  GetAiConfigs,
-} from "../../wailsjs/go/main/App";
+import * as marketApi from '../api/market'
+import * as systemApi from '../api/system'
+import * as stockApi from '../api/stock'
 import {EventsOff, EventsOn} from "../../wailsjs/runtime";
 import NewsList from "./newsList.vue";
 import KLineChart from "./KLineChart.vue";
@@ -92,7 +78,7 @@ const treemapRef = ref(null);
 let treemapchart =null;
 
 function getIndex() {
-  GlobalStockIndexes().then((res) => {
+  marketApi.getGlobalStockIndexes().then(({data: res}) => {
     globalStockIndexes.value = res
     common.value = res["common"]
     america.value = res["america"]
@@ -105,28 +91,28 @@ function getIndex() {
 onBeforeMount(() => {
   nowTab.value = route.query.name
   stockCode.value = route.query.stockCode
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     summaryBTN.value = result.openAiEnable
     darkTheme.value = result.darkTheme
     httpProxyEnabled.value = result.httpProxyEnabled
   })
-  GetPromptTemplates("", "").then(res => {
+  systemApi.getPromptTemplates("", "").then(({data: res}) => {
     promptTemplates.value = res
     sysPromptOptions.value = promptTemplates.value.filter(item => item.type === '模型系统Prompt')
     userPromptOptions.value = promptTemplates.value.filter(item => item.type === '模型用户Prompt')
   })
 
-  GetAiConfigs().then(res=>{
+  systemApi.getAiConfigs().then(({data: res})=>{
     aiConfigs.value = res
     aiConfigId.value = res[0].ID
   })
-  GetTelegraphList("财联社电报").then((res) => {
+  marketApi.getTelegraphList("财联社电报").then(({data: res}) => {
     telegraphList.value = res
   })
-  GetTelegraphList("新浪财经").then((res) => {
+  marketApi.getTelegraphList("新浪财经").then(({data: res}) => {
     sinaNewsList.value = res
   })
-  GetTelegraphList("外媒").then((res) => {
+  marketApi.getTelegraphList("外媒").then(({data: res}) => {
     foreignNewsList.value = res
   })
   getIndex();
@@ -135,9 +121,9 @@ onBeforeMount(() => {
 
   tradingCheckInterval.value = setInterval(async () => {
     const [cn, hk, us] = await Promise.all([
-      IsTradingTime().catch(() => false),
-      IsHKTradingTime().catch(() => false),
-      IsUSTradingTime().catch(() => false)
+      marketApi.isTradingTime().then(r => r.data).catch(() => false),
+      marketApi.isHKTradingTime().then(r => r.data).catch(() => false),
+      marketApi.isUSTradingTime().then(r => r.data).catch(() => false)
     ])
     const anyTrading = cn || hk || us
     if (anyTrading && !indexInterval.value) {
@@ -249,7 +235,7 @@ function changeIndustryRankSort() {
 
 function industryRank() {
 
-  GetIndustryRank(sort.value, 150).then(result => {
+  marketApi.getIndustryRank(sort.value, 150).then(({data: result}) => {
     if (result.length > 0) {
       //console.log(result)
       industryRanks.value = result
@@ -264,13 +250,13 @@ function reAiSummary() {
   summaryModal.value = true
   loading.value = true
   analysisStatus.value = "正在连接AI服务..."
-  SummaryStockNews(question.value,aiConfigId.value, sysPromptId.value,enableTools.value,thinkingMode.value,"summaryStockNews","")
+  marketApi.summaryStockNews(question.value,aiConfigId.value, sysPromptId.value,enableTools.value,thinkingMode.value,"summaryStockNews","")
 }
 
 function getAiSummary() {
   summaryModal.value = true
   loading.value = true
-  GetAIResponseResult("市场资讯").then(result => {
+  stockApi.getAIResponseResult("市场资讯").then(({data: result}) => {
     loading.value = false
     if (result.content) {
       aiSummary.value = result.content
@@ -302,7 +288,7 @@ function updateTab(name) {
 
 EventsOn("summaryStockNews", async (msg) => {
   if (msg === "DONE") {
-    await SaveAIResponseResult("市场资讯", "市场资讯", aiSummary.value, chatId.value, question.value,aiConfigId.value)
+    await systemApi.saveAiResponseResult("市场资讯", "市场资讯", aiSummary.value, chatId.value, question.value,aiConfigId.value)
     loading.value = false
     analysisStatus.value = "分析完成"
     message.destroyAll()
@@ -367,13 +353,13 @@ async function copyToClipboard() {
 }
 
 function saveAsMarkdown() {
-  SaveAsMarkdown('市场资讯', '市场资讯').then(result => {
+  systemApi.saveAsMarkdown('市场资讯', '市场资讯').then(({data: result}) => {
     message.success(result)
   })
 }
 
 function share() {
-  ShareAnalysis('市场资讯', '市场资讯').then(msg => {
+  systemApi.shareAnalysis('市场资讯', '市场资讯').then(({data: msg}) => {
     //message.info(msg)
     notify.info({
       avatar: () =>
@@ -398,7 +384,7 @@ function share() {
 
 function ReFlesh(source) {
   //console.log("ReFlesh:", source)
-  ReFleshTelegraphList(source).then(res => {
+  marketApi.refreshTelegraphList(source).then(({data: res}) => {
     if (source === "财联社电报") {
       telegraphList.value = res
     }

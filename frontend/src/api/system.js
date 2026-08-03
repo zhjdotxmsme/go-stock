@@ -27,11 +27,20 @@ export async function checkUpdate() {
 // ========== 设置相关 ==========
 
 /**
- * 获取设置配置
+ * 获取设置配置 (GetSettingConfig - 应用设置页面的配置)
  * @returns {Promise<ApiResult>}
  */
 export async function getSettings() {
   return callApi(App.GetSettingConfig)
+}
+
+/**
+ * 获取运行时配置 (GetConfig - 功能开关如 enableFund/enableAgent/darkTheme)
+ * 注意：与 getSettings 不同，GetConfig 返回的是功能开关配置
+ * @returns {Promise<ApiResult>}
+ */
+export async function getConfig() {
+  return callApi(App.GetConfig)
 }
 
 /**
@@ -51,7 +60,52 @@ export async function resetSettings() {
   return callApi(App.ResetSettingConfig)
 }
 
+// ========== AI 分析结果保存 ==========
+
+/**
+ * 保存 AI 响应结果
+ * @param {string} arg1
+ * @param {string} arg2
+ * @param {string} arg3
+ * @param {string} arg4
+ * @param {string} arg5
+ * @param {number} arg6
+ * @returns {Promise<ApiResult>}
+ */
+export async function saveAiResponseResult(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return callApi(App.SaveAIResponseResult, arg1, arg2, arg3, arg4, arg5, arg6)
+}
+
+/**
+ * 保存为 Markdown 文件
+ * @param {string} title
+ * @param {string} content
+ * @returns {Promise<ApiResult>}
+ */
+export async function saveAsMarkdown(title, content) {
+  return callApi(App.SaveAsMarkdown, title, content)
+}
+
+/**
+ * 分享分析结果
+ * @param {string} arg1
+ * @param {string} arg2
+ * @returns {Promise<ApiResult>}
+ */
+export async function shareAnalysis(arg1, arg2) {
+  return callApi(App.ShareAnalysis, arg1, arg2)
+}
+
 // ========== AI 配置 ==========
+
+/**
+ * 获取所有策略
+ * Go: GetAllStrategies() []*strategy.Strategy
+ * @returns {Promise<ApiResult>}
+ */
+export async function getAllStrategies() {
+  return callApi(App.GetAllStrategies)
+}
 
 /**
  * 获取 AI 配置列表
@@ -213,10 +267,13 @@ export async function deleteSkill(id) {
 
 /**
  * 获取提示词模板列表
+ * Go: GetPromptTemplates(name, promptType string) *[]models.PromptTemplate
+ * @param {string} name - 名称关键词
+ * @param {string} promptType - 模板类型
  * @returns {Promise<ApiResult>}
  */
-export async function getPromptTemplates() {
-  return callApi(App.GetPromptTemplates)
+export async function getPromptTemplates(name = '', promptType = '') {
+  return callApi(App.GetPromptTemplates, name, promptType)
 }
 
 /**
@@ -291,10 +348,17 @@ export default {
 
   // 设置相关
   getSettings,
+  getConfig,
   saveSettings,
   resetSettings,
 
+  // AI 分析结果保存
+  saveAiResponseResult,
+  saveAsMarkdown,
+  shareAnalysis,
+
   // AI 配置
+  getAllStrategies,
   getAiConfigs,
   saveAiConfig,
   deleteAiConfig,

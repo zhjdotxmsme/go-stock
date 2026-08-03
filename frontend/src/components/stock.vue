@@ -1,42 +1,12 @@
 <script setup>
 import {computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted, reactive, ref, watch} from 'vue'
 import * as echarts from 'echarts';
+import api from '../api'
+import * as stockApi from '../api/stock'
+import * as systemApi from '../api/system'
 import {
-  AddGroup,
-  AddStockGroup,
-  Follow,
-  GetAiConfigs,
-  GetAllStrategies,
-  GetAIResponseResult,
-  GetConfig,
-  GetEffectiveSponsorVip,
-  GetFollowList,
-  GetGroupList,
-  GetPromptTemplates,
-  GetStockKLine,
-  GetStockList,
-  GetStockMinutePriceLineData,
-  GetVersionInfo,
-  Greet,
-  InitializeGroupSort,
-  NewChatStream,
   OpenURL,
-  RemoveGroup,
-  RemoveStockGroup,
   RestartAsAdmin,
-  SaveAIResponseResult,
-  SaveAsMarkdown,
-  SaveImage,
-  SaveWordFile,
-  SendDingDingMessageByType,
-  SetAlarmChangePercent,
-  SetCostPriceAndVolume,
-  SetStockAICron,
-  SetStockSort,
-  SetTradingPrice,
-  ShareAnalysis,
-  UnFollow,
-  UpdateGroupSort
 } from '../../wailsjs/go/main/App'
 import {
   NAvatar,
@@ -307,12 +277,12 @@ function handleTabDrop(event) {
         const newSortPosition = targetGroup.sort;
 
         // 调用后端API更新组排序
-        UpdateGroupSort(sourceGroup.ID, newSortPosition).then(result => {
+        stockApi.updateGroupSort(sourceGroup.ID, newSortPosition).then(({data: result}) => {
           if (result) {
             message.success('分组排序更新成功');
             // 重新获取分组列表以更新界面
-            GetGroupList().then(result => {
-              groupList.value = result;
+            stockApi.getGroupList().then(({data}) => {
+              groupList.value = data;
             });
           } else {
             message.error('分组排序更新失败');
@@ -344,7 +314,7 @@ function handleTabDragEnd(event) {
 }
 
 onBeforeMount(() => {
-  GetGroupList().then(result => {
+  stockApi.getGroupList().then(({data: result}) => {
     groupList.value = result
     const sorts = result.map(item => item.sort);
     const uniqueSorts = new Set(sorts);
@@ -357,7 +327,7 @@ onBeforeMount(() => {
       }
     }
   }).catch(err => { console.error("GetGroupList error:", err) })
-  GetStockList("").then(result => {
+  stockApi.getStockList("").then(({data: result}) => {
     stockList.value = result
     options.value = result.map(item => {
       return {
@@ -366,7 +336,7 @@ onBeforeMount(() => {
       }
     })
   }).catch(err => { console.error("GetStockList error:", err) })
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     if (result.openAiEnable) {
       data.openAiEnable = true
     }
@@ -377,7 +347,7 @@ onBeforeMount(() => {
       data.darkTheme = true
     }
   }).catch(err => { console.error("GetConfig error:", err) })
-  GetPromptTemplates("", "").then(res => {
+  systemApi.getPromptTemplates("", "").then(({data: res}) => {
     promptTemplates.value = res
 
     sysPromptOptions.value = promptTemplates.value.filter(item => item.type === '模型系统Prompt')
@@ -385,14 +355,14 @@ onBeforeMount(() => {
 
   }).catch(err => { console.error("GetPromptTemplates error:", err) })
 
-  GetAiConfigs().then(res => {
+  systemApi.getAiConfigs().then(({data: res}) => {
     aiConfigs.value = res
     if (res && res.length > 0) {
       data.aiConfigId = res[0].ID
     }
   }).catch(err => { console.error("GetAiConfigs error:", err) })
 
-  GetAllStrategies().then(res => {
+  systemApi.getAllStrategies().then(({data: res}) => {
     strategies.value = [
       { label: '📊 全维度分析', value: '' },
       ...res.map(s => ({ label: `📈 ${s.Name}`, value: s.Code }))
@@ -401,7 +371,7 @@ onBeforeMount(() => {
 
   EventsOn("loadingDone", (data) => {
     message.loading("刷新股票基础数据...")
-    GetStockList("").then(result => {
+    stockApi.getStockList("").then(({data: result}) => {
       stockList.value = result
       options.value = result.map(item => {
         return {
@@ -438,7 +408,7 @@ onBeforeMount(() => {
       if (multiAgentState.active) {
         multiAgentState.done = true
       } else {
-        SaveAIResponseResult(data.code, data.name, data.airesult, data.chatId, data.question, data.aiConfigId)
+        systemApi.saveAiResponseResult(data.code, data.name, data.airesult, data.chatId, data.question, data.aiConfigId)
       }
       data.loading = false
       data.analysisStatus = "分析完成"
@@ -656,7 +626,7 @@ onMounted(() => {
   });
 
   message.loading("Loading...")
-  GetFollowList(currentGroupId.value).then(result => {
+  stockApi.getFollowList(currentGroupId.value).then(({data: result}) => {
 
     followList.value = result
     for (const followedStock of result) {
@@ -666,15 +636,15 @@ onMounted(() => {
       if (!stocks.value.includes(followedStock.StockCode)) {
         stocks.value.push(followedStock.StockCode)
       }
-      Greet(followedStock.StockCode).then(result => {
-        updateData(result)
+      stockApi.greet(followedStock.StockCode).then(({data: greetResult}) => {
+        updateData(greetResult)
       })
     }
     //monitor()
     message.destroyAll()
   })
 
-  GetVersionInfo().then((res) => {
+  systemApi.getVersionInfo().then(({data: res}) => {
     icon.value = res.icon
     refreshEffectiveVip()
   })
@@ -804,9 +774,9 @@ function isTradingTime() {
 
 // 添加一个获取分组列表的函数，用于处理初始化逻辑
 function fetchGroupList() {
-  InitializeGroupSort().then(initResult => {
+  stockApi.initializeGroupSort().then(({data: initResult}) => {
     if (initResult) {
-      GetGroupList().then(result => {
+      stockApi.getGroupList().then(({data: result}) => {
         groupList.value = result
         if (route.query.groupId) {
           message.success("切换分组:" + route.query.groupName)
@@ -825,15 +795,15 @@ function AddStock() {
     return;
   }
   if (!stocks.value.includes(data.code)) {
-    Follow(data.code).then(result => {
+    stockApi.follow(data.code).then(({data: result}) => {
       if (result === "关注成功") {
         if (data.code.startsWith("us")) {
           data.code = "gb_" + data.code.replace("us", "").toLowerCase()
         }
         stocks.value.push(data.code)
         message.success(result)
-        GetFollowList(currentGroupId.value).then(result => {
-          followList.value = result
+        stockApi.getFollowList(currentGroupId.value).then(({data}) => {
+          followList.value = data
         })
         monitor();
       } else {
@@ -855,7 +825,7 @@ function removeMonitor(code, name, key) {
   delete results.value[key]
   //console.log("removeMonitor-v",results.value[key])
 
-  UnFollow(code).then(result => {
+  stockApi.unFollow(code).then(({data: result}) => {
     message.success(result)
     monitor()
   })
@@ -977,7 +947,7 @@ async function monitor() {
     showPopover.value = true
   }
   for (let code of stocks.value) {
-    Greet(code).then(result => {
+    stockApi.greet(code).then(({data: result}) => {
       updateData(result)
     })
   }
@@ -1083,13 +1053,13 @@ function saveTradingPriceToBackend() {
   const stopLossPrice = Number(currentStockTradingPrice.value.stopLossPrice) || 0
   const costPrice = Number(currentStockTradingPrice.value.costPrice) || 0
   console.log('[DEBUG saveTradingPriceToBackend] calling SetTradingPrice with:', code, entryPrice, takeProfitPrice, stopLossPrice, costPrice)
-  SetTradingPrice(
+  stockApi.setTradingPrice(
     code,
     entryPrice,
     takeProfitPrice,
     stopLossPrice,
     costPrice
-  ).then(result => {
+  ).then(({data: result}) => {
     console.log('[DEBUG saveTradingPriceToBackend] SetTradingPrice result:', result)
     if (result === '设置成功') {
       const emCode = currentStockTradingPrice.value.stockCode
@@ -1133,7 +1103,7 @@ function showFsChart(code, name) {
   data.name = name
   data.code = code
   const chart = echarts.init(kLineChartRef2.value);
-  GetStockMinutePriceLineData(code, name).then(result => {
+  stockApi.getStockMinutePriceLineData(code, name).then(({data: result}) => {
     // console.log("GetStockMinutePriceLineData", result)
     const priceData = result.priceData
     let category = []
@@ -1397,7 +1367,7 @@ function calculateMA(dayCount, values) {
 }
 
 function handleKLine() {
-  GetStockKLine(data.code, data.name, 365).then(result => {
+  stockApi.getStockKLine(data.code, data.name, 365).then(({data: result}) => {
     //console.log("GetStockKLine",result)
     const chart = echarts.init(kLineChartRef.value);
     const categoryData = [];
@@ -1766,7 +1736,7 @@ function fromEastMoneyCode(emCode) {
 
 async function refreshEffectiveVip() {
   try {
-    const r = await GetEffectiveSponsorVip()
+    const {data: r} = await stockApi.getEffectiveSponsorVip()
     const active = !!r?.active
     const lvl = Number(r?.vipLevel ?? 0)
     vipLevel.value = active && !Number.isNaN(lvl) ? lvl : 0
@@ -1795,7 +1765,7 @@ async function showLightweightKline(code, name) {
 
   // 刷新自选列表，确保获取最新的交易价格数据
   try {
-    const list = await GetFollowList(currentGroupId.value)
+    const {data: list} = await stockApi.getFollowList(currentGroupId.value)
     followList.value = list || []
   } catch (e) {
     console.error('[showLightweightKline] 刷新自选列表失败:', e)
@@ -1862,33 +1832,33 @@ function showK(code, name) {
 
 function updateCostPriceAndVolumeNew(code, price, volume, alarm, formModel) {
   if (formModel.sort) {
-    SetStockSort(formModel.sort, code).then(result => {
+    stockApi.setStockSort(formModel.sort, code).then(({data: result}) => {
       //message.success(result)
     })
   }
   if (formModel.cron) {
-    SetStockAICron(formModel.cron, code).then(result => {
+    stockApi.setStockAICron(formModel.cron, code).then(({data: result}) => {
       //message.success(result)
     })
   }
 
   if (alarm || formModel.alarmPrice) {
-    SetAlarmChangePercent(alarm, formModel.alarmPrice, code).then(result => {
+    stockApi.setAlarmChangePercent(alarm, formModel.alarmPrice, code).then(({data: result}) => {
       //message.success(result)
     })
   }
-  
+
   // 保存交易价格（开仓价、止盈价、止损价、成本价）
   if (formModel.entryPrice || formModel.takeProfitPrice || formModel.stopLossPrice || formModel.costPrice) {
-    SetTradingPrice(code, formModel.entryPrice || 0, formModel.takeProfitPrice || 0, formModel.stopLossPrice || 0, formModel.costPrice || 0).then(result => {
+    stockApi.setTradingPrice(code, formModel.entryPrice || 0, formModel.takeProfitPrice || 0, formModel.stopLossPrice || 0, formModel.costPrice || 0).then(({data: result}) => {
       //message.success(result)
     })
   }
-  
-  SetCostPriceAndVolume(code, price, volume).then(result => {
+
+  stockApi.setCostPriceAndVolume(code, price, volume).then(({data: result}) => {
     modalShow.value = false
     message.success(result)
-    GetFollowList(currentGroupId.value).then(result => {
+    stockApi.getFollowList(currentGroupId.value).then(({data: result}) => {
       followList.value = result
       stocks.value = []
       for (const followedStock of result) {
@@ -1940,7 +1910,7 @@ function SendMessage(result, type) {
       '      }' +
       ' }'
   // SendDingDingMessage(msg,result["股票代码"])
-  SendDingDingMessageByType(msg, result["股票代码"], type)
+  stockApi.sendDingDingMessageByType(msg, result["股票代码"], type)
 }
 
 const priceLineAlertCache = new Map()
@@ -2012,7 +1982,7 @@ function checkPriceLineAlerts(result) {
 
   if (triggeredType > 0) {
     const msg = `### 📈 价位线预警\n\n### ${stockName} (${stockCodeDisplay})\n\n- 当前价格: ${price}\n- 预警类型: ${triggeredType === 4 ? '止盈触及' : '止损触及'}\n- 开仓价: ${followedStock.EntryPrice || '-'}\n- 止盈价: ${followedStock.TakeProfitPrice || '-'}\n- 止损价: ${followedStock.StopLossPrice || '-'}`;
-    SendDingDingMessageByType(msg, code, triggeredType)
+    stockApi.sendDingDingMessageByType(msg, code, triggeredType)
   }
 }
 
@@ -2040,7 +2010,7 @@ function aiReCheckStock(stock, stockCode) {
   //
 
   //message.info("sysPromptId:"+data.sysPromptId)
-  NewChatStream(stock, stockCode, data.question, data.aiConfigId, data.sysPromptId, enableTools.value,thinkingMode.value, '', strategyCode.value)
+  stockApi.newChatStream(stock, stockCode, data.question, data.aiConfigId, data.sysPromptId, enableTools.value,thinkingMode.value, '', strategyCode.value)
     .catch(err => {
       data.loading = false
       data.analysisStatus = ""
@@ -2066,7 +2036,7 @@ function aiReCheckStock(stock, stockCode) {
 }
 
 function aiCheckStock(stock, stockCode) {
-  GetAIResponseResult(stockCode).then(result => {
+  stockApi.getAIResponseResult(stockCode).then(({data: result}) => {
     if (result.content) {
       data.modelName = result.modelName
       data.chatId = result.chatId
@@ -2188,7 +2158,7 @@ function saveAsImage(name, code) {
       })
       const dataUrl = canvas.toDataURL('image/png')
       const base64 = dataUrl.replace(/^data:image\/png;base64,/, '')
-      const result = await SaveImage(name + '[' + code + ']AI分析', base64)
+      const {data: result} = await stockApi.saveImage(name + '[' + code + ']AI分析', base64)
       if (result && !result.includes('异常') && !result.includes('无法')) {
         message.success('已导出为 PNG 图片：' + result)
       } else {
@@ -2279,7 +2249,7 @@ function scrollToAiResultBottom() {
 }
 
 function saveAsMarkdown() {
-  SaveAsMarkdown(data.code, data.name).then(result => {
+  systemApi.saveAsMarkdown(data.code, data.name).then(({data: result}) => {
     message.success(result)
   })
 }
@@ -2342,14 +2312,14 @@ AI赋能股票分析：自选股行情获取，成本盈亏展示，涨跌报警
       const uint8Array = new Uint8Array(arrayBuffer)
       const binary = uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), '')
       const base64 = btoa(binary)
-      await SaveWordFile(`${data.name}[${data.code}]-ai-analysis-result.docx`, base64).then(result => {
+      await stockApi.saveWordFile(`${data.name}[${data.code}]-ai-analysis-result.docx`, base64).then(({data: result}) => {
         message.success(result)
       })
   }
 }
 
 function share(code, name) {
-  ShareAnalysis(code, name).then(msg => {
+  systemApi.shareAnalysis(code, name).then(({data: msg}) => {
     //message.info(msg)
     notify.info({
       avatar: () =>
@@ -2383,10 +2353,10 @@ function addTab() {
 }
 
 function saveTabPane() {
-  AddGroup(addTabModel.value).then(result => {
+  stockApi.addGroup(addTabModel.value).then(({data: result}) => {
     message.info(result)
     addTabPane.value = false
-    GetGroupList().then(result => {
+    stockApi.getGroupList().then(({data: result}) => {
       groupList.value = result
     })
   })
@@ -2396,9 +2366,9 @@ function AddStockGroupInfo(groupId, code, name) {
   if (code.startsWith("gb_")) {
     code = "us" + code.replace("gb_", "").toLowerCase()
   }
-  AddStockGroup(groupId, code).then(result => {
+  stockApi.addStockToGroup(groupId, code).then(({data: result}) => {
     message.info(result)
-    GetGroupList().then(result => {
+    stockApi.getGroupList().then(({data: result}) => {
       groupList.value = result
     })
   })
@@ -2409,7 +2379,7 @@ function updateTab(name) {
   stocks.value = []
   const tabId= Number(name)
   currentGroupId.value = tabId;
-  GetFollowList(tabId).then(result => {
+  stockApi.getFollowList(tabId).then(({data: result}) => {
     followList.value = result
 
     for (const followedStock of result) {
@@ -2417,7 +2387,7 @@ function updateTab(name) {
         followedStock.StockCode = "gb_" + followedStock.StockCode.replace("us", "").toLowerCase()
       }
       stocks.value.push(followedStock.StockCode)
-      Greet(followedStock.StockCode).then(result => {
+      stockApi.greet(followedStock.StockCode).then(({data: result}) => {
         updateData(result)
       })
     }
@@ -2435,9 +2405,9 @@ function delTab(groupId) {
     positiveText: '确定',
     negativeText: '取消',
     onPositiveClick: () => {
-      RemoveGroup(Number(groupId)).then(result => {
+      stockApi.removeGroup(Number(groupId)).then(({data: result}) => {
         message.info(result)
-        GetGroupList().then(result => {
+        stockApi.getGroupList().then(({data: result}) => {
           groupList.value = result
         })
       })
@@ -2446,7 +2416,7 @@ function delTab(groupId) {
 }
 
 function delStockGroup(code, name, groupId) {
-  RemoveStockGroup(code, name, groupId).then(result => {
+  stockApi.removeStockGroup(code, name, groupId).then(({data: result}) => {
     updateTab(groupId)
     message.info(result)
   })
