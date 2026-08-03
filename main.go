@@ -13,6 +13,7 @@ import (
 	dailyPickBacktestService "go-stock/backend/service"
 	"go-stock/backend/data/datasource/fallback"
 	"go-stock/backend/db"
+	"go-stock/backend/handler"
 	log "go-stock/backend/logger"
 	"go-stock/backend/machineid"
 	"go-stock/backend/models"
@@ -251,6 +252,7 @@ func main() {
 			backtestService.NewService(),
 			data.NewDailyPickService(),
 			dailyPickBacktestService.NewDailyPickBacktestService(),
+			handler.NewStockHandler(),
 		},
 		// Windows platform specific options
 		Windows: &windows.Options{
