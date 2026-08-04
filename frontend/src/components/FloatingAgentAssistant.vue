@@ -55,148 +55,25 @@
             </div>
             <NScrollbar ref="scrollbarRef" class="chat-scroll">
               <div class="message-list">
-                <div
+                <MessageBubble
                   v-for="(group, groupIndex) in messageGroups"
                   :key="group.id"
-                  class="message-group"
-                >
-                  <div class="message-group-header" @click="toggleGroup(groupIndex)">
-                    <div class="message-group-summary">
-                      <NIcon :component="isGroupExpanded(groupIndex) ? ChevronDownOutline : ChevronForwardOutline" size="16" />
-                      <span class="message-group-title">{{ group.userMsg.content.slice(0, 50) }}{{ group.userMsg.content.length > 50 ? '...' : '' }}</span>
-                      <span class="message-group-time">{{ group.userMsg.time }}</span>
-                    </div>
-                  </div>
-                  <div v-show="isGroupExpanded(groupIndex)" class="message-group-content">
-                    <div
-                      :class="['message-item', group.userMsg.role]"
-                    >
-                      <div class="msg-avatar user-avatar">
-                        <NIcon :component="PersonCircleOutline" size="18" />
-                      </div>
-                      <div class="msg-bubble">
-                        <div class="msg-content">
-                          <div v-if="group.userMsg.time" class="msg-meta msg-meta-user-inner">
-                            <span class="msg-time">{{ group.userMsg.time }}</span>
-                          </div>
-                          <MdPreview
-                            :theme="theme"
-                            :style="{ textAlign: 'right' }"
-                            v-if="group.userMsg.content"
-                            :model-value="group.userMsg.content"
-                            :editor-id="'agent-msg-' + group.userIndex"
-                            class="msg-markdown"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div
-                      v-if="group.assistantMsg"
-                      :class="['message-item', 'assistant']"
-                    >
-                      <div class="msg-avatar assistant-avatar">
-                        <NIcon :component="SparklesOutline" size="20" />
-                      </div>
-                      <div class="msg-bubble">
-                        <div class="msg-content">
-                          <div v-if="group.assistantMsg.steps && group.assistantMsg.steps.length > 0" class="msg-steps-wrapper">
-                            <div class="msg-steps-header" @click="toggleReasoning(group.assistantIndex)">
-                              <NIcon :component="reasoningExpandedMap[group.assistantIndex] ? ChevronDownOutline : ChevronForwardOutline" size="14" />
-                              <span class="msg-steps-title">📋 执行步骤</span>
-                              <span class="msg-steps-count">{{ group.assistantMsg.steps.length }}</span>
-                            </div>
-                            <div v-show="reasoningExpandedMap[group.assistantIndex]" class="msg-steps-content">
-                              <div v-for="(step, si) in group.assistantMsg.steps" :key="si" class="msg-step-item">
-                                <div class="msg-step-dot" :class="getStepDotClass(step)"></div>
-                                <span class="msg-step-text">{{ step }}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div v-if="group.assistantMsg.reasoning" class="msg-reasoning-wrapper">
-                            <div class="msg-reasoning-header" @click="toggleReasoning('r-' + group.assistantIndex)">
-                              <NIcon :component="reasoningExpandedMap['r-' + group.assistantIndex] ? ChevronDownOutline : ChevronForwardOutline" size="14" />
-                              <span class="msg-reasoning-title">💭 思考过程</span>
-                            </div>
-                            <div v-show="reasoningExpandedMap['r-' + group.assistantIndex]" class="msg-reasoning-content">
-                              <MdPreview
-                                :theme="theme"
-                                :style="{ textAlign: 'left' }"
-                                :model-value="group.assistantMsg.reasoning"
-                                :editor-id="'agent-reasoning-' + group.assistantIndex"
-                                class="msg-markdown"
-                              />
-                            </div>
-                          </div>
-                          <div v-if="group.assistantMsg.jsonMarkdown" class="msg-json-md-wrapper">
-                            <div class="msg-json-md-header" @click="toggleReasoning('j-' + group.assistantIndex)">
-                              <NIcon :component="reasoningExpandedMap['j-' + group.assistantIndex] ? ChevronDownOutline : ChevronForwardOutline" size="14" />
-                              <span class="msg-json-md-title">📊 分析报告</span>
-                            </div>
-                            <div v-show="reasoningExpandedMap['j-' + group.assistantIndex]" class="msg-json-md-content">
-                              <MdPreview
-                                :theme="theme"
-                                :style="{ textAlign: 'left' }"
-                                :model-value="group.assistantMsg.jsonMarkdown"
-                                :editor-id="'agent-json-md-' + group.assistantIndex"
-                                class="msg-markdown"
-                                @onHtmlChanged="onMdHtmlChanged"
-                              />
-                            </div>
-                          </div>
-                          <MdPreview
-                            :theme="theme"
-                            :style="{ textAlign: 'left' }"
-                            :model-value="group.assistantMsg.content || '...'"
-                            :editor-id="'agent-msg-' + group.assistantIndex"
-                            class="msg-markdown"
-                            @onHtmlChanged="onMdHtmlChanged"
-                          />
-                          <div v-if="isStreamLoad && groupIndex === messageGroups.length - 1 && !group.assistantMsg.content" class="msg-loading">
-                            <NSpin size="small" />
-                            <span>思考中...</span>
-                          </div>
-                          <div class="msg-bubble-actions">
-                            <div v-if="group.assistantMsg.modelName || group.assistantMsg.time" class="msg-meta-row-assistant">
-                              <span v-if="group.assistantMsg.modelName" class="msg-model-name" :title="group.assistantMsg.modelName">{{ group.assistantMsg.modelName }}</span>
-                              <span v-if="group.assistantMsg.time" class="msg-time">{{ group.assistantMsg.time }}</span>
-                            </div>
-                            <NButton quaternary size="tiny" class="msg-toggle-btn" @click="toggleGroup(groupIndex)">
-                              <template #icon>
-                                <NIcon :component="isGroupExpanded(groupIndex) ? ChevronUpOutline : ChevronDownOutline" />
-                              </template>
-                              {{ isGroupExpanded(groupIndex) ? '收起' : '展开' }}
-                            </NButton>
-                            <NButton quaternary size="tiny" class="msg-copy-btn" @click="copyAiContent(group.assistantMsg)">
-                              <template #icon>
-                                <NIcon :component="CopyOutline" />
-                              </template>
-                              复制
-                            </NButton>
-                            <NButton
-                              quaternary
-                              size="tiny"
-                              class="msg-export-img-btn"
-                              :loading="exportImageKey === String(group.assistantIndex)"
-                              title="导出为图片"
-                              @click="exportAiReplyImage(group.assistantIndex, $event)"
-                            >
-                              <template #icon>
-                                <NIcon :component="ImageOutline" />
-                              </template>
-                              导出图
-                            </NButton>
-                            <NButton quaternary size="tiny" class="msg-share-btn" :loading="shareLoading" @click="shareAiContent(group.assistantMsg)">
-                              <template #icon>
-                                <NIcon :component="ShareSocialOutline" />
-                              </template>
-                              分享
-                            </NButton>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  :group="group"
+                  :group-index="groupIndex"
+                  :theme="theme"
+                  :reasoning-expanded-map="reasoningExpandedMap"
+                  :expanded="isGroupExpanded(groupIndex)"
+                  :is-stream-load="isStreamLoad"
+                  :is-last-group="groupIndex === messageGroups.length - 1"
+                  :share-loading="shareLoading"
+                  :export-image-key="exportImageKey"
+                  @toggle-group="toggleGroup"
+                  @toggle-reasoning="toggleReasoning"
+                  @copy="copyAiContent"
+                  @export-image="exportAiReplyImage"
+                  @share="shareAiContent"
+                  @md-html-changed="onMdHtmlChanged"
+                />
               </div>
             </NScrollbar>
             </div>
@@ -328,6 +205,7 @@ import { EventsOff, EventsOn } from '../../wailsjs/runtime'
 import { MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
 import html2canvas from 'html2canvas'
+import MessageBubble from './agent/MessageBubble.vue'
 
 const STORAGE_KEY_MODEL_ID = 'go-stock-agent-last-model-id'
 
