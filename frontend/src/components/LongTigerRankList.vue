@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {onBeforeMount, ref} from 'vue'
-import {LongTigerRank} from "../../wailsjs/go/main/App";
+import * as marketApi from "../api/market";
 import {BrowserOpenURL} from "../../wailsjs/runtime";
 import {ArrowDownOutline} from "@vicons/ionicons5";
 import _ from "lodash";
@@ -35,7 +35,7 @@ function longTiger_old(date) {
   let loading1=message.loading("正在获取龙虎榜数据...",{
     duration: 0,
   })
-  LongTigerRank(date).then(res => {
+  marketApi.longTigerRank(date).then(({data: res}) => {
     lhbList.value = res
     loading1.destroy()
     if (res.length === 0) {
@@ -68,7 +68,7 @@ function longTiger(date) {
       return;
     }
 
-    LongTigerRank(currentDate).then(res => {
+    marketApi.longTigerRank(currentDate).then(({data: res}) => {
       if (res.length === 0) {
         const previousDate = new Date(currentDate);
         previousDate.setDate(previousDate.getDate() - 1);
@@ -105,7 +105,7 @@ function longTiger(date) {
 function handleEXPLANATION(value, option){
   SearchForm.value.EXPLANATION = value
   if(value){
-    LongTigerRank(SearchForm.value.dateValue).then(res => {
+    marketApi.longTigerRank(SearchForm.value.dateValue).then(({data: res}) => {
       lhbList.value=_.filter(res, function(o) { return o['EXPLANATION']===value; });
       if (res.length === 0) {
         message.info("暂无数据,请切换日期")

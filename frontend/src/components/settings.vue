@@ -1,19 +1,7 @@
 <script setup>
 import {computed, h, onBeforeUnmount, onMounted, ref} from "vue";
-import {
-  AddPrompt,
-  DelPrompt,
-  ExportConfig,
-  GetConfig,
-  GetPromptTemplates,
-  GetMultiAgentPrompts,
-  UpdateMultiAgentPrompt,
-  SendDingDingMessageByType,
-  UpdateConfig,
-  CheckSponsorCode,
-  FetchAiModels,
-  FetchAiModelInfo
-} from "../../wailsjs/go/main/App";
+import * as systemApi from "../api/system";
+import * as stockApi from "../api/stock";
 import {NButton, NTag, NTooltip, NIcon, useMessage} from "naive-ui";
 import {data, models} from "../../wailsjs/go/models";
 import {EventsEmit} from "../../wailsjs/runtime";
@@ -129,7 +117,7 @@ async function fetchAiModels(aiConfig) {
   }
   aiConfig._loadingModels = true
   try {
-    const list = await FetchAiModels(aiConfig.baseUrl, aiConfig.apiKey)
+    const list = (await systemApi.fetchAiModels(aiConfig.baseUrl, aiConfig.apiKey)).data
     const options = (list || []).map(id => ({ label: id, value: id }))
     aiConfig._modelOptions = options
     if (!aiConfig.modelName && options.length > 0) {
@@ -224,7 +212,7 @@ function onModelNameChange(aiConfig, newModelName) {
 async function fetchModelInfo(aiConfig, modelName) {
   if (!modelName || !aiConfig.baseUrl) return
   try {
-    const info = await FetchAiModelInfo(aiConfig.baseUrl, aiConfig.apiKey || '', modelName)
+    const info = (await systemApi.fetchAiModelInfo(aiConfig.baseUrl, aiConfig.apiKey || '', modelName)).data
     if (info && info.maxTokens > 0) {
       aiConfig.maxTokens = info.maxTokens
       const sourceLabel = info.source === 'api' ? 'API' : '内置数据'
@@ -236,7 +224,7 @@ async function fetchModelInfo(aiConfig, modelName) {
 }
 
 onMounted(() => {
-  GetConfig().then(res => {
+  systemApi.getConfig().then(({data: res}) => {
     formValue.value.ID = res.ID
     formValue.value.tushareToken = res.tushareToken
     formValue.value.iwencaiApiKey = res.iwencaiApiKey || ''
@@ -306,7 +294,7 @@ onMounted(() => {
     formValue.value.deepThinkModelId = res.deepThinkModelId || null;
   })
 
-  GetPromptTemplates("", "").then(res => {
+  systemApi.getPromptTemplates("", "").then(({data: res}) => {
     promptTemplates.value = res
   })
   loadMultiAgentPrompts()
@@ -371,14 +359,14 @@ function saveConfig() {
   })
 
   if (config.sponsorCode) {
-    CheckSponsorCode(config.sponsorCode).then(res => {
+    systemApi.checkSponsorCode(config.sponsorCode).then(({data: res}) => {
       if (!res.code) {
         message.warning(res.msg || '赞助码验证失败')
       }
     })
   }
 
-  UpdateConfig(config).then(res => {
+  systemApi.updateConfig(config).then(({data: res}) => {
     if (res === '保存成功！') {
       message.success(res)
     } else {
@@ -406,7 +394,7 @@ function sendTestNotice() {
       '      }' +
       ' }'
 
-  SendDingDingMessageByType(msg, "test-" + new Date().getTime(), 1).then(res => {
+  stockApi.sendDingDingMessageByType(msg, "test-" + new Date().getTime(), 1).then(({data: res}) => {
     message.info(res)
   })
 }
@@ -425,7 +413,7 @@ function sendTestNotification(channel) {
 }
 
 function exportConfig() {
-  ExportConfig().then(res => {
+  systemApi.exportConfig().then(({data: res}) => {
     message.info(res)
   })
 }
@@ -538,9 +526,9 @@ function managePrompts() {
 }
 
 function savePrompt() {
-  AddPrompt(formPrompt.value).then(res => {
+  systemApi.addPrompt(formPrompt.value).then(({data: res}) => {
     message.success(res)
-    GetPromptTemplates("", "").then(res => {
+    systemApi.getPromptTemplates("", "").then(({data: res}) => {
       promptTemplates.value = res
     })
     showManagePromptsModal.value = false
@@ -556,9 +544,9 @@ function editPrompt(prompt) {
 }
 
 function deletePrompt(ID) {
-  DelPrompt(ID).then(res => {
+  systemApi.delPrompt(ID).then(({data: res}) => {
     message.success(res)
-    GetPromptTemplates("", "").then(res => {
+    systemApi.getPromptTemplates("", "").then(({data: res}) => {
       promptTemplates.value = res
     })
   })
@@ -591,7 +579,7 @@ const multiAgentPromptColumns = [
 ]
 
 function loadMultiAgentPrompts() {
-  GetMultiAgentPrompts().then(res => {
+  systemApi.getMultiAgentPrompts().then(({data: res}) => {
     multiAgentPromptList.value = res || []
   }).catch(e => {
     console.error('loadMultiAgentPrompts error', e)
@@ -612,7 +600,7 @@ function saveMultiAgentPrompt() {
   if (!editingPromptRoleKey.value) return
   const item = multiAgentPromptList.value.find(p => p.roleKey === editingPromptRoleKey.value)
   const name = item ? item.name : editingPromptRoleKey.value
-  UpdateMultiAgentPrompt(editingPromptRoleKey.value, name, editingPromptContent.value).then(res => {
+  systemApi.updateMultiAgentPrompt(editingPromptRoleKey.value, name, editingPromptContent.value).then(({data: res}) => {
     message.success(res)
     editingPromptRoleKey.value = ''
     editingPromptContent.value = ''
@@ -754,7 +742,7 @@ function saveMultiAgentPrompt() {
                 <n-input :show-count="true" placeholder="联系作者QQ或微信获取，激活VIP功能" v-model:value="formValue.sponsorCode">
                 </n-input>
                 <n-button type="success" secondary strong
-                          @click="CheckSponsorCode(formValue.sponsorCode).then((res) => {message.warning(res.msg)})">验证
+                          @click="systemApi.checkSponsorCode(formValue.sponsorCode).then((res) => {message.warning(res.msg)})">验证
                 </n-button>
                 <n-popover trigger="hover" placement="top">
                   <template #trigger>

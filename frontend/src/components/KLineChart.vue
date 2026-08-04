@@ -1,6 +1,6 @@
 <script setup>
 
-import {GetStockKLine} from "../../wailsjs/go/main/App";
+import * as stockApi from "../api/stock";
 import * as echarts from "echarts";
 import {onMounted, ref} from "vue";
 import _ from "lodash";
@@ -40,7 +40,7 @@ function  handleKLine(code,stockName){
   console.log("handleKLine",code,stockName)
   const chart = echarts.init(kLineChartRef.value);
   chart.showLoading()
-  GetStockKLine(code,stockName,365).then(result => {
+  stockApi.getStockKLine(code,stockName,365).then(({data: result}) => {
     //console.log("GetStockKLine",result)
     const categoryData = [];
     const values = [];

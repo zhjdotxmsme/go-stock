@@ -263,6 +263,22 @@ export async function deleteSkill(id) {
   return callApi(App.DeleteSkill, id)
 }
 
+/**
+ * 创建技能
+ * Go: CreateSkill(skill *models.Skill) string
+ */
+export async function createSkill(skill) {
+  return callApi(App.CreateSkill, skill)
+}
+
+/**
+ * 更新技能
+ * Go: UpdateSkill(skill *models.Skill) string
+ */
+export async function updateSkill(skill) {
+  return callApi(App.UpdateSkill, skill)
+}
+
 // ========== 提示词管理 ==========
 
 /**
@@ -274,6 +290,22 @@ export async function deleteSkill(id) {
  */
 export async function getPromptTemplates(name = '', promptType = '') {
   return callApi(App.GetPromptTemplates, name, promptType)
+}
+
+/**
+ * 添加提示词
+ * Go: AddPrompt(prompt models.Prompt) string
+ */
+export async function addPrompt(prompt) {
+  return callApi(App.AddPrompt, prompt)
+}
+
+/**
+ * 删除提示词
+ * Go: DelPrompt(id uint) string
+ */
+export async function delPrompt(id) {
+  return callApi(App.DelPrompt, id)
 }
 
 /**
@@ -341,6 +373,418 @@ export async function clearCache() {
   return callApi(App.ClearCache)
 }
 
+// ========== 赞助/用户 ==========
+
+/**
+ * 获取赞助信息
+ * Go: GetSponsorInfo() map[string]any
+ */
+export async function getSponsorInfo() {
+  return callApi(App.GetSponsorInfo)
+}
+
+/**
+ * 获取用户手册
+ * Go: GetUserManual() string
+ */
+export async function getUserManual() {
+  return callApi(App.GetUserManual)
+}
+
+/**
+ * 检查赞助码
+ * Go: CheckSponsorCode(code string) map[string]any
+ */
+export async function checkSponsorCode(code) {
+  return callApi(App.CheckSponsorCode, code)
+}
+
+// ========== 配置管理 ==========
+
+/**
+ * 导出配置
+ * Go: ExportConfig() string
+ */
+export async function exportConfig() {
+  return callApi(App.ExportConfig)
+}
+
+/**
+ * 更新配置
+ * Go: UpdateConfig(config any) error
+ */
+export async function updateConfig(config) {
+  return callApi(App.UpdateConfig, config)
+}
+
+// ========== 多 Agent ==========
+
+/**
+ * 获取多 Agent 提示词
+ * Go: GetMultiAgentPrompts() []models.MultiAgentPrompt
+ */
+export async function getMultiAgentPrompts() {
+  return callApi(App.GetMultiAgentPrompts)
+}
+
+/**
+ * 更新多 Agent 提示词
+ * Go: UpdateMultiAgentPrompt(type, name, content string)
+ */
+export async function updateMultiAgentPrompt(type, name, content) {
+  return callApi(App.UpdateMultiAgentPrompt, type, name, content)
+}
+
+// ========== AI 模型 ==========
+
+/**
+ * 获取 AI 模型列表
+ * Go: FetchAiModels(baseUrl, apiKey string) []map[string]any
+ */
+export async function fetchAiModels(baseUrl, apiKey) {
+  return callApi(App.FetchAiModels, baseUrl, apiKey)
+}
+
+/**
+ * 获取 AI 模型详情
+ * Go: FetchAiModelInfo(baseUrl, apiKey, model string) map[string]any
+ */
+export async function fetchAiModelInfo(baseUrl, apiKey, model) {
+  return callApi(App.FetchAiModelInfo, baseUrl, apiKey, model)
+}
+
+// ========== 通知/机器 ==========
+
+/**
+ * 发送测试通知
+ * Go: SendTestNotification(message string) string
+ */
+export async function sendTestNotification(message) {
+  return callApi(App.SendTestNotification, message)
+}
+
+/**
+ * 获取机器ID
+ * Go: GetMachineId() string
+ */
+export async function getMachineId() {
+  return callApi(App.GetMachineId)
+}
+
+/**
+ * 获取时区
+ * Go: GetTimezone() string
+ */
+export async function getTimezone() {
+  return callApi(App.GetTimezone)
+}
+
+// ========== AI 推荐 ==========
+
+/**
+ * 获取 AI 推荐统计
+ * Go: GetAiRecommendStats() map[string]any
+ */
+export async function getAiRecommendStats() {
+  return callApi(App.GetAiRecommendStats)
+}
+
+/**
+ * 获取 AI 推荐股票列表
+ * Go: GetAiRecommendStocksList(query data.AiRecommendStockListQuery) data.AiRecommendStockPageData
+ */
+export async function getAiRecommendStocksList(query) {
+  return callApi(App.GetAiRecommendStocksList, query)
+}
+
+/**
+ * 删除 AI 推荐股票
+ * Go: DeleteAiRecommendStocks(id int) string
+ */
+export async function deleteAiRecommendStocks(id) {
+  return callApi(App.DeleteAiRecommendStocks, id)
+}
+
+/**
+ * 更新 AI 推荐股票预警
+ * Go: UpdateAiRecommendStocksAlert(id int, enable bool) string
+ */
+export async function updateAiRecommendStocksAlert(id, enable) {
+  return callApi(App.UpdateAiRecommendStocksAlert, id, enable)
+}
+
+// ========== AI 响应结果管理 ==========
+
+/**
+ * 获取 AI 响应结果列表
+ * Go: GetAIResponseResultList(query any) any
+ */
+export async function getAIResponseResultList(query) {
+  return callApi(App.GetAIResponseResultList, query)
+}
+
+/**
+ * 删除 AI 响应结果
+ * Go: DeleteAIResponseResult(id int) string
+ */
+export async function deleteAIResponseResult(id) {
+  return callApi(App.DeleteAIResponseResult, id)
+}
+
+/**
+ * 批量删除 AI 响应结果
+ * Go: BatchDeleteAIResponseResult(ids []int) string
+ */
+export async function batchDeleteAIResponseResult(ids) {
+  return callApi(App.BatchDeleteAIResponseResult, ids)
+}
+
+// ========== Agent 聊天 ==========
+
+/**
+ * 与 Agent 聊天
+ * Go: ChatWithAgent(agentType, question string, context []any, stream bool, aiConfigId int, sysPromptId *int, enableTools bool)
+ */
+export async function chatWithAgent(agentType, question, context, stream, aiConfigId, sysPromptId, enableTools) {
+  return callApi(App.ChatWithAgent, agentType, question, context, stream, aiConfigId, sysPromptId, enableTools)
+}
+
+/**
+ * 中止 Agent 聊天
+ * Go: AbortChatWithAgent() string
+ */
+export async function abortChatWithAgent() {
+  return callApi(App.AbortChatWithAgent)
+}
+
+// ========== AI 助手会话 ==========
+
+/**
+ * 保存 AI 助手会话
+ * Go: SaveAiAssistantSession(key string, messages []map[string]any)
+ */
+export async function saveAiAssistantSession(key, messages) {
+  return callApi(App.SaveAiAssistantSession, key, messages)
+}
+
+/**
+ * 获取 AI 助手会话
+ * Go: GetAiAssistantSession(key string) []map[string]any
+ */
+export async function getAiAssistantSession(key) {
+  return callApi(App.GetAiAssistantSession, key)
+}
+
+// ========== 分享 ==========
+
+/**
+ * 分享文本
+ * Go: ShareText(title, content string) string
+ */
+export async function shareText(title, content) {
+  return callApi(App.ShareText, title, content)
+}
+
+// ========== Cron 定时任务（分页/增强版） ==========
+
+/**
+ * 获取定时任务列表（分页）
+ * Go: GetCronTaskList(query any) any
+ */
+export async function getCronTaskList(query) {
+  return callApi(App.GetCronTaskList, query)
+}
+
+/**
+ * 获取定时任务详情
+ * Go: GetCronTaskById(id int) any
+ */
+export async function getCronTaskById(id) {
+  return callApi(App.GetCronTaskById, id)
+}
+
+/**
+ * 获取定时任务类型
+ * Go: GetCronTaskTypes() []map[string]any
+ */
+export async function getCronTaskTypes() {
+  return callApi(App.GetCronTaskTypes)
+}
+
+/**
+ * 启用/禁用定时任务
+ * Go: EnableCronTask(id int, enable bool)
+ */
+export async function enableCronTask(id, enable) {
+  return callApi(App.EnableCronTask, id, enable)
+}
+
+/**
+ * 立即执行定时任务
+ * Go: ExecuteCronTaskNow(id int)
+ */
+export async function executeCronTaskNow(id) {
+  return callApi(App.ExecuteCronTaskNow, id)
+}
+
+/**
+ * 验证 cron 表达式
+ * Go: ValidateCronExpr(expr string) map[string]any
+ */
+export async function validateCronExpr(expr) {
+  return callApi(App.ValidateCronExpr, expr)
+}
+
+/**
+ * 搜索定时任务
+ * Go: SearchCronTasks(keyword string) any
+ */
+export async function searchCronTasks(keyword) {
+  return callApi(App.SearchCronTasks, keyword)
+}
+
+/**
+ * 计算下次运行时间
+ * Go: CalculateNextRunTime(expr string) string
+ */
+export async function calculateNextRunTime(expr) {
+  return callApi(App.CalculateNextRunTime, expr)
+}
+
+/**
+ * 计算多次运行时间
+ * Go: CalculateNextRunTimes(expr string, count int) []string
+ */
+export async function calculateNextRunTimes(expr, count) {
+  return callApi(App.CalculateNextRunTimes, expr, count)
+}
+
+// ========== 技能管理（增强版） ==========
+
+/**
+ * 获取所有技能
+ * Go: GetAllSkills() []models.Skill
+ */
+export async function getAllSkills() {
+  return callApi(App.GetAllSkills)
+}
+
+/**
+ * 获取技能列表（分页）
+ * Go: GetSkillList(query any) any
+ */
+export async function getSkillList(query) {
+  return callApi(App.GetSkillList, query)
+}
+
+/**
+ * 获取技能详情
+ * Go: GetSkillById(id int) models.Skill
+ */
+export async function getSkillById(id) {
+  return callApi(App.GetSkillById, id)
+}
+
+/**
+ * 启用/禁用技能
+ * Go: EnableSkill(id int, enable bool)
+ */
+export async function enableSkill(id, enable) {
+  return callApi(App.EnableSkill, id, enable)
+}
+
+/**
+ * 从URL生成技能
+ * Go: GenerateSkillFromURL(url string) models.Skill
+ */
+export async function generateSkillFromURL(url) {
+  return callApi(App.GenerateSkillFromURL, url)
+}
+
+// ========== MCP 服务（增强版） ==========
+
+/**
+ * 获取 MCP 服务器列表（分页）
+ * Go: GetMCPServerList(query any) any
+ */
+export async function getMCPServerList(query) {
+  return callApi(App.GetMCPServerList, query)
+}
+
+/**
+ * 获取 MCP 服务器详情
+ * Go: GetMCPServerByID(id int) models.MCPServer
+ */
+export async function getMCPServerById(id) {
+  return callApi(App.GetMCPServerByID, id)
+}
+
+/**
+ * 启用/禁用 MCP 服务器
+ * Go: EnableMCPServer(id int, enable bool)
+ */
+export async function enableMCPServer(id, enable) {
+  return callApi(App.EnableMCPServer, id, enable)
+}
+
+/**
+ * 创建 MCP 服务器
+ * Go: CreateMCPServer(server any)
+ */
+export async function createMCPServer(server) {
+  return callApi(App.CreateMCPServer, server)
+}
+
+/**
+ * 更新 MCP 服务器
+ * Go: UpdateMCPServer(server any)
+ */
+export async function updateMCPServer(server) {
+  return callApi(App.UpdateMCPServer, server)
+}
+
+/**
+ * 获取服务器下的 MCP 工具
+ * Go: GetMCPToolsByServerID(id int) []map[string]any
+ */
+export async function getMCPToolsByServerID(id) {
+  return callApi(App.GetMCPToolsByServerID, id)
+}
+
+/**
+ * 获取所有 MCP 工具
+ * Go: GetAllMCPTools() []map[string]any
+ */
+export async function getAllMCPTools() {
+  return callApi(App.GetAllMCPTools)
+}
+
+// ========== 提示词管理（增强版） ==========
+
+/**
+ * 获取提示词模板列表（分页）
+ * Go: GetPromptTemplateList(query any) any
+ */
+export async function getPromptTemplateList(query) {
+  return callApi(App.GetPromptTemplateList, query)
+}
+
+/**
+ * 添加提示词模板
+ * Go: AddPromptTemplate(template models.PromptTemplate)
+ */
+export async function addPromptTemplate(template) {
+  return callApi(App.AddPromptTemplate, template)
+}
+
+/**
+ * 更新提示词模板
+ * Go: UpdatePromptTemplate(template models.PromptTemplate)
+ */
+export async function updatePromptTemplate(template) {
+  return callApi(App.UpdatePromptTemplate, template)
+}
+
 export default {
   // 版本信息
   getVersionInfo,
@@ -371,22 +815,54 @@ export default {
   deleteCronTask,
   toggleCronTask,
   runCronTask,
+  // Cron（增强版）
+  getCronTaskList,
+  getCronTaskById,
+  getCronTaskTypes,
+  enableCronTask,
+  executeCronTaskNow,
+  validateCronExpr,
+  searchCronTasks,
+  calculateNextRunTime,
+  calculateNextRunTimes,
 
   // MCP 服务
   getMcpServers,
   saveMcpServer,
   deleteMcpServer,
   testMcpServer,
+  // MCP（增强版）
+  getMCPServerList,
+  getMCPServerById,
+  enableMCPServer,
+  createMCPServer,
+  updateMCPServer,
+  getMCPToolsByServerID,
+  getAllMCPTools,
 
   // 技能管理
   getSkills,
   saveSkill,
   deleteSkill,
+  // 技能（增强版）
+  createSkill,
+  updateSkill,
+  getAllSkills,
+  getSkillList,
+  getSkillById,
+  enableSkill,
+  generateSkillFromURL,
 
   // 提示词管理
+  addPrompt,
+  delPrompt,
   getPromptTemplates,
   savePromptTemplate,
   deletePromptTemplate,
+  // 提示词（增强版）
+  getPromptTemplateList,
+  addPromptTemplate,
+  updatePromptTemplate,
 
   // 日志
   getAppLogs,
@@ -396,4 +872,48 @@ export default {
   exportData,
   importData,
   clearCache,
+
+  // 赞助/用户
+  getSponsorInfo,
+  getUserManual,
+  checkSponsorCode,
+
+  // 配置管理
+  exportConfig,
+  updateConfig,
+
+  // 多 Agent
+  getMultiAgentPrompts,
+  updateMultiAgentPrompt,
+
+  // AI 模型
+  fetchAiModels,
+  fetchAiModelInfo,
+
+  // 通知/机器
+  sendTestNotification,
+  getMachineId,
+  getTimezone,
+
+  // AI 推荐
+  getAiRecommendStats,
+  getAiRecommendStocksList,
+  deleteAiRecommendStocks,
+  updateAiRecommendStocksAlert,
+
+  // AI 响应结果管理
+  getAIResponseResultList,
+  deleteAIResponseResult,
+  batchDeleteAIResponseResult,
+
+  // Agent 聊天
+  chatWithAgent,
+  abortChatWithAgent,
+
+  // AI 助手会话
+  saveAiAssistantSession,
+  getAiAssistantSession,
+
+  // 分享
+  shareText,
 }

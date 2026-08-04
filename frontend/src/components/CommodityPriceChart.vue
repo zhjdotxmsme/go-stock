@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
-import { GetCommodityKLine, GetCommodityKLineIntl } from '../../wailsjs/go/main/App'
+import * as commodityApi from '../api/commodity'
 import { createChart, LineSeries, HistogramSeries } from 'lightweight-charts'
 
 const props = defineProps({
@@ -24,8 +24,8 @@ async function loadChart() {
   loading.value = true
   errorText.value = ''
   try {
-    const apiCall = props.internationalRef ? GetCommodityKLineIntl : GetCommodityKLine
-    const bars = await apiCall(props.code, props.period, props.count)
+    const apiCall = props.internationalRef ? commodityApi.getCommodityKLineIntl : commodityApi.getCommodityKLine
+    const bars = (await apiCall(props.code, props.period, props.count)).data
     if (!bars || bars.length === 0) {
       errorText.value = '暂无数据'
       loading.value = false

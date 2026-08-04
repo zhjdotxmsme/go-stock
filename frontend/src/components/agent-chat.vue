@@ -105,7 +105,7 @@ const isShowToBottom = ref(false);
 
 const icon = ref('https://raw.githubusercontent.com/ArvinLovegood/go-stock/master/build/appicon.png');
 import {darkTheme, NFlex, NImage,NSelect} from "naive-ui";
-import {ChatWithAgent, GetAiConfigs, GetConfig, GetSponsorInfo, GetVersionInfo} from "../../wailsjs/go/main/App";
+import * as systemApi from "../api/system";
 import {EventsOff, EventsOn} from '../../wailsjs/runtime'
 import 'tdesign-vue-next/es/style/index.css';
 
@@ -421,7 +421,7 @@ onBeforeUnmount(() => {
 onBeforeMount(() => {
   // 每次挂载前都重新注册事件监听
   EventsOn("agent-message", handleAgentMessage)
-  GetAiConfigs().then(res=>{
+  systemApi.getAiConfigs().then(({data: res})=>{
     console.log(res)
     selectOptions.value = res
     selectValue.value = res[0].ID
@@ -431,7 +431,7 @@ onBeforeMount(() => {
 onMounted(() => {
   //chatRef.value.scrollToBottom();
 
-  GetConfig().then((res) => {
+  systemApi.getConfig().then(({data: res}) => {
     if (res.darkTheme) {
       document.documentElement.setAttribute("theme-mode", "dark");
     } else {
@@ -439,7 +439,7 @@ onMounted(() => {
   })
 
 
-  GetVersionInfo().then((res) => {
+  systemApi.getVersionInfo().then(({data: res}) => {
     icon.value = res.icon;
   });
 
@@ -540,7 +540,7 @@ const inputEnter = function () {
   isStreamLoad.value = true;
   startFormatTimer()
   jsonMdExpandedMap.value = { ...jsonMdExpandedMap.value, [0]: true }
-  ChatWithAgent(inputValue.value,selectValue.value,0,false,0,false,agentMode.value === 'auto' ? '' : agentMode.value)
+  systemApi.chatWithAgent(inputValue.value,selectValue.value,0,false,0,false,agentMode.value === 'auto' ? '' : agentMode.value)
 };
 </script>
 <style lang="less">

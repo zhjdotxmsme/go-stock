@@ -94,9 +94,20 @@ export async function abortSummaryStockNews() {
  * @param {string} options.type - 异动类型
  * @returns {Promise<ApiResult>}
  */
-export async function getStockChanges(options = {}) {
-  const { page = 1, pageSize = 50, type = '' } = options
-  return callApi(App.GetStockChanges, page, pageSize, type)
+export async function getStockChanges(changeTypes, pageIndex, pageSize) {
+  return callApi(App.GetStockChanges, changeTypes, pageIndex, pageSize)
+}
+
+export async function getStockChangeHistory(query) {
+  return callApi(App.GetStockChangeHistory, query)
+}
+
+export async function saveStockChangesToHistory(types) {
+  return callApi(App.SaveStockChangesToHistory, types)
+}
+
+export async function getAllStockChangesWithPaging(pageSize) {
+  return callApi(App.GetAllStockChangesWithPaging, pageSize)
 }
 
 /**
@@ -192,6 +203,335 @@ export async function getRealtimeQuote(codes) {
   return callApi(App.GetRealtimeQuote, codeList.join(','))
 }
 
+// ========== 情绪分析 ==========
+
+/**
+ * 基于词频加权的情感分析
+ * @param {string} text - 待分析文本
+ * @returns {Promise<ApiResult>}
+ */
+export async function analyzeSentimentWithFreqWeight(text) {
+  return callApi(App.AnalyzeSentimentWithFreqWeight, text)
+}
+
+// ========== 市场统计 ==========
+
+/**
+ * 获取今日市场统计数据
+ * @returns {Promise<ApiResult>}
+ */
+export async function getTodayMarketStatistic() {
+  return callApi(App.GetTodayMarketStatistic)
+}
+
+/**
+ * 获取最近N天市场统计数据
+ * @param {number} days - 天数
+ * @returns {Promise<ApiResult>}
+ */
+export async function getRecentDaysMarketStatistic(days) {
+  return callApi(App.GetRecentDaysMarketStatistic, days)
+}
+
+/**
+ * 获取每日涨跌统计
+ * @param {number} days - 天数
+ * @returns {Promise<ApiResult>}
+ */
+export async function getDailyChangeStats(days) {
+  return callApi(App.GetDailyChangeStats, days)
+}
+
+/**
+ * 获取涨跌类型每日统计
+ * @param {number} days - 天数
+ * @returns {Promise<ApiResult>}
+ */
+export async function getChangeTypeDailyStats(days) {
+  return callApi(App.GetChangeTypeDailyStats, days)
+}
+
+/**
+ * 获取涨跌排行
+ * @param {number} limit - 限制数量
+ * @param {number} days - 天数
+ * @returns {Promise<ApiResult>}
+ */
+export async function getChangeRank(limit, days) {
+  return callApi(App.GetChangeRank, limit, days)
+}
+
+/**
+ * 获取每日维度统计
+ * @param {string} field - 字段
+ * @param {string} sort - 排序
+ * @param {number} days - 天数
+ * @returns {Promise<ApiResult>}
+ */
+export async function getDailyDimensionStats(field, sort, days) {
+  return callApi(App.GetDailyDimensionStats, field, sort, days)
+}
+
+/**
+ * 按日期获取类型统计
+ * @param {string} date - 日期
+ * @returns {Promise<ApiResult>}
+ */
+export async function getTypeStatsByDate(date) {
+  return callApi(App.GetTypeStatsByDate, date)
+}
+
+// ========== 板块/概念 ==========
+
+/**
+ * 获取板块列表
+ * @returns {Promise<ApiResult>}
+ */
+export async function getAllBKCodes() {
+  return callApi(App.GetAllBKCodes)
+}
+
+/**
+ * 获取概念列表
+ * @returns {Promise<ApiResult>}
+ */
+export async function getAllConceptCodes() {
+  return callApi(App.GetAllConceptCodes)
+}
+
+/**
+ * 按板块获取资金流列表
+ * @param {string} code - 板块代码
+ * @param {string} date - 日期
+ * @returns {Promise<ApiResult>}
+ */
+export async function getBKFundFlowListByDate(code, date) {
+  return callApi(App.GetBKFundFlowListByDate, code, date)
+}
+
+/**
+ * 获取板块资金流Top列表
+ * @param {number} days - 天数
+ * @param {number} limit - 限制数量
+ * @returns {Promise<ApiResult>}
+ */
+export async function getBKFundFlowTopListByDate(days, limit) {
+  return callApi(App.GetBKFundFlowTopListByDate, days, limit)
+}
+
+/**
+ * 按概念获取资金流列表
+ * @param {string} code - 概念代码
+ * @param {string} date - 日期
+ * @returns {Promise<ApiResult>}
+ */
+export async function getConceptFundFlowListByDate(code, date) {
+  return callApi(App.GetConceptFundFlowListByDate, code, date)
+}
+
+/**
+ * 获取概念资金流Top列表
+ * @param {number} days - 天数
+ * @param {number} limit - 限制数量
+ * @returns {Promise<ApiResult>}
+ */
+export async function getConceptFundFlowTopListByDate(days, limit) {
+  return callApi(App.GetConceptFundFlowTopListByDate, days, limit)
+}
+
+// ========== 行业/个股资金 ==========
+
+/**
+ * 获取个股资金趋势(按日)
+ * @param {string} code - 股票代码
+ * @param {number} days - 天数
+ * @returns {Promise<ApiResult>}
+ */
+export async function getStockMoneyTrendByDay(code, days) {
+  return callApi(App.GetStockMoneyTrendByDay, code, days)
+}
+
+/**
+ * 获取新浪资金排行
+ * @param {string} sort - 排序方式
+ * @returns {Promise<ApiResult>}
+ */
+export async function getMoneyRankSina(sort) {
+  return callApi(App.GetMoneyRankSina, sort)
+}
+
+/**
+ * 获取新浪行业资金排行
+ * @param {string} fenlei - 分类
+ * @param {string} sort - 排序方式
+ * @returns {Promise<ApiResult>}
+ */
+export async function getIndustryMoneyRankSina(fenlei, sort) {
+  return callApi(App.GetIndustryMoneyRankSina, fenlei, sort)
+}
+
+// ========== 新闻/资讯 ==========
+
+/**
+ * 按板块获取新闻
+ * @param {string} sector - 板块
+ * @param {number} page - 页码
+ * @returns {Promise<ApiResult>}
+ */
+export async function getNewsBySector(sector, page) {
+  return callApi(App.GetNewsBySector, sector, page)
+}
+
+/**
+ * 获取板块列表（新闻用）
+ * @returns {Promise<ApiResult>}
+ */
+export async function getSectors() {
+  return callApi(App.GetSectors)
+}
+
+/**
+ * 获取个股相关新闻
+ * @param {string} code - 股票代码
+ * @param {number} page - 页码
+ * @returns {Promise<ApiResult>}
+ */
+export async function getStockRelatedNews(code, page) {
+  return callApi(App.GetStockRelatedNews, code, page)
+}
+
+// ========== 龙虎榜/研报/公告 ==========
+
+/**
+ * 获取龙虎榜排行
+ * @param {string} date - 日期
+ * @returns {Promise<ApiResult>}
+ */
+export async function longTigerRank(date) {
+  return callApi(App.LongTigerRank, date)
+}
+
+/**
+ * 获取股票公告
+ * @param {string} codes - 股票代码（逗号分隔）
+ * @returns {Promise<ApiResult>}
+ */
+export async function stockNotice(codes) {
+  return callApi(App.StockNotice, codes)
+}
+
+/**
+ * 获取个股研报
+ * @param {string} code - 股票代码
+ * @returns {Promise<ApiResult>}
+ */
+export async function stockResearchReport(code) {
+  return callApi(App.StockResearchReport, code)
+}
+
+/**
+ * 获取行业研报
+ * @param {string} code - 行业代码
+ * @returns {Promise<ApiResult>}
+ */
+export async function industryResearchReport(code) {
+  return callApi(App.IndustryResearchReport, code)
+}
+
+/**
+ * 东方财富字典代码
+ * @param {string} code - 代码
+ * @returns {Promise<ApiResult>}
+ */
+export async function emDictCode(code) {
+  return callApi(App.EMDictCode, code)
+}
+
+// ========== 热门/涨停 ==========
+
+/**
+ * 热门事件
+ * @param {number} count - 数量
+ * @returns {Promise<ApiResult>}
+ */
+export async function hotEvent(count) {
+  return callApi(App.HotEvent, count)
+}
+
+/**
+ * 热门股票
+ * @param {string} type - 类型
+ * @returns {Promise<ApiResult>}
+ */
+export async function hotStock(type) {
+  return callApi(App.HotStock, type)
+}
+
+/**
+ * 热门话题
+ * @param {number} count - 数量
+ * @returns {Promise<ApiResult>}
+ */
+export async function hotTopic(count) {
+  return callApi(App.HotTopic, count)
+}
+
+/**
+ * 涨停热榜
+ * @param {string} type - 类型
+ * @param {number} limit - 限制数量
+ * @returns {Promise<ApiResult>}
+ */
+export async function getUplimitHot(type, limit) {
+  return callApi(App.GetUplimitHot, type, limit)
+}
+
+/**
+ * 热门策略
+ * @returns {Promise<ApiResult>}
+ */
+export async function getHotStrategy() {
+  return callApi(App.GetHotStrategy)
+}
+
+// ========== 日历 ==========
+
+/**
+ * 财经日历
+ * @returns {Promise<ApiResult>}
+ */
+export async function clsCalendar() {
+  return callApi(App.ClsCalendar)
+}
+
+/**
+ * 投资日历时间线
+ * @param {string} ym - 年月 (YYYY-MM)
+ * @returns {Promise<ApiResult>}
+ */
+export async function investCalendarTimeLine(ym) {
+  return callApi(App.InvestCalendarTimeLine, ym)
+}
+
+// ========== 交易日 ==========
+
+/**
+ * 判断是否交易日
+ * @param {string} date - 日期
+ * @returns {Promise<ApiResult>}
+ */
+export async function isTradingDay(date) {
+  return callApi(App.IsTradingDay, date)
+}
+
+/**
+ * 获取最近交易日
+ * @returns {Promise<ApiResult>}
+ */
+export async function getLatestTradingDay() {
+  return callApi(App.GetLatestTradingDay)
+}
+
 export default {
   // 市场行情
   getMarketNews,
@@ -203,6 +543,9 @@ export default {
 
   // 异动监控
   getStockChanges,
+  getStockChangeHistory,
+  saveStockChangesToHistory,
+  getAllStockChangesWithPaging,
   getChangeStats,
 
   // 电报/新闻
@@ -225,4 +568,56 @@ export default {
 
   // 全球股指
   getGlobalStockIndexes,
+
+  // 情绪分析
+  analyzeSentimentWithFreqWeight,
+
+  // 市场统计
+  getTodayMarketStatistic,
+  getRecentDaysMarketStatistic,
+  getDailyChangeStats,
+  getChangeTypeDailyStats,
+  getChangeRank,
+  getDailyDimensionStats,
+  getTypeStatsByDate,
+
+  // 板块/概念
+  getAllBKCodes,
+  getAllConceptCodes,
+  getBKFundFlowListByDate,
+  getBKFundFlowTopListByDate,
+  getConceptFundFlowListByDate,
+  getConceptFundFlowTopListByDate,
+
+  // 行业/个股资金
+  getStockMoneyTrendByDay,
+  getMoneyRankSina,
+  getIndustryMoneyRankSina,
+
+  // 新闻/资讯
+  getNewsBySector,
+  getSectors,
+  getStockRelatedNews,
+
+  // 龙虎榜/研报/公告
+  longTigerRank,
+  stockNotice,
+  stockResearchReport,
+  industryResearchReport,
+  emDictCode,
+
+  // 热门/涨停
+  hotEvent,
+  hotStock,
+  hotTopic,
+  getUplimitHot,
+  getHotStrategy,
+
+  // 日历
+  clsCalendar,
+  investCalendarTimeLine,
+
+  // 交易日
+  isTradingDay,
+  getLatestTradingDay,
 }

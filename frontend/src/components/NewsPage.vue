@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { GetNewsBySector, GetSectors } from '../../wailsjs/go/main/App'
+import * as marketApi from '../api/market'
 
 const sectors = ref([])
 const activeSector = ref('ai')
@@ -10,7 +10,7 @@ const error = ref('')
 
 async function loadSectors() {
   try {
-    sectors.value = await GetSectors()
+    sectors.value = (await marketApi.getSectors()).data
   } catch (e) {
     console.error('load sectors error:', e)
   }
@@ -20,7 +20,7 @@ async function loadNews() {
   loading.value = true
   error.value = ''
   try {
-    sectorNews.value = await GetNewsBySector(activeSector.value, 30)
+    sectorNews.value = (await marketApi.getNewsBySector(activeSector.value, 30)).data
   } catch (e) {
     error.value = e.message || String(e)
     sectorNews.value = null

@@ -1,14 +1,6 @@
 <script setup>
 import {computed, h, onBeforeMount, onBeforeUnmount, onMounted,onUnmounted, ref,reactive} from 'vue'
-import {
-  GetAiRecommendStocksList,
-  GetAiRecommendStats,
-  GetConfig,
-  GetSponsorInfo,
-  DeleteAiRecommendStocks,
-  UpdateAiRecommendStocksAlert,
-  ShareAnalysis
-} from "../../wailsjs/go/main/App";
+import * as systemApi from "../api/system";
 import {NAvatar, NButton, NCard, NEllipsis, NGi, NGrid, NGridItem, NNumberAnimation, NSpace, NSwitch, NTag, NText, useMessage, useNotification} from "naive-ui";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
 import sparkLine from "./stockSparkLine.vue"
@@ -25,13 +17,13 @@ const isValidVip=ref(false) // 是否是会员
 const statsRef = ref(null) // AiRecommendStats
 
 onBeforeMount(()=> {
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     if (result.darkTheme) {
       editorDataRef.darkTheme = true
     }
   })
 
-  GetSponsorInfo().then((res) => {
+  systemApi.getSponsorInfo().then(({data: res}) => {
    // console.log(res)
     vipLevel.value = res.vipLevel;
     vipStartTime.value = res.vipStartTime;
@@ -49,7 +41,7 @@ onBeforeMount(()=> {
   })
 })
 onMounted(() => {
-  GetAiRecommendStats().then(s => statsRef.value = s)
+  systemApi.getAiRecommendStats().then(({data: s}) => statsRef.value = s)
 
   query({
     page: 1,
@@ -407,7 +399,7 @@ function query({
                }) {
   return new Promise((resolve) => {
 
-    GetAiRecommendStocksList({
+    systemApi.getAiRecommendStocksList({
       "page": page,
       "pageSize": pageSize,
       "modelName":keyword,
@@ -417,7 +409,7 @@ function query({
       "startDate": startDate,
       "endDate": endDate,
       "enableAlert": enableAlert
-    }).then((res) => {
+    }).then(({data: res}) => {
       const pagedData =res.list
       const total = res.total
       const pageCount =res.totalPages
@@ -525,14 +517,14 @@ function rowProps(row) {
   }
 }
 function deleteAiRecommendStocks(id) {
-  DeleteAiRecommendStocks(id).then((res) => {
+  systemApi.deleteAiRecommendStocks(id).then(({data: res}) => {
     notify.info({content: res, duration: 2000})
     handleSearch()
   })
 }
 
 function toggleAlert(row, newEnableAlert) {
-  UpdateAiRecommendStocksAlert(row.ID, newEnableAlert).then((res) => {
+  systemApi.updateAiRecommendStocksAlert(row.ID, newEnableAlert).then(({data: res}) => {
     notify.info({content: res, duration: 2000})
     // 更新本地数据
     row.enableAlert = newEnableAlert

@@ -1,16 +1,8 @@
 <script setup>
 import { h, onMounted, onUnmounted, ref, reactive } from 'vue'
-import {
-  AddTradingRecord,
-  GetTradingRecordList,
-  GetTradingRecordStatistics,
-  UpdateTradingRecord,
-  DeleteTradingRecord,
-  CheckFrequentTrading,
-  GetAllStockInfoList,
-  GetStockRealTimePrice,
-  GetConfig
-} from '../../wailsjs/go/main/App'
+import * as tradeApi from '../api/trade'
+import * as stockApi from '../api/stock'
+import * as systemApi from '../api/system'
 import {
   NButton,
   NDataTable,
@@ -34,7 +26,6 @@ import {
 } from 'naive-ui'
 import sparkLine from "./stockSparkLine.vue";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
-import { GetEffectiveSponsorVip } from '../../wailsjs/go/main/App'
 
 const message = useMessage()
 const notify = useNotification()
@@ -88,9 +79,9 @@ function searchStock(value) {
     stockNameOptions.splice(0, stockNameOptions.length)
     return
   }
-  GetAllStockInfoList({
+  stockApi.getAllStockInfoList({
     searchKeyWord: value
-  }).then((res) => {
+  }).then(({data: res}) => {
     if (res && res.list) {
       const codeList = res.list.map(item => ({
         label: `${item.SECUCODE} - ${item.SECURITY_NAME_ABBR}`,
@@ -172,7 +163,7 @@ function handleStockNameSelect(value) {
 function fetchStockPrice(stockCode, market) {
   if (!stockCode) return
   const fullCode = convertToStockCode(stockCode, market)
-  GetStockRealTimePrice(fullCode).then((res) => {
+  tradeApi.getStockRealTimePrice(fullCode).then(({data: res}) => {
     if (res && res.code === 0 && res.price > 0) {
       formData.Price = res.price
     }
@@ -232,7 +223,7 @@ function toEastMoneyCode(code) {
 
 async function refreshEffectiveVip() {
   try {
-    const r = await GetEffectiveSponsorVip()
+    const r = (await stockApi.getEffectiveSponsorVip()).data
     const active = !!r?.active
     const lvl = Number(r?.vipLevel ?? 0)
     vipLevel.value = active && !Number.isNaN(lvl) ? lvl : 0
@@ -288,7 +279,7 @@ function normalizeTradingRecordRow(row) {
 
 function query({ page, pageSize = 12, keyword = '', direction = '', startDate = '', endDate = '' }) {
   return new Promise((resolve, reject) => {
-    GetTradingRecordList({
+    tradeApi.getTradingRecordList({
       page,
       pageSize,
       keyword,
@@ -296,7 +287,7 @@ function query({ page, pageSize = 12, keyword = '', direction = '', startDate = 
       startDate,
       endDate
     })
-      .then((res) => {
+      .then(({data: res}) => {
         const raw = res.list ?? []
         const list = raw.map(normalizeTradingRecordRow)
         const total = res.total ?? 0
@@ -383,8 +374,8 @@ function handleSearch() {
 }
 
 function fetchStatistics() {
-  GetTradingRecordStatistics()
-    .then((res) => {
+  tradeApi.getTradingRecordStatistics()
+    .then(({data: res}) => {
       console.log('统计数据返回:', res)
       if (res) {
         statisticsRef.value = res
@@ -431,7 +422,7 @@ function openEditModal(row) {
 function handleAdd() {
   const run = () => {
     formData.Amount = formData.Price * formData.Volume
-    AddTradingRecord({
+    tradeApi.addTradingRecord({
       ...formData,
       TradingTime: new Date(formData.TradingTime)
     })
@@ -446,8 +437,8 @@ function handleAdd() {
   }
 
   if (formData.Direction === '买入' && formData.StockCode) {
-    CheckFrequentTrading(formData.StockCode)
-      .then((res) => {
+    tradeApi.checkFrequentTrading(formData.StockCode)
+      .then(({data: res}) => {
         console.log('检查频繁交易结果:', res)
         const canTrade = res.canTrade
         const msg = res.msg
@@ -468,7 +459,7 @@ function handleAdd() {
 
 function handleUpdate() {
   formData.Amount = formData.Price * formData.Volume
-  UpdateTradingRecord({
+  tradeApi.updateTradingRecord({
     ...formData,
     TradingTime: new Date(formData.TradingTime)
   })
@@ -483,7 +474,7 @@ function handleUpdate() {
 }
 
 function deleteTradingRecord(id) {
-  DeleteTradingRecord(id)
+  tradeApi.deleteTradingRecord(id)
     .then(() => {
       notify.info({ content: '删除成功', duration: 2000 })
       handleSearch()
@@ -646,7 +637,7 @@ const columnsRef = ref([
 
 onMounted(() => {
   // 获取主题配置
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     if (result.darkTheme) {
       darkTheme.value = true
     }

@@ -1,5 +1,5 @@
 <script setup>
-import { GetStockEastMoneyKLine, GetStockEastMoneyKLinePage, GetStockKLineWithFallback, GetStockKLinePageWithFallback } from '../../wailsjs/go/main/App'
+import * as stockApi from '../api/stock'
 import {
   CandlestickSeries,
   createChart,
@@ -3374,13 +3374,13 @@ async function loadOlderHistory() {
   const logical = chart.timeScale().getVisibleLogicalRange()
   const beforeCount = mergedRawRows.length
   try {
-    const result = await GetStockKLinePageWithFallback(
+    const result = (await stockApi.getStockKLinePageWithFallback(
       codeSnap,
       props.stockName || '',
       kltSnap,
       HISTORY_PAGE_SIZE,
       end,
-    )
+    )).data
     if (kltSnap !== activeKlt.value || codeSnap !== props.code) return
     const src = result?.source || ''
     if (src) activeDataSource.value = src
@@ -3427,12 +3427,12 @@ async function refreshLatestPoll() {
   const codeSnap = props.code
   try {
     const meta = INTERVALS.find((x) => x.klt === kltSnap) || INTERVALS[0]
-    const result = await GetStockKLineWithFallback(
+    const result = (await stockApi.getStockKLineWithFallback(
       codeSnap,
       props.stockName || '',
       meta.klt,
       meta.limit,
-    )
+    )).data
     if (codeSnap !== props.code || activeKlt.value !== kltSnap) return
     const src = result?.source || ''
     if (src) activeDataSource.value = src
@@ -3551,12 +3551,12 @@ async function loadData() {
   lastOlderHistoryEndTried = ''
   try {
     const meta = INTERVALS.find((x) => x.klt === activeKlt.value) || INTERVALS[0]
-    const result = await GetStockKLineWithFallback(
+    const result = (await stockApi.getStockKLineWithFallback(
       props.code,
       props.stockName || '',
       meta.klt,
       meta.limit,
-    )
+    )).data
     const src = result?.source || ''
     activeDataSource.value = src
     const raw = result?.data

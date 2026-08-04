@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import {h, onBeforeMount, onMounted, onUnmounted, ref, reactive, computed} from 'vue'
-import {SearchStock, GetHotStrategy, OpenURL, Follow, GetFollowList, GetAllCustomStrategies, SaveCustomStrategy, DeleteCustomStrategy, GetEffectiveSponsorVip, GetConfig, AIConfiguredStockPick} from "../../wailsjs/go/main/App";
+import * as stockApi from "../api/stock";
+import * as marketApi from "../api/market";
+import * as systemApi from "../api/system";
+import {OpenURL} from "../../wailsjs/go/main/App";
 import {useMessage, NText, NTag, NButton, NPopconfirm, NCard, NTooltip, NSpace, NEllipsis} from 'naive-ui'
 import {Environment} from "../../wailsjs/runtime"
 import {BookmarkOutline, TrashOutline, CreateOutline, AddOutline, FlashOutline, TrendingUpOutline, TrendingDownOutline, GitBranchOutline} from "@vicons/ionicons5";
@@ -187,7 +190,7 @@ async function Search() {
   if (useAIConfig.value) {
     aiLoading.value = true
     try {
-      const res = await AIConfiguredStockPick(search.value, 10)
+      const res = (await stockApi.aiConfiguredStockPick(search.value, 10)).data
       displayAIPickResult(res)
     } catch (e) {
       message.error('AI 配置选股失败: ' + e)
@@ -198,7 +201,7 @@ async function Search() {
   }
 
   const loading = message.loading("正在获取选股数据...", {duration: 0});
-  SearchStock(search.value).then(res => {
+  stockApi.searchStock(search.value).then(({data: res}) => {
     loading.destroy()
     if (res.code == 100) {
       traceInfo.value = res.data.traceInfo.showText
@@ -291,7 +294,7 @@ async function Search() {
 }
 
 function refreshEffectiveVip() {
-  return GetEffectiveSponsorVip().then(res => {
+  return stockApi.getEffectiveSponsorVip().then(({data: res}) => {
     if (res) {
       vipLevel.value = res.vipLevel || 0
     }
@@ -337,7 +340,7 @@ function showStockKline(row) {
 
 function handleFollow(row) {
   let code = row.MARKET_SHORT_NAME.toLowerCase() + row.SECURITY_CODE
-  Follow(code).then(result => {
+  stockApi.follow(code).then(({data: result}) => {
     if (result === "关注成功") {
       message.success(result)
     } else {
@@ -361,7 +364,7 @@ async function batchFollow() {
     const market = (row.MARKET_SHORT_NAME || 'SZ').toLowerCase()
     batchFollowProgress.value = `正在关注 (${i+1}/${stocks.length}): ${row.SECURITY_SHORT_NAME || row.stockName}`
     try {
-      const result = await Follow(market + code)
+      const result = (await stockApi.follow(market + code)).data
       if (result === "关注成功") {
         success++
       } else {
@@ -386,10 +389,10 @@ function isNumeric(value) {
 }
 
 onBeforeMount(() => {
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     if (result.darkTheme) darkTheme.value = true
   })
-  GetHotStrategy().then(res => {
+  marketApi.getHotStrategy().then(({data: res}) => {
     if (res.code == 1) {
       hotStrategy.value = res.data
       search.value = hotStrategy.value[0].question
@@ -402,7 +405,7 @@ onBeforeMount(() => {
 })
 
 function loadCustomStrategies() {
-  GetAllCustomStrategies().then(res => {
+  stockApi.getAllCustomStrategies().then(({data: res}) => {
     customStrategies.value = res || []
   }).catch(err => {
     message.error(err)
@@ -440,7 +443,7 @@ function handleSaveStrategy() {
     message.warning('请输入选股条件')
     return
   }
-  SaveCustomStrategy({
+  stockApi.saveCustomStrategy({
     id: saveForm.id || 0,
     name: saveForm.name,
     query: saveForm.query,
@@ -456,7 +459,7 @@ function handleSaveStrategy() {
 }
 
 function handleDeleteStrategy(id) {
-  DeleteCustomStrategy(id).then(res => {
+  stockApi.deleteCustomStrategy(id).then(({data: res}) => {
     message.success(res)
     loadCustomStrategies()
   }).catch(err => {

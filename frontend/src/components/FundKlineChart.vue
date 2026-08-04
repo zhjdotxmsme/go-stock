@@ -1,5 +1,5 @@
 <script setup>
-import { GetFundKLine } from '../../wailsjs/go/main/App'
+import * as fundApi from '../api/fund'
 import {
   CandlestickSeries,
   createChart,
@@ -133,7 +133,7 @@ async function fetchKLine() {
   try {
     const interval = intervals.value.find(i => i.klt === activeKlt.value)
     const limit = interval ? interval.limit : 600
-    const result = await GetFundKLine(props.fundCode, activeKlt.value, limit)
+    const result = (await fundApi.getFundKLine(props.fundCode, activeKlt.value, limit)).data
 
     if (!result || !result.data || !result.data.length) {
       errorText.value = '暂无K线数据'

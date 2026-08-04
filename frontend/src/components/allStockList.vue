@@ -1,10 +1,7 @@
 <script setup>
 import {h, onBeforeMount, onMounted, ref, reactive} from 'vue'
-import {
-  GetAllStockInfoList,
-  GetAllStocks,
-  GetConfig
-} from "../../wailsjs/go/main/App";
+import * as stockApi from "../api/stock"
+import * as systemApi from "../api/system"
 import {NButton, NInput, NTag, NText, useMessage, useNotification, NDataTable, NSpace, NPagination} from "naive-ui";
 import sparkLine from "./stockSparkLine.vue"
 import klineChart from "./KLineChart.vue"
@@ -18,7 +15,7 @@ const editorDataRef = reactive({
 })
 
 onBeforeMount(() => {
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     if (result.darkTheme) {
       editorDataRef.darkTheme = true
     }
@@ -236,7 +233,7 @@ const optionsReactive= reactive([
 function loadStocks(page, pageSize) {
   if (!loadingRef.value) {
     loadingRef.value = true
-    GetAllStocks(page, pageSize, paginationReactive.keyword, technicalIndicatorReactive).then((res) => {
+    stockApi.getAllStocks(page, pageSize, paginationReactive.keyword, technicalIndicatorReactive).then(({data: res}) => {
       console.log(res)
       if (res && res.result && res.result.data) {
         dataRef.value = res.result.data
@@ -276,9 +273,9 @@ function handleUpdateVal(value) {
   if (value === '') {
     optionsReactive.splice(1, optionsReactive.length - 1)
   } else {
-    GetAllStockInfoList({
+    stockApi.getAllStockInfoList({
       searchKeyWord: value
-    }).then((res) => {
+    }).then(({data: res}) => {
       console.log('GetAllStockInfoList result:', res)
       if (res  && res.list) {
         optionsReactive.splice(1, optionsReactive.length - 1)

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {onBeforeUnmount, onMounted, ref, watch, computed} from "vue";
-import {GetConceptFundFlowListByDate, GetConceptFundFlowTopListByDate, GetAllConceptCodes} from "../../wailsjs/go/main/App";
+import * as marketApi from "../api/market";
 import * as echarts from "echarts";
 
 const props = defineProps({
@@ -62,7 +62,7 @@ const cachedTimes = ref<string[]>([]) // 缓存全量时间轴
 onMounted(async () => {
   try {
     // 加载所有概念代码（供临时添加使用）
-    const codes = await GetAllConceptCodes()
+    const codes = (await marketApi.getAllConceptCodes()).data
     if (codes && Array.isArray(codes)) allConceptCodes.value = codes
 
     await loadAllData()
@@ -123,7 +123,7 @@ async function loadAllData() {
   try {
     const date = selectedDate.value
     // 按日期获取概念排名
-    const res = await GetConceptFundFlowTopListByDate(date, 500)
+    const res = (await marketApi.getConceptFundFlowTopListByDate(date, 500)).data
     if (!res || !Array.isArray(res) || res.length === 0) {
       topList.value = []
       return
@@ -137,7 +137,7 @@ async function loadAllData() {
 
     const allData = await Promise.all(
       sectors.map(async (item: any) => {
-        const points = await GetConceptFundFlowListByDate(item.code, date)
+        const points = (await marketApi.getConceptFundFlowListByDate(item.code, date)).data
         return {
           code: item.code,
           name: item.name,

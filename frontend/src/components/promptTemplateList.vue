@@ -1,12 +1,6 @@
 <script setup>
 import {computed, h, onBeforeMount, onMounted, ref, reactive} from 'vue'
-import {
-  GetPromptTemplateList,
-  GetConfig,
-  AddPromptTemplate,
-  DeletePromptTemplate,
-  UpdatePromptTemplate
-} from "../../wailsjs/go/main/App";
+import * as systemApi from "../api/system";
 import { EventsEmit } from "../../wailsjs/runtime";
 import {NButton, NInput, NTag, NText, NSwitch, useMessage, useNotification,useDialog, NModal, NCard, NForm, NFormItem, NSpace, NPopover} from "naive-ui";
 import { MdEditor, MdPreview } from 'md-editor-v3'
@@ -21,7 +15,7 @@ const editorDataRef = reactive({
 const editorTheme = ref('light')
 
 onBeforeMount(() => {
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     if (result.darkTheme) {
       editorDataRef.darkTheme = true
       editorTheme.value = 'dark'
@@ -181,13 +175,13 @@ const promptPlazaApiBase = ref('http://go-stock.sparkmemory.top:1918/api')
 
 function query({ page, pageSize = 10, name = "", type = "", content = "" }) {
   return new Promise((resolve) => {
-    GetPromptTemplateList({
+    systemApi.getPromptTemplateList({
       "page": page,
       "pageSize": pageSize,
       "name": name,
       "type": type,
       "content": content
-    }).then((res) => {
+    }).then(({data: res}) => {
       resolve({
         data: res.list,
         total: res.total,
@@ -271,8 +265,8 @@ function savePromptTemplate() {
     return
   }
 
-  const apiCall = modalDataRef.isEdit ? UpdatePromptTemplate : AddPromptTemplate
-  apiCall(modalDataRef.formData).then((res) => {
+  const apiCall = modalDataRef.isEdit ? systemApi.updatePromptTemplate : systemApi.addPromptTemplate
+  apiCall(modalDataRef.formData).then(({data: res}) => {
     message.info( res )
     modalDataRef.visible = false
     handleSearch()
@@ -288,7 +282,7 @@ function deletePromptTemplate(id) {
     positiveText: '确定',
     negativeText: '取消',
     onPositiveClick: () => {
-      DeletePromptTemplate(id).then((res) => {
+      systemApi.deletePromptTemplate(id).then(({data: res}) => {
         message.info( res )
         handleSearch()
         EventsEmit('promptTemplatesChanged')
@@ -324,7 +318,7 @@ async function showShareModal(row) {
   shareDataRef.isPublic = true
   shareDataRef.vipOnly = false
   shareDataRef.visible = true
-  await GetConfig().then(result => {
+  await systemApi.getConfig().then(({data: result}) => {
     if (result.promptPlazaApiBase) {
       promptPlazaApiBase.value = result.promptPlazaApiBase
     }

@@ -1,12 +1,7 @@
 <script setup>
 import { h, onBeforeMount, onMounted, ref, reactive } from 'vue'
-import {
-  GetAllStockInfoList,
-  GetAllMarkets,
-  GetAllIndustries,
-  GetAllConcepts,
-  GetConfig
-} from "../../wailsjs/go/main/App";
+import * as stockApi from "../api/stock";
+import * as systemApi from "../api/system";
 import {
   NButton,
   NInput,
@@ -34,7 +29,7 @@ const editorDataRef = reactive({
 })
 
 onBeforeMount(() => {
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     if (result.darkTheme) {
       editorDataRef.darkTheme = true
     }
@@ -241,7 +236,7 @@ function loadStocks(page, pageSize) {
       concept: searchFormRef.concept,
     }
     
-    GetAllStockInfoList(query).then((res) => {
+    stockApi.getAllStockInfoList(query).then(({data: res}) => {
       console.log('GetAllStockInfoList result:', res)
       if (res &&  res.list) {
         dataRef.value = res.list || []
@@ -265,7 +260,7 @@ function loadStocks(page, pageSize) {
 
 function loadFilters() {
   // 加载交易所列表
-  GetAllMarkets().then(res => {
+  stockApi.getAllMarkets().then(({data: res}) => {
     console.log('GetAllMarkets result:', res)
     if (res && res.length > 0) {
       marketsRef.value = (res || []).map(market => ({
@@ -278,7 +273,7 @@ function loadFilters() {
   })
 
   // 加载行业列表
-  GetAllIndustries().then(res => {
+  stockApi.getAllIndustries().then(({data: res}) => {
     console.log('GetAllIndustries result:', res)
     if (res && res.length > 0) {
       industriesRef.value = (res || []).map(industry => ({

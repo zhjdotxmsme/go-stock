@@ -1,13 +1,13 @@
 <script setup>
 import {computed, h, onBeforeMount, onBeforeUnmount, onMounted,onUnmounted, ref,reactive} from 'vue'
-import {GetAIResponseResultList, GetConfig, SaveAsMarkdown, ShareAnalysis,DeleteAIResponseResult} from "../../wailsjs/go/main/App";
+import * as systemApi from "../api/system";
 import {NAvatar, NButton, NEllipsis, NText, useMessage} from "naive-ui";
 import {MdEditor, MdPreview} from 'md-editor-v3';
 
 
 
 onBeforeMount(()=> {
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     if (result.darkTheme) {
       editorDataRef.darkTheme = true
     }
@@ -143,7 +143,7 @@ function query({
                }) {
   return new Promise((resolve) => {
 
-    GetAIResponseResultList({
+    systemApi.getAIResponseResultList({
       "page": page,
       "pageSize": pageSize,
       "modelName":keyword,
@@ -152,7 +152,7 @@ function query({
       "stockCode":keyword,
       "startDate":startDate,
       "endDate":endDate
-    }).then((res) => {
+    }).then(({data: res}) => {
       const pagedData =res.list
       const total = res.total
       const pageCount =res.totalPages
@@ -204,7 +204,7 @@ function handleSearch() {
   }
 }
 function share(code, name) {
-  ShareAnalysis(code, name).then(msg => {
+  systemApi.shareAnalysis(code, name).then(({data: msg}) => {
     //message.info(msg)
     notify.info({
       avatar: () =>
@@ -228,7 +228,7 @@ function share(code, name) {
 }
 
 function saveAsMarkdown(code,name) {
-  SaveAsMarkdown(code, name).then(result => {
+  systemApi.saveAsMarkdown(code, name).then(({data: result}) => {
     if(result !== ""){
       message.success(result)
     }
@@ -255,7 +255,7 @@ function formatDate(dateString) {
 }
 
 function deleteAIResponseResult(id){
-  DeleteAIResponseResult(id).then(result => {
+  systemApi.deleteAIResponseResult(id).then(({data: result}) => {
     if(result !== ""){
       message.success(result)
     }

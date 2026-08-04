@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {nextTick, onBeforeMount, onMounted, onUnmounted, ref} from 'vue'
-import {InvestCalendarTimeLine} from "../../wailsjs/go/main/App";
+import * as marketApi from "../api/market";
 import { addMonths, format ,parse} from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
@@ -34,7 +34,7 @@ function goBackToday() {
 }
 
 onBeforeMount(() => {
-  InvestCalendarTimeLine(formattedYM).then(res => {
+  marketApi.investCalendarTimeLine(formattedYM).then(({data: res}) => {
     list.value = res
     goBackToday();
   })
@@ -48,7 +48,7 @@ function loadMore(){
     let nextMonth=addMonths(day,1)
     let ym = format(nextMonth, 'yyyy-MM');
     console.log(ym)
-    InvestCalendarTimeLine(ym).then(res => {
+    marketApi.investCalendarTimeLine(ym).then(({data: res}) => {
       if (res.length==0){
         message.warning("没有更多数据了")
         return

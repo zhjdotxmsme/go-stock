@@ -1,6 +1,6 @@
 <script setup>
 
-import {AnalyzeSentimentWithFreqWeight,GlobalStockIndexes,GetTodayMarketStatistic,GetRecentDaysMarketStatistic,GetDailyChangeStats,GetChangeTypeDailyStats,GetChangeRank,GetDailyDimensionStats,GetTypeStatsByDate,IsTradingTime} from "../../wailsjs/go/main/App";
+import * as marketApi from "../api/market";
 import * as echarts from "echarts";
 import {onMounted,onUnmounted, ref, watch, nextTick} from "vue";
 import _ from "lodash";
@@ -139,7 +139,7 @@ watch(showDimensionModal, (newVal) => {
 })
 
 function getIndex() {
-  GlobalStockIndexes().then((res) => {
+  marketApi.getGlobalStockIndexes().then(({data: res}) => {
     globalStockIndexes.value = res
     common.value = res["common"]
     america.value = res["america"]
@@ -161,7 +161,7 @@ function getIndex() {
 
 async function handleChart(){
   try {
-    const data = await GetTodayMarketStatistic()
+    const data = (await marketApi.getTodayMarketStatistic()).data
     if (data && data.length > 0) {
       renderUpDownChart(data)
       renderLimitChart(data)
@@ -533,7 +533,7 @@ function aggregateByDate(data) {
 
 async function handleDailyChart() {
   try {
-    const data = await GetRecentDaysMarketStatistic(30)
+    const data = (await marketApi.getRecentDaysMarketStatistic(30)).data
     if (data && data.length > 0) {
       const dailyData = aggregateByDate(data)
       renderDailyUpDownChart(dailyData)
@@ -892,9 +892,9 @@ function renderDailyLimitChart(data) {
 async function handleChangeStats() {
   try {
     const [dailyStats, typeStats] = await Promise.all([
-      GetDailyChangeStats(30),
-      GetChangeTypeDailyStats(30)
-    ])
+      marketApi.getDailyChangeStats(30),
+      marketApi.getChangeTypeDailyStats(30)
+    ]).then(([r1, r2]) => [r1.data, r2.data])
     if (dailyStats && dailyStats.length > 0) {
       renderChangeStatsChart(dailyStats)
     }
@@ -1235,12 +1235,12 @@ async function handleDimensionDetail() {
   if (!currentDimension || !currentDimensionName) return
   try {
     if (currentDimension === 'date') {
-      const data = await GetTypeStatsByDate(currentDimensionName)
+      const data = (await marketApi.getTypeStatsByDate(currentDimensionName)).data
       if (data && data.length > 0) {
         renderDateTypeChart(data)
       }
     } else {
-      const data = await GetDailyDimensionStats(currentDimension, currentDimensionName, 30)
+      const data = (await marketApi.getDailyDimensionStats(currentDimension, currentDimensionName, 30)).data
       if (data && data.length > 0) {
         renderDimensionDetailChart(data)
       }
@@ -1453,13 +1453,13 @@ function renderDateTypeChart(data) {
 async function handleChangeRank() {
   try {
     const days = changeRankDays.value
-    const result = await GetChangeRank(days, 20)
+    const result = (await marketApi.getChangeRank(days, 20)).data
     if (result) {
       const hasData = (result.topStocks && result.topStocks.length > 0) ||
         (result.topIndustries && result.topIndustries.length > 0) ||
         (result.topConcepts && result.topConcepts.length > 0)
       if (days === 1 && !hasData) {
-        const isTrading = await IsTradingTime()
+        const isTrading = (await marketApi.isTradingTime()).data
         if (!isTrading) {
           changeRankDays.value = 3
           return
@@ -1620,13 +1620,13 @@ function renderRankChart(chartRef, title, items, dimension) {
 async function handleBullBearRank() {
   try {
     const days = bullBearDays.value
-    const result = await GetChangeRank(days, 20)
+    const result = (await marketApi.getChangeRank(days, 20)).data
     if (result) {
       const hasData = (result.topStocks && result.topStocks.length > 0) ||
         (result.topIndustries && result.topIndustries.length > 0) ||
         (result.topConcepts && result.topConcepts.length > 0)
       if (days === 1 && !hasData) {
-        const isTrading = await IsTradingTime()
+        const isTrading = (await marketApi.isTradingTime()).data
         if (!isTrading) {
           bullBearDays.value = 3
           return
@@ -1794,7 +1794,7 @@ function renderBullBearChart(chartRefVal, title, items, direction, dimension) {
 
 function handleTreemap() {
   const formatUtil = echarts.format;
-  AnalyzeSentimentWithFreqWeight("").then((res) => {
+  marketApi.analyzeSentimentWithFreqWeight("").then(({data: res}) => {
     treemapchart = echarts.init(treemapRef.value);
     let data = res['frequencies'].map(item => ({
       name: item.Word,

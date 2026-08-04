@@ -1,6 +1,7 @@
 <script setup>
 import {onBeforeMount, onBeforeUnmount, ref, computed, h} from 'vue'
-import {GetConfig, GetUplimitHot, IsTradingTime, IsTradingDay, GetLatestTradingDay} from "../../wailsjs/go/main/App";
+import * as systemApi from "../api/system";
+import * as marketApi from "../api/market";
 import {NButton, NText, NTag, NTooltip, NProgress, useMessage} from "naive-ui";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
 
@@ -30,7 +31,7 @@ function startAutoRefresh() {
   stopAutoRefresh()
   refreshTimer = setInterval(() => {
     if (selectedDate.value !== todayYMD.value) return
-    IsTradingTime().then(trading => {
+    marketApi.isTradingTime().then(({data: trading}) => {
       if (trading) {
         fetchData(selectedDate.value)
       }
@@ -46,7 +47,7 @@ function stopAutoRefresh() {
 }
 
 onBeforeMount(() => {
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     if (result.darkTheme) {
       darkTheme.value = true
     }
@@ -55,13 +56,13 @@ onBeforeMount(() => {
   const cal = getCalendarTodayStr()
   todayYMD.value = cal
 
-  IsTradingDay(cal)
-    .then(isTd => {
+  marketApi.isTradingDay(cal)
+    .then(({data: isTd}) => {
       if (isTd) {
         return cal
       }
-      return GetLatestTradingDay()
-        .then(last => {
+      return marketApi.getLatestTradingDay()
+        .then(({data: last}) => {
           const s = (last && String(last).trim()) || ''
           return s || cal
         })
@@ -85,7 +86,7 @@ function fetchData(date, retryCount = 0) {
   const d = typeof date === 'string' ? date : formatDate(date)
   selectedDate.value = d
   const loadingMsg = message.loading('正在获取涨停梯队数据...', { duration: 0 })
-  GetUplimitHot(d, 20).then(res => {
+  marketApi.getUplimitHot(d, 20).then(({data: res}) => {
     if (res && res.code === 20000) {
       const data = res.data
       const hasData = data && data.plate?.length > 0 && data.stocks && data.stocks.trim() !== ''

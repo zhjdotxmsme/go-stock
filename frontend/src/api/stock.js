@@ -284,6 +284,144 @@ export async function searchStock(keyword) {
   return callApi(App.SearchStock, keyword)
 }
 
+// ========== 东财K线分页 ==========
+
+/**
+ * 获取东财K线数据（分页）
+ * Go: GetStockEastMoneyKLinePage(code, period string, count, fields int)
+ */
+export async function getStockEastMoneyKLinePage(code, period, count, fields) {
+  return callApi(App.GetStockEastMoneyKLinePage, code, period, count, fields)
+}
+
+/**
+ * 获取K线数据分页（带降级）
+ * Go: GetStockKLinePageWithFallback
+ */
+export async function getStockKLinePageWithFallback(...args) {
+  return callApi(App.GetStockKLinePageWithFallback, ...args)
+}
+
+// ========== 全量股票 ==========
+
+/**
+ * 获取全量股票（分页）
+ * Go: GetAllStocks(page, pageSize int, key string, indicators map[string]bool)
+ */
+export async function getAllStocks(page, pageSize, key, indicators) {
+  return callApi(App.GetAllStocks, page, pageSize, key, indicators)
+}
+
+/**
+ * 获取全量股票信息列表
+ * Go: GetAllStockInfoList(query data.StockInfoListQuery) data.StockInfoPageData
+ */
+export async function getAllStockInfoList(query) {
+  return callApi(App.GetAllStockInfoList, query)
+}
+
+/**
+ * 获取全量股票信息（按ID）
+ * Go: GetAllStockInfoById(id int) data.AllStockInfo
+ */
+export async function getAllStockInfoById(id) {
+  return callApi(App.GetAllStockInfoById, id)
+}
+
+/**
+ * 获取全量市场列表
+ * Go: GetAllMarkets() []string
+ */
+export async function getAllMarkets() {
+  return callApi(App.GetAllMarkets)
+}
+
+/**
+ * 获取全量行业列表
+ * Go: GetAllIndustries() []string
+ */
+export async function getAllIndustries() {
+  return callApi(App.GetAllIndustries)
+}
+
+/**
+ * 获取全量概念列表
+ * Go: GetAllConcepts() []string
+ */
+export async function getAllConcepts() {
+  return callApi(App.GetAllConcepts)
+}
+
+/**
+ * 获取群组股票列表
+ * Go: GetGroupStockList(groupId int) []data.GroupStock
+ */
+export async function getGroupStockList(groupId) {
+  return callApi(App.GetGroupStockList, groupId)
+}
+
+/**
+ * 获取通用K线数据
+ * Go: GetStockCommonKLine(code, name string, days int)
+ */
+export async function getStockCommonKLine(code, name, days) {
+  return callApi(App.GetStockCommonKLine, code, name, days)
+}
+
+// ========== 集合竞价 ==========
+
+/**
+ * 获取集合竞价数据
+ * Go: GetTdxCallAuction(code string, market, type int)
+ */
+export async function getTdxCallAuction(code, market, type) {
+  return callApi(App.GetTdxCallAuction, code, market, type)
+}
+
+// ========== 自定义策略 ==========
+
+/**
+ * 获取所有自定义策略
+ * Go: GetAllCustomStrategies() []*data.CustomStrategy
+ */
+export async function getAllCustomStrategies() {
+  return callApi(App.GetAllCustomStrategies)
+}
+
+/**
+ * 保存自定义策略
+ * Go: SaveCustomStrategy(strategy *data.CustomStrategy) error
+ */
+export async function saveCustomStrategy(strategy) {
+  return callApi(App.SaveCustomStrategy, strategy)
+}
+
+/**
+ * 删除自定义策略
+ * Go: DeleteCustomStrategy(id int) error
+ */
+export async function deleteCustomStrategy(id) {
+  return callApi(App.DeleteCustomStrategy, id)
+}
+
+/**
+ * AI配置选股
+ * Go: AIConfiguredStockPick(code string, count int)
+ */
+export async function aiConfiguredStockPick(code, count) {
+  return callApi(App.AIConfiguredStockPick, code, count)
+}
+
+// ========== 数据管理 ==========
+
+/**
+ * 批量删除全量股票信息
+ * Go: BatchDeleteAllStockInfo() string
+ */
+export async function batchDeleteAllStockInfo() {
+  return callApi(App.BatchDeleteAllStockInfo)
+}
+
 export default {
   // 自选股
   greet,
@@ -306,6 +444,9 @@ export default {
   getStockMinutePriceLineData,
   getEastMoneyKLine,
   getStockKLineWithFallback,
+  getStockEastMoneyKLinePage,
+  getStockKLinePageWithFallback,
+  getStockCommonKLine,
 
   // 交易设置
   setCostPriceAndVolume,
@@ -318,6 +459,7 @@ export default {
   newChatStream,
   getAIResponseResult,
   getEffectiveSponsorVip,
+  aiConfiguredStockPick,
 
   // 保存/分享
   saveImage,
@@ -330,4 +472,24 @@ export default {
 
   // 搜索
   searchStock,
+
+  // 全量股票
+  getAllStocks,
+  getAllStockInfoList,
+  getAllStockInfoById,
+  getAllMarkets,
+  getAllIndustries,
+  getAllConcepts,
+  getGroupStockList,
+
+  // 集合竞价
+  getTdxCallAuction,
+
+  // 自定义策略
+  getAllCustomStrategies,
+  saveCustomStrategy,
+  deleteCustomStrategy,
+
+  // 数据管理
+  batchDeleteAllStockInfo,
 }

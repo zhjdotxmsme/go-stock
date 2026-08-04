@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {onBeforeMount, onBeforeUnmount, ref} from 'vue'
-import {HotStock, IsTradingTime} from "../../wailsjs/go/main/App";
+import * as marketApi from "../api/market";
 import KLineChart from "./KLineChart.vue";
 import {ArrowDown, ArrowUp} from "@vicons/ionicons5";
 
@@ -22,7 +22,7 @@ async function fetchHotStock() {
   try {
     loading.value = true
     errorMsg.value = ''
-    const res = await HotStock(marketType)
+    const {data: res} = await marketApi.hotStock(marketType)
     list.value = res || []
     if (list.value.length === 0) {
       errorMsg.value = '暂无数据，可能为API请求失败或休市'
@@ -40,7 +40,7 @@ function startRefresh() {
   fetchHotStock()
   task.value = setInterval(fetchHotStock, 5000)
   checkTask.value = setInterval(() => {
-    IsTradingTime().then(trading => {
+    marketApi.isTradingTime().then(({data: trading}) => {
       if (!trading) {
         stopRefresh()
         startCheckLoop()
@@ -52,7 +52,7 @@ function startRefresh() {
 function startCheckLoop() {
   stopCheck()
   checkTask.value = setInterval(() => {
-    IsTradingTime().then(trading => {
+    marketApi.isTradingTime().then(({data: trading}) => {
       if (trading) {
         stopCheck()
         startRefresh()
@@ -76,7 +76,7 @@ function stopCheck() {
 }
 
 onBeforeMount(async () => {
-  const trading = await IsTradingTime().catch(() => true)
+  const {data: trading} = await marketApi.isTradingTime().catch(() => ({data: true}))
   if (trading) {
     startRefresh()
   } else {

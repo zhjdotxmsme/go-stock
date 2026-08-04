@@ -4,9 +4,7 @@ import {
   GetKLineCacheStats, StartHistoricalSync, GetSyncProgress,
   GetSeedImportStatus, RunSeedImport, GetLastSeedImportOutput,
 } from '../../wailsjs/go/backtest/Service'
-import {
-  GetAllStockInfoList, BatchDeleteAllStockInfo,
-} from '../../wailsjs/go/main/App'
+import * as stockApi from '../api/stock'
 import {
   NAlert, NButton, NCard, NDataTable, NDivider,
   NGi, NGrid, NSpin, NStatistic, NTag, NText, NFlex,
@@ -123,7 +121,7 @@ async function searchStocks() {
   stockLoading.value = true
   stockError.value = ''
   try {
-    const res = await GetAllStockInfoList({ searchKeyWord: stockSearch.value, page: 1, pageSize: 50 })
+    const {data: res} = await stockApi.getAllStockInfoList({ searchKeyWord: stockSearch.value, page: 1, pageSize: 50 })
     stockList.value = res?.list || []
   } catch (e) {
     stockError.value = String(e)
@@ -138,7 +136,7 @@ async function batchDeleteStocks() {
     return
   }
   try {
-    await BatchDeleteAllStockInfo(selectedStockIds.value)
+    await stockApi.batchDeleteAllStockInfo(selectedStockIds.value)
     message.success(`已删除 ${selectedStockIds.value.length} 只股票信息`)
     selectedStockIds.value = []
     await searchStocks()

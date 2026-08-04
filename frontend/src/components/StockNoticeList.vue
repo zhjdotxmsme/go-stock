@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {onBeforeMount, ref} from 'vue'
-import {GetStockList, StockNotice} from "../../wailsjs/go/main/App";
+import * as stockApi from "../api/stock";
+import * as marketApi from "../api/market";
 import {BrowserOpenURL} from "../../wailsjs/runtime";
 import {RefreshCircleSharp} from "@vicons/ionicons5";
 import _ from "lodash";
@@ -21,7 +22,7 @@ const list  = ref([])
 const options =  ref([])
 const message=useMessage()
 function getNotice(stockCodes) {
-  StockNotice(stockCodes).then(result => {
+  marketApi.stockNotice(stockCodes).then(({data: result}) => {
     console.log(result)
     list.value = result
   })
@@ -34,7 +35,7 @@ onBeforeMount (()=>{
 
 function findStockList(query){
   if (query){
-    GetStockList(query).then(result => {
+    stockApi.getStockList(query).then(({data: result}) => {
       options.value=result.map(item => {
         return {
           label: item.name+" - "+item.ts_code,

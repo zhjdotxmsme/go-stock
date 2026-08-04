@@ -1,6 +1,6 @@
 <script setup>
 import {onBeforeMount, ref} from 'vue'
-import {GetStockList, IndustryResearchReport,EMDictCode} from "../../wailsjs/go/main/App";
+import * as marketApi from "../api/market";
 import {ArrowDownOutline, CaretDown, CaretUp, PulseOutline, Refresh, RefreshCircleSharp,} from "@vicons/ionicons5";
 
 import {useMessage} from "naive-ui";
@@ -13,7 +13,7 @@ const options =  ref([])
 
 function getIndustryResearchReport(value) {
   message.loading("正在刷新数据...")
-  IndustryResearchReport(value).then(result => {
+  marketApi.industryResearchReport(value).then(({data: result}) => {
     console.log(result)
     list.value = result
   })
@@ -44,7 +44,7 @@ function openWin(code) {
 
 function EMDictCodeList(keyVal){
   if (keyVal){
-    EMDictCode('016').then(result => {
+    marketApi.emDictCode('016').then(({data: result}) => {
       console.log(result)
         options.value=result.filter((value,index,array) => value.bkName.includes(keyVal)||value.firstLetter.includes(keyVal)||value.bkCode.includes(keyVal)).map(item => {
           return {

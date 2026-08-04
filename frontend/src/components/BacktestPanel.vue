@@ -2,7 +2,7 @@
 import { computed, ref, reactive, h, onMounted } from 'vue'
 import { RunSingleBacktest, RunBatchBacktest, GetBacktestResults, RunOptimization, GetOptimizationPresets } from '../../wailsjs/go/backtest/Service'
 import { RunBacktestForDailyPicks } from '../../wailsjs/go/service/DailyPickBacktestService'
-import { GetStockList } from '../../wailsjs/go/main/App'
+import * as stockApi from '../api/stock'
 import {
   NAutoComplete, NAlert, NButton, NCard, NDataTable, NDatePicker, NDivider,
   NFlex, NForm, NFormItem, NGi, NGradientText, NGrid,
@@ -460,7 +460,7 @@ onMounted(() => {
     origError.apply(console, args)
   }
 
-  GetStockList('').then(result => {
+  stockApi.getStockList('').then(({data: result}) => {
     const list = result || []
     stockList.value = list
     // 选项初始为空，由 @update:value → findStockList 按需填充

@@ -1,7 +1,7 @@
 <script setup>
 import {ref, onMounted, onBeforeUnmount, watch} from 'vue'
 import {createChart, CandlestickSeries, HistogramSeries} from 'lightweight-charts'
-import {GetCommodityKLine} from '../../wailsjs/go/main/App'
+import * as commodityApi from '../api/commodity'
 
 const props = defineProps({
   code: {type: String, default: ''},
@@ -33,7 +33,7 @@ async function fetchKLine() {
   loading.value = true
   errorText.value = ''
   try {
-    const bars = await GetCommodityKLine(props.code, props.period, 200)
+    const bars = (await commodityApi.getCommodityKLine(props.code, props.period, 200)).data
     if (!bars || bars.length === 0) {
       errorText.value = '暂无K线数据'
       loading.value = false

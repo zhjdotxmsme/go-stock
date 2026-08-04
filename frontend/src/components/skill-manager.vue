@@ -212,8 +212,7 @@ import { SearchOutline, AddOutline, TrashOutline, CreateOutline, FlashOutline, L
 import SkillRecommend from './skill-recommend.vue'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
-import { CreateSkill, UpdateSkill, DeleteSkill, GetSkillList, EnableSkill, GetSkillByID, GetAllSkills, GenerateSkillFromURL } from '../../wailsjs/go/main/App.js'
-import { GetMCPServerList, GetConfig } from '../../wailsjs/go/main/App.js'
+import * as systemApi from '../api/system'
 
 const message = useMessage()
 const loading = ref(false)
@@ -377,13 +376,13 @@ const columns = [
 const loadData = async () => {
   loading.value = true
   try {
-    const result = await GetSkillList({
+    const result = (await systemApi.getSkillList({
       page: currentPage.value,
       pageSize: pageSize.value,
       name: searchKeyword.value,
       category: filterCategory.value,
       enable: filterEnable.value
-    })
+    })).data
     if (result) {
       tableData.value = result.data || []
       total.value = result.total || 0
@@ -399,13 +398,13 @@ const loadData = async () => {
 
 const loadMCPServers = async () => {
   try {
-    const result = await GetMCPServerList({
+    const result = (await systemApi.getMCPServerList({
       page: 1,
       pageSize: 100,
       name: '',
       status: '',
       enable: true
-    })
+    })).data
     if (result && result.data) {
       mcpServerOptions.value = result.data.map(s => ({
         label: s.name,
@@ -438,7 +437,7 @@ const handleCreate = () => {
 const handleEdit = async (row) => {
   editingSkill.value = true
   try {
-    const skill = await GetSkillByID(row.id)
+    const skill = (await systemApi.getSkillById(row.id)).data
     if (skill) {
       resetForm()
       formData.id = skill.id
@@ -460,7 +459,7 @@ const handleEdit = async (row) => {
 
 const handleDelete = async (row) => {
   try {
-    const result = await DeleteSkill(row.id)
+    const result = (await systemApi.deleteSkill(row.id)).data
     if (result.includes('成功')) {
       message.success(result)
       loadData()
@@ -474,7 +473,7 @@ const handleDelete = async (row) => {
 
 const handleEnable = async (row, enable) => {
   try {
-    const result = await EnableSkill(row.id, enable)
+    const result = (await systemApi.enableSkill(row.id, enable)).data
     if (result.includes('成功') || result.includes('启用') || result.includes('禁用')) {
       message.success(result)
       loadData()
@@ -494,7 +493,7 @@ async function handleGenerateFromURL() {
   urlGenerating.value = true
   urlResult.value = ''
   try {
-    const result = await GenerateSkillFromURL(urlInput.value.trim())
+    const result = (await systemApi.generateSkillFromURL(urlInput.value.trim())).data
     urlResult.value = result
     urlResultType.value = result.includes('成功') ? 'success' : 'error'
     if (result.includes('成功')) {
@@ -533,9 +532,9 @@ const handleSubmit = async () => {
     let result
     if (editingSkill.value) {
       skillData.id = formData.id
-      result = await UpdateSkill(skillData)
+      result = (await systemApi.updateSkill(skillData)).data
     } else {
-      result = await CreateSkill(skillData)
+      result = (await systemApi.createSkill(skillData)).data
     }
 
     if (result.includes('成功')) {
@@ -573,7 +572,7 @@ const resetForm = () => {
 onMounted(() => {
   loadData()
   loadMCPServers()
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     if (result.darkTheme) {
       editorTheme.value = 'dark'
     }

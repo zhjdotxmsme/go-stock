@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import {onBeforeMount, onUnmounted, ref} from 'vue'
-import {HotTopic, OpenURL} from "../../wailsjs/go/main/App";
+import {OpenURL} from "../../wailsjs/go/main/App";
+import * as marketApi from "../api/market";
 import {Environment} from "../../wailsjs/runtime";
 const list  = ref([])
 const task =ref()
 
 onBeforeMount(async () => {
-  list.value = await HotTopic(10)
+  list.value = (await marketApi.hotTopic(10)).data
   setInterval(async ()=>{
-    list.value = await HotTopic(10)
+    list.value = (await marketApi.hotTopic(10)).data
   }, 1000*10)
 })
 onUnmounted(()=>{

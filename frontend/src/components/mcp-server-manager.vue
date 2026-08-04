@@ -231,17 +231,7 @@ import {
   FlashOutline,
   EyeOutline
 } from '@vicons/ionicons5'
-import {
-  CreateMCPServer,
-  UpdateMCPServer,
-  DeleteMCPServer,
-  GetMCPServerByID,
-  GetMCPServerList,
-  EnableMCPServer,
-  TestMCPServer,
-  GetMCPToolsByServerID,
-  GetAllMCPTools
-} from '../../wailsjs/go/main/App'
+import * as systemApi from '../api/system'
 
 const message = useMessage()
 
@@ -669,12 +659,12 @@ const loadServerList = async () => {
       status: filterStatus.value
     }
 
-    const result = await GetMCPServerList(query)
+    const result = (await systemApi.getMCPServerList(query)).data
     if (result) {
       const servers = result.data || []
       let allTools = []
       try {
-        allTools = await GetAllMCPTools() || []
+        allTools = (await systemApi.getAllMCPTools()).data || []
       } catch (error) {
         console.error('加载工具列表失败:', error)
       }
@@ -715,7 +705,7 @@ const handlePageSizeChange = (size) => {
 
 const handleTest = async (row) => {
   try {
-    const result = await TestMCPServer(row.id)
+    const result = (await systemApi.testMcpServer(row.id)).data
     message.success(result)
     await loadServerList()
   } catch (error) {
@@ -726,7 +716,7 @@ const handleTest = async (row) => {
 const handleToggleEnable = async (row) => {
   try {
     const newEnable = !row.enable
-    const result = await EnableMCPServer(row.id, newEnable)
+    const result = (await systemApi.enableMCPServer(row.id, newEnable)).data
     message.success(result)
     await loadServerList()
   } catch (error) {
@@ -743,7 +733,7 @@ const handleCreate = () => {
 const handleEdit = async (row) => {
   editingServer.value = true
   try {
-    const server = await GetMCPServerByID(row.id)
+    const server = (await systemApi.getMCPServerById(row.id)).data
     if (server) {
       resetForm()
       formData.id = server.id
@@ -766,7 +756,7 @@ const handleEdit = async (row) => {
 
 const handleDelete = async (id) => {
   try {
-    const result = await DeleteMCPServer(id)
+    const result = (await systemApi.deleteMcpServer(id)).data
     message.success(result)
     await loadServerList()
   } catch (error) {
@@ -789,9 +779,9 @@ const handleSubmit = async () => {
 
     let result
     if (formData.id) {
-      result = await UpdateMCPServer(submitData)
+      result = (await systemApi.updateMCPServer(submitData)).data
     } else {
-      result = await CreateMCPServer(submitData)
+      result = (await systemApi.createMCPServer(submitData)).data
     }
 
     if (result.includes('成功')) {

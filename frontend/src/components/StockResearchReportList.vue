@@ -1,6 +1,7 @@
 <script setup>
 import {onBeforeMount, ref} from 'vue'
-import {GetStockList, StockResearchReport} from "../../wailsjs/go/main/App";
+import * as stockApi from "../api/stock";
+import * as marketApi from "../api/market";
 import {ArrowDownOutline, CaretDown, CaretUp, PulseOutline, Refresh, RefreshCircleSharp,} from "@vicons/ionicons5";
 
 import KLineChart from "./KLineChart.vue";
@@ -23,7 +24,7 @@ const list  = ref([])
 const options =  ref([])
 
 function getStockResearchReport(value) {
-  StockResearchReport(value).then(result => {
+  marketApi.stockResearchReport(value).then(({data: result}) => {
     //console.log(result)
     list.value = result
   })
@@ -67,7 +68,7 @@ function openWin(code) {
 
 function findStockList(query){
   if (query){
-    GetStockList(query).then(result => {
+    stockApi.getStockList(query).then(({data: result}) => {
       options.value=result.map(item => {
         return {
           label: item.name+" - "+item.ts_code,

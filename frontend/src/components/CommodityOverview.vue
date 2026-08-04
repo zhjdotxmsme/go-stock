@@ -1,10 +1,6 @@
 <script setup>
 import {ref, computed, onMounted, onBeforeUnmount} from 'vue'
-import {
-  GetCommodityQuote,
-  GetCommodityRegistry,
-  GetMacroIndicatorsEnhanced,
-} from '../../wailsjs/go/main/App'
+import * as commodityApi from '../api/commodity'
 import CommodityKlineChart from './CommodityKlineChart.vue'
 
 const selectedCode = ref('XAUUSD')
@@ -30,7 +26,7 @@ const groupedAssets = computed(() => {
 })
 
 async function loadRegistry() {
-  registry.value = await GetCommodityRegistry()
+  registry.value = (await commodityApi.getCommodityRegistry()).data
 }
 
 async function loadQuotes() {
@@ -38,7 +34,7 @@ async function loadQuotes() {
   const tradable = registry.value.filter(a => a.isTradable)
   for (const asset of tradable) {
     try {
-      const q = await GetCommodityQuote(asset.code)
+      const q = (await commodityApi.getCommodityQuote(asset.code)).data
       if (q) {
         quotes.value[asset.code] = q
         errors.value[asset.code] = ''
@@ -53,7 +49,7 @@ async function loadQuotes() {
 async function loadMacro() {
   macroLoading.value = true
   try {
-    macro.value = await GetMacroIndicatorsEnhanced()
+    macro.value = (await commodityApi.getMacroIndicatorsEnhanced()).data
   } catch (e) {
     console.error('macro indicators error', e)
   } finally {

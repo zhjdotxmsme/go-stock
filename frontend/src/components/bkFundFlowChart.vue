@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {onBeforeUnmount, onMounted, ref, watch, computed} from "vue";
-import {GetBKFundFlowListByDate, GetBKFundFlowTopListByDate, GetAllBKCodes} from "../../wailsjs/go/main/App";
+import * as marketApi from "../api/market";
 import * as echarts from "echarts";
 
 const props = defineProps({
@@ -62,7 +62,7 @@ const cachedTimes = ref<string[]>([]) // 缓存全量时间轴
 onMounted(async () => {
   try {
     // 加载所有板块代码（供临时添加使用）
-    const codes = await GetAllBKCodes()
+    const codes = (await marketApi.getAllBKCodes()).data
     if (codes && Array.isArray(codes)) allBKCodes.value = codes
 
     await loadAllData()
@@ -123,7 +123,7 @@ async function loadAllData() {
   try {
     const date = selectedDate.value
     // 按日期获取板块排名
-    const res = await GetBKFundFlowTopListByDate(date, 500)
+    const res = (await marketApi.getBKFundFlowTopListByDate(date, 500)).data
     if (!res || !Array.isArray(res) || res.length === 0) {
       topList.value = []
       return
@@ -137,7 +137,7 @@ async function loadAllData() {
 
     const allData = await Promise.all(
       sectors.map(async (item: any) => {
-        const points = await GetBKFundFlowListByDate(item.code, date)
+        const points = (await marketApi.getBKFundFlowListByDate(item.code, date)).data
         return {
           code: item.code,
           name: item.name,

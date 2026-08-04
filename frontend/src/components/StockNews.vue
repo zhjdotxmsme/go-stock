@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch } from 'vue'
-import { GetStockRelatedNews } from '../../wailsjs/go/main/App'
+import * as marketApi from '../api/market'
 
 const props = defineProps({
   code: { type: String, required: true },
@@ -13,7 +13,7 @@ async function load() {
   if (!props.code) return
   loading.value = true
   try {
-    news.value = await GetStockRelatedNews(props.code, 20)
+    news.value = (await marketApi.getStockRelatedNews(props.code, 20)).data
   } catch (e) {
     console.error('stock news error:', e)
     news.value = []

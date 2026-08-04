@@ -3,7 +3,7 @@
 import {CaretDown, CaretUp, RefreshCircleOutline} from "@vicons/ionicons5";
 import {NText,useMessage} from "naive-ui";
 import {onBeforeUnmount, onMounted, onUnmounted, ref} from "vue";
-import {GetIndustryMoneyRankSina} from "../../wailsjs/go/main/App";
+import * as marketApi from "../api/market";
 import KLineChart from "./KLineChart.vue";
 
 const props = defineProps({
@@ -39,7 +39,7 @@ onBeforeUnmount(()=>{
 })
 function GetRankData(){
   message.loading("正在刷新数据...")
-  GetIndustryMoneyRankSina(fenlei.value,sort.value).then(result => {
+  marketApi.getIndustryMoneyRankSina(fenlei.value,sort.value).then(({data: result}) => {
     if(result.length>0){
       dataList.value = result
       //console.log(result)

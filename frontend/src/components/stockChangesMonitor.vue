@@ -1,6 +1,7 @@
 <script setup>
 import {computed, h, onBeforeMount, onBeforeUnmount, onMounted, onUnmounted, ref, reactive} from 'vue'
-import {GetStockChanges, GetConfig, GetStockChangeHistory, SaveStockChangesToHistory, GetAllStockChangesWithPaging} from "../../wailsjs/go/main/App";
+import * as marketApi from "../api/market";
+import * as systemApi from "../api/system";
 import {NButton, NTag, NText, useMessage, useNotification} from "naive-ui";
 
 const notify = useNotification()
@@ -297,7 +298,7 @@ async function fetchRealtimeData() {
   loadingRef.value = true
   try {
     const types = selectedTypes.value.map(t => parseInt(t))
-    const result = await GetStockChanges(types, 0, paginationReactive.pageSize)
+    const result = (await marketApi.getStockChanges(types, 0, paginationReactive.pageSize)).data
     if (result) {
       dataRef.value = result.data || []
       paginationReactive.itemCount = result.totalCount || 0
@@ -355,7 +356,7 @@ async function fetchHistoryData() {
     if (selectedTypes.value.length > 0) {
       query.changeTypes = selectedTypes.value.map(t => parseInt(t))
     }
-    const result = await GetStockChangeHistory(query)
+    const result = (await marketApi.getStockChangeHistory(query)).data
     if (result) {
       dataRef.value = result.list || []
       paginationReactive.itemCount = result.total || 0
@@ -396,7 +397,7 @@ async function fetchData() {
 
 async function saveCurrentData() {
   const types = selectedTypes.value.map(t => parseInt(t))
-  const result = await SaveStockChangesToHistory(types)
+  const result = (await marketApi.saveStockChangesToHistory(types)).data
   message.info(result)
 }
 
@@ -495,7 +496,7 @@ function handleSearchKeyup(e) {
 async function fetchAllCurrentData() {
   loadingRef.value = true
   try {
-    const result = await GetAllStockChangesWithPaging(500)
+    const result = (await marketApi.getAllStockChangesWithPaging(500)).data
     if (result) {
       dataRef.value = result.data || []
       paginationReactive.itemCount = result.totalCount || 0
@@ -510,7 +511,7 @@ async function fetchAllCurrentData() {
 }
 
 onBeforeMount(() => {
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     if (result.darkTheme) {
       document.documentElement.classList.add('dark')
     }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {nextTick, onBeforeMount, onMounted, onUnmounted, ref} from 'vue'
-import {ClsCalendar} from "../../wailsjs/go/main/App";
+import * as marketApi from "../api/market";
 import { addMonths, format ,parse} from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
@@ -34,7 +34,7 @@ function goBackToday() {
 }
 
 onBeforeMount(() => {
-  ClsCalendar().then(res => {
+  marketApi.clsCalendar().then(({data: res}) => {
     list.value = res
     goBackToday();
   })

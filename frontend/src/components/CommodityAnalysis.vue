@@ -1,14 +1,6 @@
 <script setup>
 import {ref, reactive, onMounted, onUnmounted, nextTick, computed} from 'vue'
-import {
-  GetCommodityRegistry,
-  GetCommodityTechnicals,
-  GetCommodityFundamentals,
-  GetCommodityCorrelation,
-  GetCommodityReport,
-  NewCommodityAnalysisStream,
-} from '../../wailsjs/go/main/App'
-import {GetTradableCommodities} from '../../wailsjs/go/main/App'
+import * as commodityApi from '../api/commodity'
 import {EventsOn, EventsOff} from '../../wailsjs/runtime'
 import {MdPreview} from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
@@ -91,10 +83,10 @@ function scrollToBottom() {
 }
 
 async function loadRegistry() {
-  const all = await GetCommodityRegistry()
+  const all = (await commodityApi.getCommodityRegistry()).data
   registry.value = all
   // 仅展示可交易标的（排除宏观指标）
-  const tradable = await GetTradableCommodities()
+  const tradable = (await commodityApi.getTradableCommodities()).data
   currentAsset.value = tradable.find(i => i.code === selectedCode.value) || null
 }
 
@@ -117,18 +109,18 @@ async function runAnalysis() {
     const parts = []
     for (const mode of selectedModes.value) {
       if (mode === 'technical') {
-        const r = await GetCommodityTechnicals(selectedCode.value, period.value)
+        const r = (await commodityApi.getCommodityTechnicals(selectedCode.value, period.value)).data
         parts.push('## 技术面分析\n' + r)
       } else if (mode === 'fundamental') {
-        const r = await GetCommodityFundamentals(selectedCode.value)
+        const r = (await commodityApi.getCommodityFundamentals(selectedCode.value)).data
         parts.push('## 基本面分析\n' + r)
       } else if (mode === 'correlation') {
-        const r = await GetCommodityCorrelation(selectedCode.value, secondaryCodes.value)
+        const r = (await commodityApi.getCommodityCorrelation(selectedCode.value, secondaryCodes.value)).data
         parts.push('## 关联分析\n' + r)
       }
     }
     if (selectedModes.value.length > 1) {
-      const report = await GetCommodityReport(selectedCode.value, '周报')
+      const report = (await commodityApi.getCommodityReport(selectedCode.value, '周报')).data
       parts.push('## 综合报告\n' + report)
     }
     result.value = parts.join('\n\n')
@@ -155,7 +147,7 @@ function runDeepAnalysis() {
   deepLoading.value = true
   expertState.active = true
 
-  NewCommodityAnalysisStream(
+  commodityApi.newCommodityAnalysisStream(
     selectedCode.value,
     selectedName.value,
     deepQuestion.value || `请全面分析${selectedName.value}(${selectedCode.value})的走势和投资机会`,

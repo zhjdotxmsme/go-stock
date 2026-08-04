@@ -28,7 +28,7 @@
 import { ref, h, onMounted } from 'vue'
 import { NButton, NSpace, NInput, NDataTable, NTag, NEmpty, useMessage, NIcon, NPopconfirm } from 'naive-ui'
 import { FlashOutline } from '@vicons/ionicons5'
-import { GetAllSkills, EnableSkill } from '../../wailsjs/go/main/App.js'
+import * as systemApi from '../api/system'
 
 const message = useMessage()
 const loading = ref(false)
@@ -109,7 +109,7 @@ function matchSkills(query) {
 async function loadRecommendations() {
   loading.value = true
   try {
-    allSkills.value = await GetAllSkills() || []
+    allSkills.value = (await systemApi.getAllSkills()).data || []
     recommendations.value = matchSkills(query.value)
   } catch (e) {
     message.error('获取推荐失败: ' + e)
@@ -120,7 +120,7 @@ async function loadRecommendations() {
 
 async function handleEnable(row) {
   try {
-    const result = await EnableSkill(row.skillId, true)
+    const result = (await systemApi.enableSkill(row.skillId, true)).data
     message.success(result)
     loadRecommendations()
   } catch (e) {

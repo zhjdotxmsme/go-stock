@@ -1,5 +1,6 @@
 <script setup>
-import { GetStockList, GetConfig } from '../../wailsjs/go/main/App'
+import * as stockApi from '../api/stock'
+import * as systemApi from '../api/system'
 import { EventsOn } from '../../wailsjs/runtime'
 import StockLightweightKlineChart from './StockLightweightKlineChart.vue'
 import { NAutoComplete, NButton, NFlex, NText, NInputGroup } from 'naive-ui'
@@ -108,10 +109,10 @@ function updateChartHeight() {
 }
 
 onBeforeMount(() => {
-  GetStockList('').then(result => {
+  stockApi.getStockList('').then(({data: result}) => {
     stockList.value = result || []
   }).catch(err => { console.error('GetStockList error:', err) })
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     darkTheme.value = !!result.darkTheme
   }).catch(err => { console.error('GetConfig error:', err) })
 })

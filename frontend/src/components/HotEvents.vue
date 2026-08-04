@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import {onBeforeMount, onUnmounted, ref} from 'vue'
-import {HotEvent} from "../../wailsjs/go/main/App";
+import * as marketApi from "../api/market";
 const list  = ref([])
 
 const task =ref()
 onBeforeMount(async () => {
-  list.value = await HotEvent(50)
+  list.value = (await marketApi.hotEvent(50)).data
   task.value=setInterval(async ()=>{
-    list.value = await HotEvent(50)
+    list.value = (await marketApi.hotEvent(50)).data
   }, 1000*10)
 })
 

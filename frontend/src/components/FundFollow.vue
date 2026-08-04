@@ -2,17 +2,9 @@
 import {h, onBeforeMount, onBeforeUnmount, onMounted, reactive, ref, computed} from "vue";
 import {Add, ChatboxOutline, RefreshOutline} from "@vicons/ionicons5";
 import {NButton, NEllipsis, NText, useMessage, NTag, NModal, NDataTable, NPopover, NIcon} from "naive-ui";
-import {
-  FollowFund,
-  GetConfig,
-  GetFollowedFundPaged,
-  GetfundList,
-  GetVersionInfo,
-  OpenURL,
-  UnFollowFund,
-  GetFundHistoryNetValue,
-  GetFundTop10Holdings
-} from "../../wailsjs/go/main/App";
+import * as fundApi from "../api/fund";
+import * as systemApi from "../api/system";
+import {OpenURL} from "../../wailsjs/go/main/App";
 import {Environment} from "../../wailsjs/runtime";
 import vueDanmaku from 'vue3-danmaku'
 import FundKlineChart from "./FundKlineChart.vue";
@@ -59,7 +51,7 @@ const countdownTimer = ref({})
 
 function loadFollowedFunds() {
   followLoading.value = true
-  GetFollowedFundPaged(followPage.value, followPageSize, followKeyword.value).then(result => {
+  fundApi.getFollowedFundPaged(followPage.value, followPageSize, followKeyword.value).then(({data: result}) => {
     if (result) {
       followList.value = result.items || []
       followTotalCount.value = result.totalCount || 0
@@ -121,7 +113,7 @@ const netValueColumns = computed(() => {
 })
 
 onBeforeMount(() => {
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     if (result.openAiEnable) data.openAiEnable = true
     if (result.enableDanmu) data.enableDanmu = true
     if (result.darkTheme) darkTheme.value = true
@@ -130,7 +122,7 @@ onBeforeMount(() => {
 })
 
 onMounted(() => {
-  GetVersionInfo().then((res) => {
+  systemApi.getVersionInfo().then(({data: res}) => {
     icon.value = res.icon
   })
 
@@ -186,7 +178,7 @@ function AddFund() {
     setTimeout(() => { showPopover.value = false }, 3000)
     return
   }
-  FollowFund(data.code).then(result => {
+  fundApi.followFund(data.code).then(({data: result}) => {
     if (result) {
       message.success("关注成功")
       loadFollowedFunds()
@@ -195,7 +187,7 @@ function AddFund() {
 }
 
 function unFollow(code) {
-  UnFollowFund(code).then(result => {
+  fundApi.unFollowFund(code).then(({data: result}) => {
     if (result) {
       message.success("取消关注成功")
       if (followList.value.length <= 1 && followPage.value > 1) {
@@ -207,7 +199,7 @@ function unFollow(code) {
 }
 
 function getFundList(value) {
-  GetfundList(value).then(result => {
+  fundApi.getFundList(value).then(({data: result}) => {
     options.value = []
     result.forEach(item => {
       options.value.push({
@@ -246,7 +238,7 @@ function showChart(code, name) {
 
 function loadHoldings(code) {
   if (holdingsMap[code]) return
-  GetFundTop10Holdings(code).then(result => {
+  fundApi.getFundTop10Holdings(code).then(({data: result}) => {
     holdingsMap[code] = result || []
   }).catch(() => {
     holdingsMap[code] = []
@@ -256,7 +248,7 @@ function loadHoldings(code) {
 function loadNetValueHistory(code) {
   netValueLoading.value = true
   netValueData.value = []
-  GetFundHistoryNetValue(code, 30, '', '').then(result => {
+  fundApi.getFundHistoryNetValue(code, 30, '', '').then(({data: result}) => {
     netValueData.value = result || []
   }).catch(() => {
     netValueData.value = []

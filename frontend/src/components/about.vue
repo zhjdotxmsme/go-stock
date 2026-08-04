@@ -2,7 +2,7 @@
 import { MdPreview } from 'md-editor-v3';
 import 'md-editor-v3/lib/preview.css';
 import {computed, nextTick, onBeforeUnmount, onMounted, ref} from 'vue';
-import {GetConfig, GetVersionInfo,GetSponsorInfo,GetUserManual,OpenURL} from "../../wailsjs/go/main/App";
+import * as systemApi from "../api/system";
 import {NButton, NTree, useNotification} from "naive-ui";
 import { addMonths, format ,parse} from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -91,7 +91,7 @@ const scrollToHeading = (headingText) => {
 
 const openManual = () => {
   if (!manualContent.value) {
-    GetUserManual().then(res => {
+    systemApi.getUserManual().then(({data: res}) => {
       manualContent.value = res
       showManual.value = true
       nextTick(() => { setTimeout(extractCatalog, 500) })
@@ -104,10 +104,10 @@ const openManual = () => {
 
 onMounted(() => {
   document.title = '关于软件';
-  GetConfig().then(res => {
+  systemApi.getConfig().then(({data: res}) => {
     darkTheme.value = res.darkTheme
   })
-  GetVersionInfo().then((res) => {
+  systemApi.getVersionInfo().then(({data: res}) => {
     updateLog.value = res.content;
     versionInfo.value = res.version;
     icon.value = res.icon;
@@ -115,7 +115,7 @@ onMounted(() => {
     wxpay.value=res.wxpay;
     wxgzh.value=res.wxgzh;
 
-    GetSponsorInfo().then((res) => {
+    systemApi.getSponsorInfo().then(({data: res}) => {
       vipLevel.value = res.vipLevel;
       vipStartTime.value = res.vipStartTime;
       vipEndTime.value = res.vipEndTime;

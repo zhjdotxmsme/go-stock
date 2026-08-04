@@ -1,16 +1,10 @@
 <script setup>
 import {h, ref, computed, reactive, onMounted, watch} from "vue";
 import {NButton, NText, NFlex, NTag, NDataTable} from "naive-ui";
-import {
-  FollowFund,
-  GetConfig,
-  GetEffectiveSponsorVip,
-  GetFollowedFund,
-  GetFundRanking,
-  GetFundTop10Holdings,
-  OpenURL,
-  SearchFundCodes
-} from "../../wailsjs/go/main/App";
+import * as fundApi from "../api/fund";
+import * as stockApi from "../api/stock";
+import * as systemApi from "../api/system";
+import {OpenURL} from "../../wailsjs/go/main/App";
 import {Environment} from "../../wailsjs/runtime";
 import {useMessage} from "naive-ui";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
@@ -68,7 +62,7 @@ function onSearchKeywordChange(kw) {
     return
   }
   searchTimer = setTimeout(() => {
-    SearchFundCodes(trimmed).then(result => {
+    fundApi.searchFundCodes(trimmed).then(({data: result}) => {
       if (result && result.length > 0) {
         searchCodes.value = result.map(item => item.code)
       } else {
@@ -220,7 +214,7 @@ const rankingColumns = computed(() => {
 
 function fetchFundRanking() {
   rankingLoading.value = true
-  GetFundRanking(marketType.value, rankingFundType.value, rankingSortField.value, rankingSortOrder.value, paginationReactive.page, paginationReactive.pageSize).then(result => {
+  fundApi.getFundRanking(marketType.value, rankingFundType.value, rankingSortField.value, rankingSortOrder.value, paginationReactive.page, paginationReactive.pageSize).then(({data: result}) => {
     if (result) {
       rankingData.value = result.items || []
       paginationReactive.pageCount = result.totalPages || 0
@@ -267,7 +261,7 @@ function handlePageChange(currentPage) {
 }
 
 function rankingFollowFund(code) {
-  FollowFund(code).then(result => {
+  fundApi.followFund(code).then(({data: result}) => {
     if (result) {
       message.success('关注成功')
       loadFollowList()
@@ -276,7 +270,7 @@ function rankingFollowFund(code) {
 }
 
 function loadFollowList() {
-  GetFollowedFund().then(result => {
+  fundApi.getFollowedFund().then(({data: result}) => {
     followList.value = result
   })
 }
@@ -301,7 +295,7 @@ function showHoldings(code, name) {
   holdingsModalShow.value = true
   holdingsLoading.value = true
   holdingsData.value = []
-  GetFundTop10Holdings(code).then(result => {
+  fundApi.getFundTop10Holdings(code).then(({data: result}) => {
     holdingsData.value = result || []
   }).catch(() => {
     holdingsData.value = []
@@ -353,12 +347,12 @@ const holdingsColumns = [
 
 loadFollowList()
 fetchFundRanking()
-GetConfig().then(result => {
+systemApi.getConfig().then(({data: result}) => {
   if (result.darkTheme) darkTheme.value = true
 })
 
 function refreshEffectiveVip() {
-  return GetEffectiveSponsorVip().then(res => {
+  return stockApi.getEffectiveSponsorVip().then(({data: res}) => {
     if (res) {
       vipLevel.value = res.vipLevel || 0
     }

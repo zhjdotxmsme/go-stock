@@ -322,19 +322,8 @@ import {
   ChevronForwardOutline,
   ChevronUpOutline
 } from '@vicons/ionicons5'
-import {
-  ChatWithAgent,
-  GetAiConfigs,
-  GetConfig,
-  GetPromptTemplates,
-  GetSponsorInfo,
-  SaveAiAssistantSession,
-  GetAiAssistantSession,
-  ShareText,
-  AbortChatWithAgent,
-  SaveAIResponseResult,
-  SaveImage
-} from '../../wailsjs/go/main/App'
+import * as systemApi from '../api/system'
+import * as stockApi from '../api/stock'
 import { EventsOff, EventsOn } from '../../wailsjs/runtime'
 import { MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
@@ -578,8 +567,8 @@ function shareTextToCommunity(text, title) {
   shareLoading.value = true
   shareTipText.value = '正在分享到社区...'
   shareTipVisible.value = true
-  ShareText(text, title)
-    .then((msg) => {
+  systemApi.shareText(text, title)
+    .then(({data: msg}) => {
       shareTipText.value = msg
       shareTipVisible.value = true
     })
@@ -688,7 +677,7 @@ async function exportAiReplyImage(assistantIndex, evt) {
     const dataUrl = canvas.toDataURL('image/png')
     const base64 = dataUrl.replace(/^data:image\/png;base64,/, '')
     const safeTime = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')
-    const result = await SaveImage(`go-stock-agent-${safeTime}`, base64)
+    const result = (await stockApi.saveImage(`go-stock-agent-${safeTime}`, base64)).data
     if (result && !result.includes('异常') && !result.includes('无法')) {
       shareTipText.value = '已导出为 PNG 图片：' + result
     } else {
@@ -724,14 +713,14 @@ function abortStream(showTip = true) {
     shareTipText.value = '已中断本次 AI 回答'
     shareTipVisible.value = true
   }
-  AbortChatWithAgent()
+  systemApi.abortChatWithAgent()
 }
 
 const theme = computed(() => (darkTheme.value ? 'dark' : 'light'))
 
 async function loadHistory() {
   try {
-    const resp = await GetAiAssistantSession('')
+    const resp = (await systemApi.getAiAssistantSession('')).data
     if (resp?.sessionId) {
       sessionId.value = resp.sessionId
     }
@@ -765,7 +754,7 @@ function saveHistory() {
     steps: m.steps ?? [],
     jsonMarkdown: m.jsonMarkdown ?? ''
   }))
-  SaveAiAssistantSession(sessionId.value, list).catch(() => {})
+  systemApi.saveAiAssistantSession(sessionId.value, list).catch(() => {})
 }
 
 function openPanel() {
@@ -798,7 +787,7 @@ async function ensureVipInfo() {
   if (vipLoaded.value || vipLoading.value) return
   vipLoading.value = true
   try {
-    const res = await GetSponsorInfo()
+    const res = (await systemApi.getSponsorInfo()).data
     const lvl = Number(res?.vipLevel ?? 0)
     vipLevel.value = Number.isNaN(lvl) ? 0 : lvl
   } catch (_) {
@@ -877,7 +866,7 @@ function sendMessage() {
     }
     scrollToBottom()
   })
-  ChatWithAgent(text, configId, sysPromptId.value, memoryMode.value, memoryCount.value, thinkingMode.value, agentMode.value === 'auto' ? '' : agentMode.value)
+  systemApi.chatWithAgent(text, configId, sysPromptId.value, memoryMode.value, memoryCount.value, thinkingMode.value, agentMode.value === 'auto' ? '' : agentMode.value)
 }
 
 function startNewChat() {
@@ -1139,7 +1128,7 @@ function onAgentMessage(msg) {
     nextTick(scrollToBottom)
     if (msg.content === 'agent-DONE' && last && last.role === 'assistant' && last.content) {
       const user = messages.value[messages.value.length - 2]
-      SaveAIResponseResult("agent","市场分析", last.content, sessionId.value,user.content, aiConfigId.value)
+      systemApi.saveAIResponseResult("agent","市场分析", last.content, sessionId.value,user.content, aiConfigId.value)
     }
     return
   }
@@ -1174,7 +1163,7 @@ function onAgentMessage(msg) {
 }
 
 function loadPromptTemplates() {
-  GetPromptTemplates('', '').then(res => {
+  systemApi.getPromptTemplates('', '').then(({data: res}) => {
     const list = Array.isArray(res) ? res : []
     sysPromptTemplates.value = list.filter(t => t.type === '模型系统Prompt')
     userPromptTemplates.value = list.filter(t => t.type === '模型用户Prompt')
@@ -1189,7 +1178,7 @@ watch(panelVisible, (v) => {
 })
 
 onBeforeMount(() => {
-  GetConfig().then(result => {
+  systemApi.getConfig().then(({data: result}) => {
     darkTheme.value = result.darkTheme
   })
 })
@@ -1197,7 +1186,7 @@ onBeforeMount(() => {
 onMounted(() => {
   EventsOn(AGENT_EVENT, onAgentMessage)
   loadHistory()
-  GetAiConfigs().then(res => {
+  systemApi.getAiConfigs().then(({data: res}) => {
     const list = Array.isArray(res) ? res : []
     aiConfigOptions.value = list.map((c, index) => {
       const id = c.ID != null ? Number(c.ID) : (c.id != null ? Number(c.id) : index)
