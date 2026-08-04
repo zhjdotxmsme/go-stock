@@ -1199,6 +1199,71 @@ export namespace data {
 		    return a;
 		}
 	}
+	export class MacroSnapshotEnhanced {
+	    dxy: number;
+	    us2yr: number;
+	    us5yr: number;
+	    us7yr: number;
+	    us10yr: number;
+	    us30yr: number;
+	    yieldCurve: string;
+	    tltPrice: number;
+	    tltChangePct: number;
+	    tipPrice: number;
+	    tipChangePct: number;
+	    tips5y: number;
+	    tips10y: number;
+	    tips20y: number;
+	    tips30y: number;
+	    breakEven5y: number;
+	    breakEven10y: number;
+	    // Go type: time
+	    timestamp: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new MacroSnapshotEnhanced(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.dxy = source["dxy"];
+	        this.us2yr = source["us2yr"];
+	        this.us5yr = source["us5yr"];
+	        this.us7yr = source["us7yr"];
+	        this.us10yr = source["us10yr"];
+	        this.us30yr = source["us30yr"];
+	        this.yieldCurve = source["yieldCurve"];
+	        this.tltPrice = source["tltPrice"];
+	        this.tltChangePct = source["tltChangePct"];
+	        this.tipPrice = source["tipPrice"];
+	        this.tipChangePct = source["tipChangePct"];
+	        this.tips5y = source["tips5y"];
+	        this.tips10y = source["tips10y"];
+	        this.tips20y = source["tips20y"];
+	        this.tips30y = source["tips30y"];
+	        this.breakEven5y = source["breakEven5y"];
+	        this.breakEven10y = source["breakEven10y"];
+	        this.timestamp = this.convertValues(source["timestamp"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	export class Sector {
 	    id: string;
@@ -1330,6 +1395,10 @@ export namespace data {
 	    windowWidth: number;
 	    windowHeight: number;
 	    promptPlazaApiBase: string;
+	    freeStockDBEnable: boolean;
+	    freeStockDBPath: string;
+	    freeStockDBAddr: string;
+	    freeStockDBAutoStart: boolean;
 	    aiConfigs: AIConfig[];
 	
 	    static createFrom(source: any = {}) {
@@ -1386,6 +1455,10 @@ export namespace data {
 	        this.windowWidth = source["windowWidth"];
 	        this.windowHeight = source["windowHeight"];
 	        this.promptPlazaApiBase = source["promptPlazaApiBase"];
+	        this.freeStockDBEnable = source["freeStockDBEnable"];
+	        this.freeStockDBPath = source["freeStockDBPath"];
+	        this.freeStockDBAddr = source["freeStockDBAddr"];
+	        this.freeStockDBAutoStart = source["freeStockDBAutoStart"];
 	        this.aiConfigs = this.convertValues(source["aiConfigs"], AIConfig);
 	    }
 	
@@ -2869,9 +2942,11 @@ export namespace models {
 	    code: string;
 	    name: string;
 	    assetType: string;
+	    category: string;
 	    exchange: string;
 	    symbol: string;
 	    internationalRef: string;
+	    isTradable: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new CommodityAsset(source);
@@ -2882,9 +2957,11 @@ export namespace models {
 	        this.code = source["code"];
 	        this.name = source["name"];
 	        this.assetType = source["assetType"];
+	        this.category = source["category"];
 	        this.exchange = source["exchange"];
 	        this.symbol = source["symbol"];
 	        this.internationalRef = source["internationalRef"];
+	        this.isTradable = source["isTradable"];
 	    }
 	}
 	export class ConceptFundFlow {

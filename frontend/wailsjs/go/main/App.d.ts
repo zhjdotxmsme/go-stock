@@ -178,10 +178,6 @@ export function GetCommodityReport(arg1:string,arg2:string):Promise<string>;
 
 export function GetCommodityTechnicals(arg1:string,arg2:string):Promise<string>;
 
-export function GetMacroIndicatorsEnhanced():Promise<any>;
-
-export function GetTradableCommodities():Promise<Array<models.CommodityAsset>>;
-
 export function GetConceptFundFlowList(arg1:string,arg2:number):Promise<Array<models.ConceptFundFlowPoint>>;
 
 export function GetConceptFundFlowListByDate(arg1:string,arg2:string):Promise<Array<models.ConceptFundFlowPoint>>;
@@ -239,6 +235,8 @@ export function GetMCPServerList(arg1:models.MCPServerQuery):Promise<models.MCPS
 export function GetMCPToolsByServerID(arg1:number):Promise<Array<models.MCPServerTool>>;
 
 export function GetMachineId():Promise<string>;
+
+export function GetMacroIndicatorsEnhanced():Promise<data.MacroSnapshotEnhanced>;
 
 export function GetMarketStatisticByDate(arg1:string):Promise<Array<models.MarketStatistic>>;
 
@@ -307,6 +305,8 @@ export function GetTelegraphList(arg1:string):Promise<any>;
 export function GetTimezone():Promise<Record<string, any>>;
 
 export function GetTodayMarketStatistic():Promise<Array<models.MarketStatistic>>;
+
+export function GetTradableCommodities():Promise<Array<models.CommodityAsset>>;
 
 export function GetTradingRecordById(arg1:number):Promise<data.TradingRecord>;
 
