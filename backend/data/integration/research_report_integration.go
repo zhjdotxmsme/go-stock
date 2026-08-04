@@ -258,7 +258,7 @@ func getDominantRating(ratingCount map[string]int) string {
 		}
 	}
 
-	return dominantantRating
+	return dominantRating
 }
 
 func min(a, b int) int {

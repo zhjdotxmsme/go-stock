@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"go-stock/backend/data/types"
 	"go-stock/backend/logger"
 )
 
@@ -889,11 +888,9 @@ func (a *EnhancedCapitalFlowAnalyzer) generatePredictions(result *CapitalFlowAna
 
 	// Medium-term prediction (1-2 weeks)
 	mediumTermPrediction := a.predictMediumTerm(result)
-	mediumTermConfidence := 0.6
 
 	// Long-term prediction (1+ months)
 	longTermPrediction := a.predictLongTerm(result)
-	longTermConfidence := 0.4
 
 	// Identify key influencing factors
 	keyFactors := a.identifyKeyFactors(result)
@@ -1028,20 +1025,6 @@ func (a *EnhancedCapitalFlowAnalyzer) generateRecommendations(result *CapitalFlo
 }
 
 // Helper functions
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func calculateMean(values []float64) float64 {
 	if len(values) == 0 {
 		return 0

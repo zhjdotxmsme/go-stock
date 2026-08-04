@@ -1,5 +1,5 @@
 // backend/data/models/stock_info_extended.go
-package models
+package data
 
 import (
 	"time"

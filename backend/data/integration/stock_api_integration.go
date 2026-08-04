@@ -8,7 +8,6 @@ import (
 
 	"go-stock/backend/data"
 	"go-stock/backend/data/layers"
-	"go-stock/backend/data/models"
 	"go-stock/backend/data/types"
 	"go-stock/backend/logger"
 )
@@ -81,8 +80,8 @@ func NewStockApiIntegration(originalApi *data.StockDataApi) *StockApiIntegration
 }
 
 // GetStockCodeRealTimeDataWithFallback uses the new layered architecture for real-time stock data
-func (s *StockApiIntegration) GetStockCodeRealTimeDataWithFallback(ctx context.Context, stockCodes ...string) (map[string]*models.StockInfoExtended, error) {
-	result := make(map[string]*models.StockInfoExtended)
+func (s *StockApiIntegration) GetStockCodeRealTimeDataWithFallback(ctx context.Context, stockCodes ...string) (map[string]*data.StockInfoExtended, error) {
+	result := make(map[string]*data.StockInfoExtended)
 
 	for _, stockCode := range stockCodes {
 		// Use the new MarketDataLayer
@@ -191,17 +190,18 @@ func (s *StockApiIntegration) GetStockAnnouncements(ctx context.Context, stockCo
 }
 
 // convertLayerResponseToExtended converts the layered response format to the extended StockInfo format
-func (s *StockApiIntegration) convertLayerResponseToExtended(response *types.StandardizedResponse, stockCode string) (*models.StockInfoExtended, error) {
+func (s *StockApiIntegration) convertLayerResponseToExtended(response *types.StandardizedResponse, stockCode string) (*data.StockInfoExtended, error) {
 	layerData, ok := response.Data.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("invalid layer response data format")
 	}
 
-	stockInfoExtended := &models.StockInfoExtended{
-		Date:      time.Now().Format("2006-01-02"),
-		Time:      time.Now().Format("15:04:05"),
-		TSCode:    stockCode,
-		StockInfo: data.StockInfo{}, // Initialize embedded struct
+	stockInfoExtended := &data.StockInfoExtended{
+		StockInfo: data.StockInfo{
+			Date: time.Now().Format("2006-01-02"),
+			Time: time.Now().Format("15:04:05"),
+		},
+		TSCode: stockCode,
 	}
 
 	// Map fields from layer data to extended format
@@ -240,8 +240,8 @@ func (s *StockApiIntegration) convertLayerResponseToExtended(response *types.Sta
 }
 
 // convertOriginalToExtended converts original StockInfo to StockInfoExtended
-func (s *StockApiIntegration) convertOriginalToExtended(originalInfo *data.StockInfo, stockCode string) *models.StockInfoExtended {
-	return &models.StockInfoExtended{
+func (s *StockApiIntegration) convertOriginalToExtended(originalInfo *data.StockInfo, stockCode string) *data.StockInfoExtended {
+	return &data.StockInfoExtended{
 		StockInfo:   *originalInfo,
 		TSCode:      stockCode,
 		Latency:     0, // No latency info from original API

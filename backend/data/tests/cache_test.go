@@ -1,5 +1,5 @@
 // backend/data/tests/cache_test.go
-package cache_test
+package data_test
 
 import (
 	"testing"

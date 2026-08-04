@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"go-stock/backend/data/types"
 	"go-stock/backend/logger"
 )
 
