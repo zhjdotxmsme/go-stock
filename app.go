@@ -9,14 +9,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-stock/backend/agent"
-	"go-stock/backend/agent/multi"
 	"go-stock/backend/agent/commodity"
-	"go-stock/backend/agent/strategy"
+	"go-stock/backend/agent/multi"
 	"go-stock/backend/agent/skill_analysis"
+	"go-stock/backend/agent/strategy"
 	"go-stock/backend/agent/tools"
 	"go-stock/backend/data"
 	"go-stock/backend/data/notify"
 	"go-stock/backend/db"
+	"go-stock/backend/handler"
 	"go-stock/backend/logger"
 	"go-stock/backend/machineid"
 	"go-stock/backend/models"
@@ -44,21 +45,25 @@ import (
 
 // App struct
 type App struct {
-	ctx                context.Context
-	cache              *freecache.Cache
-	cron               *cron.Cron
-	cronEntrys         map[string]cron.EntryID
-	cronEntrysMu       sync.Mutex
-	AiTools            []data.Tool
-	SponsorInfo        map[string]any
-	VipLevel           int64
-	summaryMu          sync.Mutex
-	summaryCancel      context.CancelFunc
-	agentMu            sync.Mutex
-	agentCancel        context.CancelFunc
-	stockAlertMu       sync.Mutex
-	stockAlertLastSent map[string]time.Time
-	priceAtAlertReset  map[string]float64
+	ctx                 context.Context
+	cache               *freecache.Cache
+	cron                *cron.Cron
+	cronEntrys          map[string]cron.EntryID
+	cronEntrysMu        sync.Mutex
+	AiTools             []data.Tool
+	SponsorInfo         map[string]any
+	VipLevel            int64
+	summaryMu           sync.Mutex
+	summaryCancel       context.CancelFunc
+	agentMu             sync.Mutex
+	agentCancel         context.CancelFunc
+	stockAlertMu        sync.Mutex
+	stockAlertLastSent  map[string]time.Time
+	priceAtAlertReset   map[string]float64
+	notificationHandler *handler.NotificationHandler
+	fundHandler         *handler.FundHandler
+	commodityHandler    *handler.CommodityHandler
+	newsHandler         *handler.NewsHandler
 }
 
 // NewApp creates a new App application struct
@@ -69,7 +74,7 @@ func NewApp() *App {
 	c.Start()
 	var tools []data.Tool
 	tools = data.Tools(tools)
-	return &App{
+	app := &App{
 		cache:              cache,
 		cron:               c,
 		cronEntrys:         make(map[string]cron.EntryID),
@@ -77,6 +82,11 @@ func NewApp() *App {
 		stockAlertLastSent: make(map[string]time.Time),
 		priceAtAlertReset:  make(map[string]float64),
 	}
+	app.notificationHandler = handler.NewNotificationHandler(cache, func() context.Context { return app.ctx })
+	app.fundHandler = handler.NewFundHandler()
+	app.commodityHandler = handler.NewCommodityHandler()
+	app.newsHandler = handler.NewNewsHandler()
+	return app
 }
 
 func (a *App) setCronEntry(key string, id cron.EntryID) {
@@ -1847,68 +1857,17 @@ func (a *App) SetStockSort(sort int64, stockCode string) {
 	data.NewStockDataApi().SetStockSort(sort, stockCode)
 }
 func (a *App) SendDingDingMessage(message string, stockCode string) string {
-	ttl, _ := a.cache.TTL([]byte(stockCode))
-	//logger.SugaredLogger.Infof("stockCode %s ttl:%d", stockCode, ttl)
-	if ttl > 0 {
-		return ""
-	}
-	err := a.cache.Set([]byte(stockCode), []byte("1"), 60*5)
-	if err != nil {
-		logger.SugaredLogger.Errorf("set cache error:%s", err.Error())
-		return ""
-	}
-	return data.NewDingDingAPI().SendDingDingMessage(message)
+	return a.notificationHandler.SendDingDingMessage(message, stockCode)
 }
 
 // SendDingDingMessageByType msgType 报警类型: 1 涨跌报警;2 股价报警 3 成本价报警
 func (a *App) SendDingDingMessageByType(message string, stockCode string, msgType int) string {
-
-	if strutil.HasPrefixAny(stockCode, []string{"SZ", "SH", "sh", "sz"}) && (!isTradingTime(time.Now())) {
-		return "非A股交易时间"
-	}
-	if strutil.HasPrefixAny(stockCode, []string{"hk", "HK"}) && (!IsHKTradingTime(time.Now())) {
-		return "非港股交易时间"
-	}
-	if strutil.HasPrefixAny(stockCode, []string{"us", "US", "gb_"}) && (!IsUSTradingTime(time.Now())) {
-		return "非美股交易时间"
-	}
-
-	ttl, _ := a.cache.TTL([]byte(stockCode))
-	if ttl > 0 {
-		return ""
-	}
-	err := a.cache.Set([]byte(stockCode), []byte("1"), getMsgTypeTTL(msgType))
-	if err != nil {
-		logger.SugaredLogger.Errorf("set cache error:%s", err.Error())
-		return ""
-	}
-	stockInfo := &data.StockInfo{}
-	db.Dao.Model(stockInfo).Where("code = ?", stockCode).First(stockInfo)
-	go data.NewAlertWindowsApi("go-stock消息通知", getMsgTypeName(msgType), GenNotificationMsg(stockInfo), "").SendNotification()
-
-	go runtime.EventsEmit(a.ctx, "newsPush", map[string]any{
-		"time":    "📈 " + getMsgTypeName(msgType),
-		"isRed":   true,
-		"source":  "go-stock",
-		"content": GenNotificationMsg(stockInfo),
-	})
-
-	return data.NewDingDingAPI().SendDingDingMessage(message)
+	return a.notificationHandler.SendDingDingMessageByType(message, stockCode, msgType)
 }
 
 // SendTestNotification sends a test notification to the specified channel.
 func (a *App) SendTestNotification(channel string) string {
-	manager := notify.NewManager()
-	msg := notify.Message{
-		Title:   "go-stock 测试通知",
-		Content: fmt.Sprintf("这是一条来自 go-stock 的测试通知\n\n渠道: %s\n时间: %s\n\n如果收到此消息，说明推送配置正确。", channel, time.Now().Format("2006-01-02 15:04:05")),
-	}
-	err := manager.SendTo(a.ctx, notify.ChannelType(channel), msg)
-	if err != nil {
-		logger.SugaredLogger.Errorf("SendTestNotification failed: %v", err)
-		return fmt.Sprintf("发送失败: %v", err)
-	}
-	return "测试通知发送成功！"
+	return a.notificationHandler.SendTestNotification(channel)
 }
 
 func (a *App) NewChatStream(stock string, stockCode string, question string, aiConfigId int, sysPromptId *int, enableTools bool, think bool, agentMode string, strategyCode string) {
@@ -2170,46 +2129,34 @@ func (a *App) ShareText(text, title string) string {
 }
 
 func (a *App) GetfundList(key string) []data.FundBasic {
-	return data.NewFundApi().GetFundList(key)
+	return a.fundHandler.GetfundList(key)
 }
 func (a *App) GetFollowedFund() []data.FollowedFund {
-	return data.NewFundApi().GetFollowedFund()
+	return a.fundHandler.GetFollowedFund()
 }
 func (a *App) FollowFund(fundCode string) string {
-	return data.NewFundApi().FollowFund(fundCode)
+	return a.fundHandler.FollowFund(fundCode)
 }
 func (a *App) UnFollowFund(fundCode string) string {
-	return data.NewFundApi().UnFollowFund(fundCode)
+	return a.fundHandler.UnFollowFund(fundCode)
 }
 func (a *App) GetFundKLine(fundCode string, klt string, limit int) *data.KLineSourceResult {
-	return data.NewFundKLineApi().GetFundKLineWithFallback(fundCode, klt, limit)
+	return a.fundHandler.GetFundKLine(fundCode, klt, limit)
 }
 func (a *App) GetFundHistoryNetValue(fundCode string, pageSize int, startDate string, endDate string) []data.FundHistoryNetValue {
-	res, _ := data.NewFundApi().GetFundHistoryNetValue(fundCode, 1, pageSize, startDate, endDate)
-	if res == nil {
-		return []data.FundHistoryNetValue{}
-	}
-	return res
+	return a.fundHandler.GetFundHistoryNetValue(fundCode, pageSize, startDate, endDate)
 }
 func (a *App) GetFundTop10Holdings(fundCode string) []data.FundHoldingStock {
-	res, err := data.NewFundApi().GetFundTop10Holdings(fundCode)
-	if err != nil || res == nil {
-		return []data.FundHoldingStock{}
-	}
-	return res
+	return a.fundHandler.GetFundTop10Holdings(fundCode)
 }
 func (a *App) GetFundRanking(marketType, fundType, sortField, sortOrder string, pageIndex, pageSize int) *data.FundRankingResult {
-	res, err := data.NewFundApi().GetFundRanking(marketType, fundType, sortField, sortOrder, pageIndex, pageSize)
-	if err != nil || res == nil {
-		return &data.FundRankingResult{}
-	}
-	return res
+	return a.fundHandler.GetFundRanking(marketType, fundType, sortField, sortOrder, pageIndex, pageSize)
 }
 func (a *App) SearchFundCodes(keyword string) []data.FundSearchItem {
-	return data.NewFundApi().SearchFundCodes(keyword)
+	return a.fundHandler.SearchFundCodes(keyword)
 }
 func (a *App) GetFollowedFundPaged(pageIndex, pageSize int, keyword string) *data.FollowedFundPagedResult {
-	return data.NewFundApi().GetFollowedFundPaged(pageIndex, pageSize, keyword)
+	return a.fundHandler.GetFollowedFundPaged(pageIndex, pageSize, keyword)
 }
 func (a *App) SaveAsMarkdown(stockCode, stockName string) string {
 	res := data.NewDeepSeekOpenAi(a.ctx, 0).GetAIResponseResult(stockCode)
@@ -2490,31 +2437,23 @@ func (a *App) GetTdxSymbolBelongBoard(stockCode string) *[]data.MACBelongBoardIt
 }
 
 func (a *App) GetTelegraphList(source string) *[]*models.Telegraph {
-	telegraphs := data.NewMarketNewsApi().GetTelegraphList(source)
-	return telegraphs
+	return a.newsHandler.GetTelegraphList(source)
 }
 
 func (a *App) ReFleshTelegraphList(source string) *[]*models.Telegraph {
-	//data.NewMarketNewsApi().GetNewTelegraph(30)
-	go data.NewMarketNewsApi().TelegraphList(30)
-	go data.NewMarketNewsApi().GetSinaNews(30)
-	go data.NewMarketNewsApi().TradingViewNews()
-	telegraphs := data.NewMarketNewsApi().GetTelegraphList(source)
-	return telegraphs
+	return a.newsHandler.ReFleshTelegraphList(source)
 }
 
 func (a *App) GetNewsBySector(sectorID string, limit int) (*data.SectorNewsResponse, error) {
-	api := data.NewMarketNewsApi()
-	return api.GetNewsBySector(sectorID, limit)
+	return a.newsHandler.GetNewsBySector(sectorID, limit)
 }
 
 func (a *App) GetStockRelatedNews(code string, limit int) ([]data.SectorNewsItem, error) {
-	api := data.NewMarketNewsApi()
-	return api.GetStockRelatedNews(code, limit)
+	return a.newsHandler.GetStockRelatedNews(code, limit)
 }
 
 func (a *App) GetSectors() []data.Sector {
-	return data.NewsSectors
+	return a.newsHandler.GetSectors()
 }
 
 func (a *App) GlobalStockIndexes() map[string]any {

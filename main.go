@@ -253,6 +253,10 @@ func main() {
 			data.NewDailyPickService(),
 			dailyPickBacktestService.NewDailyPickBacktestService(),
 			handler.NewStockHandler(),
+			app.notificationHandler,
+			app.fundHandler,
+			app.commodityHandler,
+			app.newsHandler,
 		},
 		// Windows platform specific options
 		Windows: &windows.Options{

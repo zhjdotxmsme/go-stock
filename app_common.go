@@ -568,74 +568,45 @@ func (a *App) GetAllConceptCodes() []map[string]string {
 }
 
 func (a *App) GetCommodityKLine(code string, period string, count int) ([]datasource.KLineBar, error) {
-	api := data.NewCommodityApi()
-	return api.GetKLine(code, period, count)
+	return a.commodityHandler.GetCommodityKLine(code, period, count)
 }
 
 func (a *App) GetCommodityKLineIntl(code string, period string, count int) ([]datasource.KLineBar, error) {
-	api := data.NewCommodityApi()
-	return api.GetKLineIntl(code, period, count)
+	return a.commodityHandler.GetCommodityKLineIntl(code, period, count)
 }
 
 func (a *App) GetCommodityQuote(code string) (*datasource.QuoteData, error) {
-	api := data.NewCommodityApi()
-	return api.GetQuote(code)
+	return a.commodityHandler.GetCommodityQuote(code)
 }
 
 func (a *App) GetCommodityQuoteIntl(code string) (*datasource.QuoteData, error) {
-	api := data.NewCommodityApi()
-	return api.GetQuoteIntl(code)
+	return a.commodityHandler.GetCommodityQuoteIntl(code)
 }
 
 func (a *App) GetCommodityRegistry() []models.CommodityAsset {
-	return data.CommodityRegistry
+	return a.commodityHandler.GetCommodityRegistry()
 }
 
 func (a *App) GetCommodityTechnicals(code string, period string) (string, error) {
-	output, err := data.GetCommodityTechnicalsOutput(code, period)
-	if err != nil {
-		return "", err
-	}
-	b, _ := json.Marshal(output)
-	return string(b), nil
+	return a.commodityHandler.GetCommodityTechnicals(code, period)
 }
 
 func (a *App) GetCommodityFundamentals(code string) (string, error) {
-	output, err := data.GetCommodityFundamentalsOutput(code)
-	if err != nil {
-		return "", err
-	}
-	b, _ := json.Marshal(output)
-	return string(b), nil
+	return a.commodityHandler.GetCommodityFundamentals(code)
 }
 
 func (a *App) GetCommodityCorrelation(primaryCode string, secondaryCodes string) (string, error) {
-	list := []string{}
-	for _, s := range strings.Split(secondaryCodes, ",") {
-		list = append(list, strings.TrimSpace(s))
-	}
-	output, err := data.GetCorrelationOutput(primaryCode, list)
-	if err != nil {
-		return "", err
-	}
-	b, _ := json.Marshal(output)
-	return string(b), nil
+	return a.commodityHandler.GetCommodityCorrelation(primaryCode, secondaryCodes)
 }
 
 func (a *App) GetMacroIndicatorsEnhanced() (*data.MacroSnapshotEnhanced, error) {
-	api := data.NewCommodityApi()
-	return api.GetMacroIndicatorsEnhanced()
+	return a.commodityHandler.GetMacroIndicatorsEnhanced()
 }
 
 func (a *App) GetCommodityReport(codes string, reportType string) (string, error) {
-	output, err := data.GetCommodityReportOutput(codes, reportType)
-	if err != nil {
-		return "", err
-	}
-	b, _ := json.Marshal(output)
-	return string(b), nil
+	return a.commodityHandler.GetCommodityReport(codes, reportType)
 }
 
 func (a *App) GetTradableCommodities() []models.CommodityAsset {
-	return data.TradableCommodities()
+	return a.commodityHandler.GetTradableCommodities()
 }
