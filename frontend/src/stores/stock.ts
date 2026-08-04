@@ -6,24 +6,39 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
+/** 股票相关状态 */
+export interface StockState {
+  /** 自选股列表 */
+  stockList: any[]
+  /** 群组列表 */
+  groupList: any[]
+  /** 实时盈亏 */
+  realtimeProfit: number
+  /** 当前激活的群组 */
+  activeGroupId: number
+  activeGroupName: string
+  /** 股票详情缓存 */
+  stockDetailCache: Map<string, any>
+}
+
 export const useStockStore = defineStore('stock', () => {
   // ========== 状态 ==========
 
   /** 自选股列表 */
-  const stockList = ref([])
+  const stockList = ref<any[]>([])
 
   /** 群组列表 */
-  const groupList = ref([])
+  const groupList = ref<any[]>([])
 
   /** 实时盈亏 */
-  const realtimeProfit = ref(0)
+  const realtimeProfit = ref<number>(0)
 
   /** 当前激活的群组 */
-  const activeGroupId = ref(0)
-  const activeGroupName = ref('全部')
+  const activeGroupId = ref<number>(0)
+  const activeGroupName = ref<string>('全部')
 
   /** 股票详情缓存 */
-  const stockDetailCache = ref(new Map())
+  const stockDetailCache = ref<Map<string, any>>(new Map())
 
   // ========== 计算属性 ==========
 
@@ -46,28 +61,28 @@ export const useStockStore = defineStore('stock', () => {
   /**
    * 设置股票列表
    */
-  function setStockList(list) {
+  function setStockList(list: any[]): void {
     stockList.value = list
   }
 
   /**
    * 设置群组列表
    */
-  function setGroupList(list) {
+  function setGroupList(list: any[]): void {
     groupList.value = list
   }
 
   /**
    * 更新实时盈亏
    */
-  function setRealtimeProfit(value) {
+  function setRealtimeProfit(value: number): void {
     realtimeProfit.value = value
   }
 
   /**
    * 切换活跃群组
    */
-  function setActiveGroup(groupId, groupName) {
+  function setActiveGroup(groupId: number, groupName: string): void {
     activeGroupId.value = groupId
     activeGroupName.value = groupName
   }
@@ -75,7 +90,7 @@ export const useStockStore = defineStore('stock', () => {
   /**
    * 添加股票到自选
    */
-  function addStock(stock) {
+  function addStock(stock: any): void {
     const exists = stockList.value.find(s => s.code === stock.code)
     if (!exists) {
       stockList.value.push(stock)
@@ -85,7 +100,7 @@ export const useStockStore = defineStore('stock', () => {
   /**
    * 从自选移除股票
    */
-  function removeStock(code) {
+  function removeStock(code: string): void {
     const index = stockList.value.findIndex(s => s.code === code)
     if (index > -1) {
       stockList.value.splice(index, 1)
@@ -95,7 +110,7 @@ export const useStockStore = defineStore('stock', () => {
   /**
    * 更新股票价格
    */
-  function updateStockPrice(code, price) {
+  function updateStockPrice(code: string, price: number): void {
     const stock = stockList.value.find(s => s.code === code)
     if (stock) {
       stock.price = price
@@ -105,7 +120,7 @@ export const useStockStore = defineStore('stock', () => {
   /**
    * 缓存股票详情
    */
-  function cacheStockDetail(code, detail) {
+  function cacheStockDetail(code: string, detail: any): void {
     stockDetailCache.value.set(code, {
       data: detail,
       timestamp: Date.now(),
@@ -115,7 +130,7 @@ export const useStockStore = defineStore('stock', () => {
   /**
    * 获取缓存的股票详情
    */
-  function getCachedStockDetail(code, maxAge = 5 * 60 * 1000) {
+  function getCachedStockDetail(code: string, maxAge: number = 5 * 60 * 1000): any {
     const cached = stockDetailCache.value.get(code)
     if (!cached) return null
     if (Date.now() - cached.timestamp > maxAge) {

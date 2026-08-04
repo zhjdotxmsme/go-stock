@@ -6,40 +6,68 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
+/** 设置相关状态 */
+export interface SettingsState {
+  /** Tushare Token */
+  tushareToken: string
+  /** 推送设置 */
+  localPushEnable: boolean
+  dingPushEnable: boolean
+  dingRobot: string
+  /** 功能开关 */
+  updateBasicInfoOnStart: boolean
+  enableNews: boolean
+  enableFund: boolean
+  enableAgent: boolean
+  enableDanmu: boolean
+  /** 刷新间隔 (ms) */
+  refreshInterval: number
+  /** AI 配置 */
+  aiConfigs: any[]
+  activeAiConfigId: number
+  /** 浏览器设置 */
+  browserPath: string
+  browserPoolSize: number
+  /** 主题设置 */
+  darkTheme: boolean
+  /** 升级提示 */
+  sponsorCode: string
+}
+
 export const useSettingsStore = defineStore('settings', () => {
   // ========== 状态 ==========
 
   /** Tushare Token */
-  const tushareToken = ref('')
+  const tushareToken = ref<string>('')
 
   /** 推送设置 */
-  const localPushEnable = ref(false)
-  const dingPushEnable = ref(false)
-  const dingRobot = ref('')
+  const localPushEnable = ref<boolean>(false)
+  const dingPushEnable = ref<boolean>(false)
+  const dingRobot = ref<string>('')
 
   /** 功能开关 */
-  const updateBasicInfoOnStart = ref(false)
-  const enableNews = ref(false)
-  const enableFund = ref(false)
-  const enableAgent = ref(false)
-  const enableDanmu = ref(false)
+  const updateBasicInfoOnStart = ref<boolean>(false)
+  const enableNews = ref<boolean>(false)
+  const enableFund = ref<boolean>(false)
+  const enableAgent = ref<boolean>(false)
+  const enableDanmu = ref<boolean>(false)
 
   /** 刷新间隔 (ms) */
-  const refreshInterval = ref(3000)
+  const refreshInterval = ref<number>(3000)
 
   /** AI 配置 */
-  const aiConfigs = ref([])
-  const activeAiConfigId = ref(0)
+  const aiConfigs = ref<any[]>([])
+  const activeAiConfigId = ref<number>(0)
 
   /** 浏览器设置 */
-  const browserPath = ref('')
-  const browserPoolSize = ref(3)
+  const browserPath = ref<string>('')
+  const browserPoolSize = ref<number>(3)
 
   /** 主题设置 */
-  const darkTheme = ref(false)
+  const darkTheme = ref<boolean>(false)
 
   /** 升级提示 */
-  const sponsorCode = ref('')
+  const sponsorCode = ref<string>('')
 
   // ========== 计算属性 ==========
 
@@ -59,7 +87,7 @@ export const useSettingsStore = defineStore('settings', () => {
   /**
    * 加载设置
    */
-  function loadSettings(settings) {
+  function loadSettings(settings: any): void {
     if (!settings) return
 
     // 基础设置
@@ -94,7 +122,7 @@ export const useSettingsStore = defineStore('settings', () => {
   /**
    * 导出设置对象
    */
-  function exportSettings() {
+  function exportSettings(): Record<string, any> {
     return {
       tushareToken: tushareToken.value,
       localPushEnable: localPushEnable.value,
@@ -118,21 +146,21 @@ export const useSettingsStore = defineStore('settings', () => {
   /**
    * 设置活跃 AI 配置
    */
-  function setActiveAiConfig(id) {
+  function setActiveAiConfig(id: number): void {
     activeAiConfigId.value = id
   }
 
   /**
    * 添加 AI 配置
    */
-  function addAiConfig(config) {
+  function addAiConfig(config: any): void {
     aiConfigs.value.push(config)
   }
 
   /**
    * 删除 AI 配置
    */
-  function removeAiConfig(id) {
+  function removeAiConfig(id: number): void {
     const index = aiConfigs.value.findIndex(c => c.ID === id)
     if (index > -1) {
       aiConfigs.value.splice(index, 1)
@@ -142,7 +170,7 @@ export const useSettingsStore = defineStore('settings', () => {
   /**
    * 更新 AI 配置
    */
-  function updateAiConfig(id, updates) {
+  function updateAiConfig(id: number, updates: any): void {
     const config = aiConfigs.value.find(c => c.ID === id)
     if (config) {
       Object.assign(config, updates)

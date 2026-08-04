@@ -1,6 +1,6 @@
 /**
  * 导航配置 - 从 App.vue 中提取的菜单配置
- * 完整对齐 App.vue 的 14 个顶层菜单、13 个 market 子菜单、12 个 research 子菜单
+ * Phase 4 重构：消除研究中心臃肿父菜单，拆分为独立路由页面
  * 作为工厂函数提供，接受依赖注入以避免循环依赖
  */
 
@@ -572,241 +572,119 @@ export function createMenuOptions(deps) {
       show: false,
       icon: renderIcon(icons.Robot),
     },
-    // 11. 研究中心
+    // ===== 研究中心拆分 → 独立扁平菜单项（原 12 子 tab）=====
+    // 11. AI分析报告
     {
       label: () =>
-        h(
-          RouterLink,
-          {
-            to: {
-              name: 'research',
-              query: { name: '研究中心' },
-            },
-            onClick: () => {
-              activeKey.value = 'research'
-              setTimeout(() => {
-                EventsEmit('changeResearchTab', { ID: 0, name: 'AI分析报告' })
-              }, 100)
-            },
-          },
-          { default: () => '研究中心' }
-        ),
-      key: 'research',
-      icon: renderIcon(icons.FlaskOutline),
-      children: [
-        // research1 - AI分析报告
-        {
-          label: () =>
-            h(
-              RouterLink,
-              {
-                to: { name: 'research', query: { name: 'AI分析报告' } },
-                onClick: () => {
-                  activeKey.value = 'research'
-                  setTimeout(() => {
-                    EventsEmit('changeResearchTab', { ID: 0, name: 'AI分析报告' })
-                  }, 100)
-                },
-              },
-              { default: () => 'AI分析报告' }
-            ),
-          key: 'research1',
-          icon: renderIcon(icons.ReportAnalytics),
-        },
-        // research2 - 股票推荐记录
-        {
-          label: () =>
-            h(
-              RouterLink,
-              {
-                to: { name: 'research', query: { name: '股票推荐记录' } },
-                onClick: () => {
-                  activeKey.value = 'research'
-                  setTimeout(() => {
-                    EventsEmit('changeResearchTab', { ID: 1, name: '股票推荐记录' })
-                  }, 100)
-                },
-              },
-              { default: () => '股票推荐记录' }
-            ),
-          key: 'research2',
-          icon: renderIcon(icons.Star),
-        },
-        // stockChanges - 异动监控
-        {
-          label: () =>
-            h(
-              RouterLink,
-              {
-                to: { name: 'research', query: { name: '异动监控' } },
-                onClick: () => {
-                  activeKey.value = 'research'
-                  setTimeout(() => {
-                    EventsEmit('changeResearchTab', { ID: 2, name: '异动监控' })
-                  }, 100)
-                },
-              },
-              { default: () => '异动监控' }
-            ),
-          key: 'stockChanges',
-          icon: renderIcon(icons.TrendingUp),
-        },
-        // uplimitLadder - 涨停梯队
-        {
-          label: () =>
-            h(
-              RouterLink,
-              {
-                to: { name: 'research', query: { name: '涨停梯队' } },
-                onClick: () => {
-                  activeKey.value = 'research'
-                  setTimeout(() => {
-                    EventsEmit('changeResearchTab', { ID: 9, name: '涨停梯队' })
-                  }, 100)
-                },
-              },
-              { default: () => '涨停梯队' }
-            ),
-          key: 'uplimitLadder',
-          icon: renderIcon(icons.LocalFireDepartmentRound),
-        },
-        // research3 - 提示词模板
-        {
-          label: () =>
-            h(
-              RouterLink,
-              {
-                to: { name: 'research', query: { name: '提示词模板' } },
-                onClick: () => {
-                  activeKey.value = 'research'
-                  setTimeout(() => {
-                    EventsEmit('changeResearchTab', { ID: 3, name: '提示词模板' })
-                  }, 100)
-                },
-              },
-              { default: () => '提示词模板' }
-            ),
-          key: 'research3',
-          icon: renderIcon(icons.Prompt),
-        },
-        // research4 - 形态选股
-        {
-          label: () =>
-            h(
-              RouterLink,
-              {
-                to: { name: 'research', query: { name: '形态选股' } },
-                onClick: () => {
-                  activeKey.value = 'research'
-                  setTimeout(() => {
-                    EventsEmit('changeResearchTab', { ID: 3, name: '形态选股' })
-                  }, 100)
-                },
-              },
-              { default: () => '形态选股' }
-            ),
-          key: 'research4',
-          icon: renderIcon(icons.SearchOutline),
-        },
-        // research_select_stock - 指标选股
-        {
-          label: () =>
-            h(
-              RouterLink,
-              {
-                to: { name: 'research', query: { name: '指标选股' } },
-                onClick: () => {
-                  activeKey.value = 'research'
-                  setTimeout(() => {
-                    EventsEmit('changeResearchTab', { ID: 0, name: '指标选股' })
-                  }, 100)
-                },
-              },
-              { default: () => '指标选股' }
-            ),
-          key: 'research_select_stock',
-          icon: renderIcon(icons.BoxSearch20Regular),
-        },
-        // research5 - 定时任务
-        {
-          label: () =>
-            h(
-              RouterLink,
-              {
-                to: { name: 'research', query: { name: '定时任务' } },
-                onClick: () => {
-                  activeKey.value = 'research'
-                  setTimeout(() => {
-                    EventsEmit('changeResearchTab', { ID: 5, name: '定时任务' })
-                  }, 100)
-                },
-              },
-              { default: () => '定时任务' }
-            ),
-          key: 'research5',
-          icon: renderIcon(icons.TimeOutline),
-        },
-        // research6 - 交易日志(beta)
-        {
-          label: () =>
-            h(
-              RouterLink,
-              {
-                to: { name: 'research', query: { name: '交易日志' } },
-                onClick: () => {
-                  activeKey.value = 'research'
-                  setTimeout(() => {
-                    EventsEmit('changeResearchTab', { ID: 6, name: '交易日志' })
-                  }, 100)
-                },
-              },
-              { default: () => '交易日志(beta)' }
-            ),
-          key: 'research6',
-          icon: renderIcon(icons.MoneyCollectOutlined),
-        },
-        // mcpServers - MCP服务
-        {
-          label: () =>
-            h(
-              RouterLink,
-              {
-                to: { name: 'research' },
-                onClick: () => {
-                  activeKey.value = 'research'
-                  setTimeout(() => {
-                    EventsEmit('changeResearchTab', { ID: 7, name: 'MCP服务' })
-                  }, 100)
-                },
-              },
-              { default: () => 'MCP服务' }
-            ),
-          key: 'mcpServers',
-          icon: renderIcon(icons.ServerOutline),
-        },
-        // skills - 技能管理
-        {
-          label: () =>
-            h(
-              RouterLink,
-              {
-                to: { name: 'research' },
-                onClick: () => {
-                  activeKey.value = 'research'
-                  setTimeout(() => {
-                    EventsEmit('changeResearchTab', { ID: 8, name: '技能管理' })
-                  }, 100)
-                },
-              },
-              { default: () => '技能管理' }
-            ),
-          key: 'skills',
-          icon: renderIcon(icons.FlashOutline),
-          show: true,
-        },
-      ],
+        h(RouterLink, {
+          to: { name: 'researchReports' },
+          onClick: () => { activeKey.value = 'researchReports' },
+        }, { default: () => 'AI分析报告' }),
+      key: 'researchReports',
+      icon: renderIcon(icons.ReportAnalytics),
     },
-    // 12. 设置
+    // 12. 股票推荐
+    {
+      label: () =>
+        h(RouterLink, {
+          to: { name: 'researchRecommends' },
+          onClick: () => { activeKey.value = 'researchRecommends' },
+        }, { default: () => '股票推荐' }),
+      key: 'researchRecommends',
+      icon: renderIcon(icons.Star),
+    },
+    // 13. 异动监控
+    {
+      label: () =>
+        h(RouterLink, {
+          to: { name: 'researchChanges' },
+          onClick: () => { activeKey.value = 'researchChanges' },
+        }, { default: () => '异动监控' }),
+      key: 'researchChanges',
+      icon: renderIcon(icons.TrendingUp),
+    },
+    // 14. 涨停梯队
+    {
+      label: () =>
+        h(RouterLink, {
+          to: { name: 'researchUplimit' },
+          onClick: () => { activeKey.value = 'researchUplimit' },
+        }, { default: () => '涨停梯队' }),
+      key: 'researchUplimit',
+      icon: renderIcon(icons.LocalFireDepartmentRound),
+    },
+    // 15. 提示词
+    {
+      label: () =>
+        h(RouterLink, {
+          to: { name: 'researchPrompts' },
+          onClick: () => { activeKey.value = 'researchPrompts' },
+        }, { default: () => '提示词' }),
+      key: 'researchPrompts',
+      icon: renderIcon(icons.Prompt),
+    },
+    // 16. 形态选股
+    {
+      label: () =>
+        h(RouterLink, {
+          to: { name: 'analysisPattern' },
+          onClick: () => { activeKey.value = 'analysisPattern' },
+        }, { default: () => '形态选股' }),
+      key: 'analysisPattern',
+      icon: renderIcon(icons.SearchOutline),
+    },
+    // 17. 指标选股
+    {
+      label: () =>
+        h(RouterLink, {
+          to: { name: 'analysisScreening' },
+          onClick: () => { activeKey.value = 'analysisScreening' },
+        }, { default: () => '指标选股' }),
+      key: 'analysisScreening',
+      icon: renderIcon(icons.BoxSearch20Regular),
+    },
+    // 18. 定时任务
+    {
+      label: () =>
+        h(RouterLink, {
+          to: { name: 'systemCron' },
+          onClick: () => { activeKey.value = 'systemCron' },
+        }, { default: () => '定时任务' }),
+      key: 'systemCron',
+      icon: renderIcon(icons.TimeOutline),
+    },
+    // 19. 交易日志
+    {
+      label: () =>
+        h(RouterLink, {
+          to: { name: 'systemTrading' },
+          onClick: () => { activeKey.value = 'systemTrading' },
+        }, { default: () => '交易日志' }),
+      key: 'systemTrading',
+      icon: renderIcon(icons.MoneyCollectOutlined),
+    },
+    // 20. MCP服务
+    {
+      label: () =>
+        h(RouterLink, {
+          to: { name: 'systemMcp' },
+          onClick: () => { activeKey.value = 'systemMcp' },
+        }, { default: () => 'MCP服务' }),
+      key: 'systemMcp',
+      icon: renderIcon(icons.ServerOutline),
+    },
+    // 21. 技能管理
+    {
+      label: () =>
+        h(RouterLink, {
+          to: { name: 'systemSkills' },
+          onClick: () => { activeKey.value = 'systemSkills' },
+        }, { default: () => '技能管理' }),
+      key: 'systemSkills',
+      icon: renderIcon(icons.FlashOutline),
+    },
+    // ===== 原有辅助菜单 =====
+    // 22. 设置
     {
       label: () =>
         h(
@@ -825,7 +703,7 @@ export function createMenuOptions(deps) {
       key: 'settings',
       icon: renderIcon(icons.SettingsOutline),
     },
-    // 13. 全屏 (隐藏)
+    // 23. 全屏 (隐藏)
     {
       show: false,
       label: () => h('a', {
@@ -836,7 +714,7 @@ export function createMenuOptions(deps) {
       key: 'full',
       icon: renderIcon(icons.ExpandOutline),
     },
-    // 14. 隐藏至托盘区
+    // 24. 隐藏至托盘区
     {
       label: () => h('a', {
         href: '#',
@@ -845,7 +723,7 @@ export function createMenuOptions(deps) {
       key: 'hide',
       icon: renderIcon(icons.SlideHide24Filled),
     },
-    // 15. 退出程序
+    // 25. 退出程序
     {
       label: () => h('a', {
         href: '#',

@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@tdesign-vue-next/auto-import-resolver": "^0.1.6",
+    "@types/node": "^26.1.2",
     "@vicons/antd": "^0.13.0",
     "@vicons/carbon": "^0.13.0",
     "@vicons/fa": "^0.13.0",
@@ -43,10 +44,12 @@
     "html-docx-js-typescript": "^0.1.5",
     "less": "^4.6.4",
     "naive-ui": "^2.44.1",
+    "typescript": "^7.0.2",
     "unplugin-auto-import": "^20.3.0",
     "unplugin-vue-components": "^29.2.0",
     "vfonts": "^0.0.3",
-    "vite": "7.3.3"
+    "vite": "7.3.3",
+    "vue-tsc": "^3.3.9"
   },
   "keywords": [
     "AI赋能股票分析",

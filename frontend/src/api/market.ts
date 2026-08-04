@@ -13,7 +13,7 @@ import * as App from '../../wailsjs/go/main/App'
  * @param {number} count - 数量
  * @returns {Promise<ApiResult>}
  */
-export async function getMarketNews(count = 20) {
+export async function getMarketNews(count: number = 20): Promise<any> {
   return callApi(App.GetMarketNews, count)
 }
 
@@ -21,7 +21,7 @@ export async function getMarketNews(count = 20) {
  * 获取全球股指
  * @returns {Promise<ApiResult>}
  */
-export async function getGlobalIndices() {
+export async function getGlobalIndices(): Promise<any> {
   return callApi(App.GetGlobalStockIndices)
 }
 
@@ -31,7 +31,7 @@ export async function getGlobalIndices() {
  * @param {number} count - 数量
  * @returns {Promise<ApiResult>}
  */
-export async function getIndustryRank(sort = '', count = 50) {
+export async function getIndustryRank(sort: string = '', count: number = 50): Promise<any> {
   return callApi(App.GetIndustryRank, sort, count)
 }
 
@@ -40,7 +40,7 @@ export async function getIndustryRank(sort = '', count = 50) {
  * @param {number} count - 数量
  * @returns {Promise<ApiResult>}
  */
-export async function getStockMoneyFlow(count = 50) {
+export async function getStockMoneyFlow(count: number = 50): Promise<any> {
   return callApi(App.GetStockMoneyFlow, count)
 }
 
@@ -48,7 +48,7 @@ export async function getStockMoneyFlow(count = 50) {
  * 获取板块资金流向
  * @returns {Promise<ApiResult>}
  */
-export async function getSectorMoneyFlow() {
+export async function getSectorMoneyFlow(): Promise<any> {
   return callApi(App.GetSectorMoneyFlow)
 }
 
@@ -57,7 +57,7 @@ export async function getSectorMoneyFlow() {
  * @param {string} date - 日期
  * @returns {Promise<ApiResult>}
  */
-export async function getLongHuBang(date = '') {
+export async function getLongHuBang(date: string = ''): Promise<any> {
   return callApi(App.GetLongHuBang, date)
 }
 
@@ -72,7 +72,7 @@ export async function getLongHuBang(date = '') {
  * @param {string} arg7
  * @returns {Promise<ApiResult>}
  */
-export async function summaryStockNews(stockCode, count, template, arg4, arg5, arg6, arg7) {
+export async function summaryStockNews(stockCode: string, count: number, template: any, arg4: boolean, arg5: boolean, arg6: string, arg7: string): Promise<any> {
   return callApi(App.SummaryStockNews, stockCode, count, template, arg4, arg5, arg6, arg7)
 }
 
@@ -80,7 +80,7 @@ export async function summaryStockNews(stockCode, count, template, arg4, arg5, a
  * 中止股票新闻概括
  * @returns {Promise<ApiResult>}
  */
-export async function abortSummaryStockNews() {
+export async function abortSummaryStockNews(): Promise<any> {
   return callApi(App.AbortSummaryStockNews)
 }
 
@@ -94,19 +94,19 @@ export async function abortSummaryStockNews() {
  * @param {string} options.type - 异动类型
  * @returns {Promise<ApiResult>}
  */
-export async function getStockChanges(changeTypes, pageIndex, pageSize) {
+export async function getStockChanges(changeTypes: any, pageIndex: number, pageSize: number): Promise<any> {
   return callApi(App.GetStockChanges, changeTypes, pageIndex, pageSize)
 }
 
-export async function getStockChangeHistory(query) {
+export async function getStockChangeHistory(query: any): Promise<any> {
   return callApi(App.GetStockChangeHistory, query)
 }
 
-export async function saveStockChangesToHistory(types) {
+export async function saveStockChangesToHistory(types: any): Promise<any> {
   return callApi(App.SaveStockChangesToHistory, types)
 }
 
-export async function getAllStockChangesWithPaging(pageSize) {
+export async function getAllStockChangesWithPaging(pageSize: number): Promise<any> {
   return callApi(App.GetAllStockChangesWithPaging, pageSize)
 }
 
@@ -114,7 +114,7 @@ export async function getAllStockChangesWithPaging(pageSize) {
  * 获取异动统计
  * @returns {Promise<ApiResult>}
  */
-export async function getChangeStats() {
+export async function getChangeStats(): Promise<any> {
   return callApi(App.GetChangeStats)
 }
 
@@ -126,7 +126,7 @@ export async function getChangeStats() {
  * @param {number} offset - 偏移
  * @returns {Promise<ApiResult>}
  */
-export async function getTelegraph(count = 50, offset = 0) {
+export async function getTelegraph(count: number = 50, offset: number = 0): Promise<any> {
   return callApi(App.GetTelegraph, count, offset)
 }
 
@@ -135,7 +135,7 @@ export async function getTelegraph(count = 50, offset = 0) {
  * @param {string} source - 来源（财联社电报/新浪财经/外媒）
  * @returns {Promise<ApiResult>}
  */
-export async function getTelegraphList(source) {
+export async function getTelegraphList(source: string): Promise<any> {
   return callApi(App.GetTelegraphList, source)
 }
 
@@ -144,7 +144,7 @@ export async function getTelegraphList(source) {
  * @param {string} source - 来源
  * @returns {Promise<ApiResult>}
  */
-export async function refreshTelegraphList(source) {
+export async function refreshTelegraphList(source: string): Promise<any> {
   return callApi(App.ReFleshTelegraphList, source)
 }
 
@@ -152,7 +152,7 @@ export async function refreshTelegraphList(source) {
  * 获取全球股指行情
  * @returns {Promise<ApiResult>}
  */
-export async function getGlobalStockIndexes() {
+export async function getGlobalStockIndexes(): Promise<any> {
   return callApi(App.GlobalStockIndexes)
 }
 
@@ -161,7 +161,7 @@ export async function getGlobalStockIndexes() {
  * @param {Object} options - 查询选项
  * @returns {Promise<ApiResult>}
  */
-export async function getNewsList(options = {}) {
+export async function getNewsList(options: any = {}): Promise<any> {
   return callApi(App.GetNewsList, options)
 }
 
@@ -171,7 +171,7 @@ export async function getNewsList(options = {}) {
  * 检查是否交易时间
  * @returns {Promise<ApiResult>}
  */
-export async function isTradingTime() {
+export async function isTradingTime(): Promise<any> {
   return callApi(App.IsTradingTime)
 }
 
@@ -179,7 +179,7 @@ export async function isTradingTime() {
  * 检查是否港股交易时间
  * @returns {Promise<ApiResult>}
  */
-export async function isHKTradingTime() {
+export async function isHKTradingTime(): Promise<any> {
   return callApi(App.IsHKTradingTime)
 }
 
@@ -187,7 +187,7 @@ export async function isHKTradingTime() {
  * 检查是否美股交易时间
  * @returns {Promise<ApiResult>}
  */
-export async function isUSTradingTime() {
+export async function isUSTradingTime(): Promise<any> {
   return callApi(App.IsUSTradingTime)
 }
 
@@ -198,7 +198,7 @@ export async function isUSTradingTime() {
  * @param {string|Array} codes - 股票代码或代码数组
  * @returns {Promise<ApiResult>}
  */
-export async function getRealtimeQuote(codes) {
+export async function getRealtimeQuote(codes: string | string[]): Promise<any> {
   const codeList = Array.isArray(codes) ? codes : [codes]
   return callApi(App.GetRealtimeQuote, codeList.join(','))
 }
@@ -210,7 +210,7 @@ export async function getRealtimeQuote(codes) {
  * @param {string} text - 待分析文本
  * @returns {Promise<ApiResult>}
  */
-export async function analyzeSentimentWithFreqWeight(text) {
+export async function analyzeSentimentWithFreqWeight(text: string): Promise<any> {
   return callApi(App.AnalyzeSentimentWithFreqWeight, text)
 }
 
@@ -220,7 +220,7 @@ export async function analyzeSentimentWithFreqWeight(text) {
  * 获取今日市场统计数据
  * @returns {Promise<ApiResult>}
  */
-export async function getTodayMarketStatistic() {
+export async function getTodayMarketStatistic(): Promise<any> {
   return callApi(App.GetTodayMarketStatistic)
 }
 
@@ -229,7 +229,7 @@ export async function getTodayMarketStatistic() {
  * @param {number} days - 天数
  * @returns {Promise<ApiResult>}
  */
-export async function getRecentDaysMarketStatistic(days) {
+export async function getRecentDaysMarketStatistic(days: number): Promise<any> {
   return callApi(App.GetRecentDaysMarketStatistic, days)
 }
 
@@ -238,7 +238,7 @@ export async function getRecentDaysMarketStatistic(days) {
  * @param {number} days - 天数
  * @returns {Promise<ApiResult>}
  */
-export async function getDailyChangeStats(days) {
+export async function getDailyChangeStats(days: number): Promise<any> {
   return callApi(App.GetDailyChangeStats, days)
 }
 
@@ -247,7 +247,7 @@ export async function getDailyChangeStats(days) {
  * @param {number} days - 天数
  * @returns {Promise<ApiResult>}
  */
-export async function getChangeTypeDailyStats(days) {
+export async function getChangeTypeDailyStats(days: number): Promise<any> {
   return callApi(App.GetChangeTypeDailyStats, days)
 }
 
@@ -257,7 +257,7 @@ export async function getChangeTypeDailyStats(days) {
  * @param {number} days - 天数
  * @returns {Promise<ApiResult>}
  */
-export async function getChangeRank(limit, days) {
+export async function getChangeRank(limit: number, days: number): Promise<any> {
   return callApi(App.GetChangeRank, limit, days)
 }
 
@@ -268,7 +268,7 @@ export async function getChangeRank(limit, days) {
  * @param {number} days - 天数
  * @returns {Promise<ApiResult>}
  */
-export async function getDailyDimensionStats(field, sort, days) {
+export async function getDailyDimensionStats(field: string, sort: string, days: number): Promise<any> {
   return callApi(App.GetDailyDimensionStats, field, sort, days)
 }
 
@@ -277,7 +277,7 @@ export async function getDailyDimensionStats(field, sort, days) {
  * @param {string} date - 日期
  * @returns {Promise<ApiResult>}
  */
-export async function getTypeStatsByDate(date) {
+export async function getTypeStatsByDate(date: string): Promise<any> {
   return callApi(App.GetTypeStatsByDate, date)
 }
 
@@ -287,7 +287,7 @@ export async function getTypeStatsByDate(date) {
  * 获取板块列表
  * @returns {Promise<ApiResult>}
  */
-export async function getAllBKCodes() {
+export async function getAllBKCodes(): Promise<any> {
   return callApi(App.GetAllBKCodes)
 }
 
@@ -295,7 +295,7 @@ export async function getAllBKCodes() {
  * 获取概念列表
  * @returns {Promise<ApiResult>}
  */
-export async function getAllConceptCodes() {
+export async function getAllConceptCodes(): Promise<any> {
   return callApi(App.GetAllConceptCodes)
 }
 
@@ -305,7 +305,7 @@ export async function getAllConceptCodes() {
  * @param {string} date - 日期
  * @returns {Promise<ApiResult>}
  */
-export async function getBKFundFlowListByDate(code, date) {
+export async function getBKFundFlowListByDate(code: string, date: string): Promise<any> {
   return callApi(App.GetBKFundFlowListByDate, code, date)
 }
 
@@ -315,7 +315,7 @@ export async function getBKFundFlowListByDate(code, date) {
  * @param {number} limit - 限制数量
  * @returns {Promise<ApiResult>}
  */
-export async function getBKFundFlowTopListByDate(days, limit) {
+export async function getBKFundFlowTopListByDate(days: number, limit: number): Promise<any> {
   return callApi(App.GetBKFundFlowTopListByDate, days, limit)
 }
 
@@ -325,7 +325,7 @@ export async function getBKFundFlowTopListByDate(days, limit) {
  * @param {string} date - 日期
  * @returns {Promise<ApiResult>}
  */
-export async function getConceptFundFlowListByDate(code, date) {
+export async function getConceptFundFlowListByDate(code: string, date: string): Promise<any> {
   return callApi(App.GetConceptFundFlowListByDate, code, date)
 }
 
@@ -335,7 +335,7 @@ export async function getConceptFundFlowListByDate(code, date) {
  * @param {number} limit - 限制数量
  * @returns {Promise<ApiResult>}
  */
-export async function getConceptFundFlowTopListByDate(days, limit) {
+export async function getConceptFundFlowTopListByDate(days: number, limit: number): Promise<any> {
   return callApi(App.GetConceptFundFlowTopListByDate, days, limit)
 }
 
@@ -347,7 +347,7 @@ export async function getConceptFundFlowTopListByDate(days, limit) {
  * @param {number} days - 天数
  * @returns {Promise<ApiResult>}
  */
-export async function getStockMoneyTrendByDay(code, days) {
+export async function getStockMoneyTrendByDay(code: string, days: number): Promise<any> {
   return callApi(App.GetStockMoneyTrendByDay, code, days)
 }
 
@@ -356,7 +356,7 @@ export async function getStockMoneyTrendByDay(code, days) {
  * @param {string} sort - 排序方式
  * @returns {Promise<ApiResult>}
  */
-export async function getMoneyRankSina(sort) {
+export async function getMoneyRankSina(sort: string): Promise<any> {
   return callApi(App.GetMoneyRankSina, sort)
 }
 
@@ -366,7 +366,7 @@ export async function getMoneyRankSina(sort) {
  * @param {string} sort - 排序方式
  * @returns {Promise<ApiResult>}
  */
-export async function getIndustryMoneyRankSina(fenlei, sort) {
+export async function getIndustryMoneyRankSina(fenlei: string, sort: string): Promise<any> {
   return callApi(App.GetIndustryMoneyRankSina, fenlei, sort)
 }
 
@@ -378,7 +378,7 @@ export async function getIndustryMoneyRankSina(fenlei, sort) {
  * @param {number} page - 页码
  * @returns {Promise<ApiResult>}
  */
-export async function getNewsBySector(sector, page) {
+export async function getNewsBySector(sector: string, page: number): Promise<any> {
   return callApi(App.GetNewsBySector, sector, page)
 }
 
@@ -386,7 +386,7 @@ export async function getNewsBySector(sector, page) {
  * 获取板块列表（新闻用）
  * @returns {Promise<ApiResult>}
  */
-export async function getSectors() {
+export async function getSectors(): Promise<any> {
   return callApi(App.GetSectors)
 }
 
@@ -396,7 +396,7 @@ export async function getSectors() {
  * @param {number} page - 页码
  * @returns {Promise<ApiResult>}
  */
-export async function getStockRelatedNews(code, page) {
+export async function getStockRelatedNews(code: string, page: number): Promise<any> {
   return callApi(App.GetStockRelatedNews, code, page)
 }
 
@@ -407,7 +407,7 @@ export async function getStockRelatedNews(code, page) {
  * @param {string} date - 日期
  * @returns {Promise<ApiResult>}
  */
-export async function longTigerRank(date) {
+export async function longTigerRank(date: string): Promise<any> {
   return callApi(App.LongTigerRank, date)
 }
 
@@ -416,7 +416,7 @@ export async function longTigerRank(date) {
  * @param {string} codes - 股票代码（逗号分隔）
  * @returns {Promise<ApiResult>}
  */
-export async function stockNotice(codes) {
+export async function stockNotice(codes: string): Promise<any> {
   return callApi(App.StockNotice, codes)
 }
 
@@ -425,7 +425,7 @@ export async function stockNotice(codes) {
  * @param {string} code - 股票代码
  * @returns {Promise<ApiResult>}
  */
-export async function stockResearchReport(code) {
+export async function stockResearchReport(code: string): Promise<any> {
   return callApi(App.StockResearchReport, code)
 }
 
@@ -434,7 +434,7 @@ export async function stockResearchReport(code) {
  * @param {string} code - 行业代码
  * @returns {Promise<ApiResult>}
  */
-export async function industryResearchReport(code) {
+export async function industryResearchReport(code: string): Promise<any> {
   return callApi(App.IndustryResearchReport, code)
 }
 
@@ -443,7 +443,7 @@ export async function industryResearchReport(code) {
  * @param {string} code - 代码
  * @returns {Promise<ApiResult>}
  */
-export async function emDictCode(code) {
+export async function emDictCode(code: string): Promise<any> {
   return callApi(App.EMDictCode, code)
 }
 
@@ -454,7 +454,7 @@ export async function emDictCode(code) {
  * @param {number} count - 数量
  * @returns {Promise<ApiResult>}
  */
-export async function hotEvent(count) {
+export async function hotEvent(count: number): Promise<any> {
   return callApi(App.HotEvent, count)
 }
 
@@ -463,7 +463,7 @@ export async function hotEvent(count) {
  * @param {string} type - 类型
  * @returns {Promise<ApiResult>}
  */
-export async function hotStock(type) {
+export async function hotStock(type: string): Promise<any> {
   return callApi(App.HotStock, type)
 }
 
@@ -472,7 +472,7 @@ export async function hotStock(type) {
  * @param {number} count - 数量
  * @returns {Promise<ApiResult>}
  */
-export async function hotTopic(count) {
+export async function hotTopic(count: number): Promise<any> {
   return callApi(App.HotTopic, count)
 }
 
@@ -482,7 +482,7 @@ export async function hotTopic(count) {
  * @param {number} limit - 限制数量
  * @returns {Promise<ApiResult>}
  */
-export async function getUplimitHot(type, limit) {
+export async function getUplimitHot(type: string, limit: number): Promise<any> {
   return callApi(App.GetUplimitHot, type, limit)
 }
 
@@ -490,7 +490,7 @@ export async function getUplimitHot(type, limit) {
  * 热门策略
  * @returns {Promise<ApiResult>}
  */
-export async function getHotStrategy() {
+export async function getHotStrategy(): Promise<any> {
   return callApi(App.GetHotStrategy)
 }
 
@@ -500,7 +500,7 @@ export async function getHotStrategy() {
  * 财经日历
  * @returns {Promise<ApiResult>}
  */
-export async function clsCalendar() {
+export async function clsCalendar(): Promise<any> {
   return callApi(App.ClsCalendar)
 }
 
@@ -509,7 +509,7 @@ export async function clsCalendar() {
  * @param {string} ym - 年月 (YYYY-MM)
  * @returns {Promise<ApiResult>}
  */
-export async function investCalendarTimeLine(ym) {
+export async function investCalendarTimeLine(ym: string): Promise<any> {
   return callApi(App.InvestCalendarTimeLine, ym)
 }
 
@@ -520,7 +520,7 @@ export async function investCalendarTimeLine(ym) {
  * @param {string} date - 日期
  * @returns {Promise<ApiResult>}
  */
-export async function isTradingDay(date) {
+export async function isTradingDay(date: string): Promise<any> {
   return callApi(App.IsTradingDay, date)
 }
 
@@ -528,7 +528,7 @@ export async function isTradingDay(date) {
  * 获取最近交易日
  * @returns {Promise<ApiResult>}
  */
-export async function getLatestTradingDay() {
+export async function getLatestTradingDay(): Promise<any> {
   return callApi(App.GetLatestTradingDay)
 }
 

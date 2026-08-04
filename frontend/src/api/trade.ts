@@ -12,7 +12,7 @@ import * as App from '../../wailsjs/go/main/App'
  * 获取交易记录列表
  * Go: GetTradingRecordList(query data.TradingRecordListQuery) data.TradingRecordPageData
  */
-export async function getTradingRecordList(query) {
+export async function getTradingRecordList(query: any) {
   return callApi(App.GetTradingRecordList, query)
 }
 
@@ -20,7 +20,7 @@ export async function getTradingRecordList(query) {
  * 添加交易记录
  * Go: AddTradingRecord(record data.TradingRecord) number
  */
-export async function addTradingRecord(record) {
+export async function addTradingRecord(record: any) {
   return callApi(App.AddTradingRecord, record)
 }
 
@@ -28,7 +28,7 @@ export async function addTradingRecord(record) {
  * 更新交易记录
  * Go: UpdateTradingRecord(record data.TradingRecord)
  */
-export async function updateTradingRecord(record) {
+export async function updateTradingRecord(record: any) {
   return callApi(App.UpdateTradingRecord, record)
 }
 
@@ -36,7 +36,7 @@ export async function updateTradingRecord(record) {
  * 删除交易记录
  * Go: DeleteTradingRecord(id number)
  */
-export async function deleteTradingRecord(id) {
+export async function deleteTradingRecord(id: number) {
   return callApi(App.DeleteTradingRecord, id)
 }
 
@@ -44,7 +44,7 @@ export async function deleteTradingRecord(id) {
  * 获取交易记录详情
  * Go: GetTradingRecordById(id number) data.TradingRecord
  */
-export async function getTradingRecordById(id) {
+export async function getTradingRecordById(id: number) {
   return callApi(App.GetTradingRecordById, id)
 }
 
@@ -62,7 +62,7 @@ export async function getTradingRecordStatistics() {
  * 检查频繁交易
  * Go: CheckFrequentTrading(code string) Record<string,any>
  */
-export async function checkFrequentTrading(code) {
+export async function checkFrequentTrading(code: string) {
   return callApi(App.CheckFrequentTrading, code)
 }
 
@@ -70,7 +70,7 @@ export async function checkFrequentTrading(code) {
  * 获取股票实时价格
  * Go: GetStockRealTimePrice(code string) Record<string,any>
  */
-export async function getStockRealTimePrice(code) {
+export async function getStockRealTimePrice(code: string) {
   return callApi(App.GetStockRealTimePrice, code)
 }
 

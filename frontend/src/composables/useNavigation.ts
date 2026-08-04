@@ -4,6 +4,7 @@
  */
 
 import { h, ref } from 'vue'
+import type { Ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { EventsEmit, Quit, Hide, WindowFullscreen, WindowUnfullscreen } from '../../wailsjs/runtime'
 import { NIcon } from 'naive-ui'
@@ -60,7 +61,7 @@ import { Dragon, FirefoxBrowser, Gripfire, Robot } from '@vicons/fa'
  * 图标映射表
  * 集中管理所有导航图标，便于统一替换和维护
  */
-export const NAV_ICONS = {
+export const NAV_ICONS: Record<string, any> = {
   // Ionicons5
   StarOutline,
   Star,
@@ -111,24 +112,35 @@ export const NAV_ICONS = {
 /**
  * 图标渲染辅助函数
  */
-export function renderIcon(icon) {
+export function renderIcon(icon: any) {
   return () => h(NIcon, null, { default: () => h(icon) })
+}
+
+/** useNavigation 返回值 */
+export interface UseNavigationReturn {
+  activeKey: Ref<string>
+  isFullscreen: Ref<boolean>
+  menuOptions: Ref<any[]>
+  toggleFullscreen: () => void
+  renderIcon: typeof renderIcon
+  loadDynamicMenus: () => Promise<void>
+  applyConfigVisibility: (config: any) => void
 }
 
 /**
  * 导航管理 Composable
  * @returns {Object} 导航相关状态和方法
  */
-export function useNavigation() {
+export function useNavigation(): UseNavigationReturn {
   const router = useRouter()
   const stockStore = useStockStore()
-  const activeKey = ref('stock')
-  const isFullscreen = ref(false)
+  const activeKey = ref<string>('stock')
+  const isFullscreen = ref<boolean>(false)
 
   /**
    * 切换全屏状态
    */
-  function toggleFullscreen() {
+  function toggleFullscreen(): void {
     activeKey.value = 'full'
     if (isFullscreen.value) {
       WindowUnfullscreen()
@@ -141,7 +153,7 @@ export function useNavigation() {
   /**
    * 创建菜单配置 (注入依赖)
    */
-  const menuOptions = ref(createMenuOptions({
+  const menuOptions = ref<any[]>(createMenuOptions({
     activeKey,
     router,
     EventsEmit,
@@ -157,15 +169,15 @@ export function useNavigation() {
    * 加载动态群组菜单
    * 从 GetGroupList 获取用户自定义群组，注入到 stock 菜单的 children 中
    */
-  async function loadDynamicMenus() {
+  async function loadDynamicMenus(): Promise<void> {
     try {
       const groupList = await GetGroupList()
       stockStore.setGroupList(groupList)
 
       // 动态注入群组子菜单到 stock 菜单
-      menuOptions.value.forEach((item) => {
+      menuOptions.value.forEach((item: any) => {
         if (item.key === 'stock') {
-          const dynamicChildren = groupList.map((group) => ({
+          const dynamicChildren = groupList.map((group: any) => ({
             label: () =>
               h(
                 'a',
@@ -208,13 +220,17 @@ export function useNavigation() {
    * 根据 GetConfig 结果控制菜单显隐
    * @param {Object} config - GetConfig 返回的配置对象
    */
-  function applyConfigVisibility(config) {
-    menuOptions.value.forEach((item) => {
+  function applyConfigVisibility(config: any): void {
+    menuOptions.value.forEach((item: any) => {
       if (item.key === 'fund') {
         item.show = config.enableFund
       }
       if (item.key === 'agent') {
         item.show = config.enableAgent
+      }
+      // 技能管理菜单由配置控制显隐
+      if (item.key === 'systemSkills') {
+        item.show = config.enableAgent ?? true
       }
     })
   }

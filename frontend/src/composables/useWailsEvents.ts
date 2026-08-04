@@ -4,10 +4,19 @@
  */
 
 import { ref, onBeforeUnmount } from 'vue'
+import type { Ref } from 'vue'
 import { EventsOn, EventsOff, EventsEmit } from '../../wailsjs/runtime'
 import { useAppStore, useStockStore } from '../stores'
 import { h } from 'vue'
 import { createDiscreteApi, darkTheme, lightTheme, NText } from 'naive-ui'
+
+/** useWailsEvents 可选配置 */
+export interface UseWailsEventsOptions {
+  /** 主题 ref（用于 createDiscreteApi） */
+  themeRef?: Ref<boolean | null>
+  /** 获取 enableNews 的函数 */
+  getEnableNews?: () => boolean
+}
 
 /**
  * 注册 Wails 事件监听器
@@ -16,12 +25,12 @@ import { createDiscreteApi, darkTheme, lightTheme, NText } from 'naive-ui'
  * @param {Object} options.themeRef - 主题 ref（用于 createDiscreteApi）
  * @param {Function} options.getEnableNews - 获取 enableNews 的函数
  */
-export function useWailsEvents(options = {}) {
+export function useWailsEvents(options: UseWailsEventsOptions = {}) {
   const appStore = useAppStore()
   const stockStore = useStockStore()
 
   // 电报数据 ref（默认空数组，与 App.vue 保持一致）
-  const telegraph = ref([])
+  const telegraph = ref<any[]>([])
 
   // newsPush 事件引用（需要延迟注册）
   let newsPushRegistered = false
@@ -31,7 +40,7 @@ export function useWailsEvents(options = {}) {
    * 使用 createDiscreteApi 在组件树外创建通知
    * @param {Ref} enableDarkTheme - 主题 ref
    */
-  function registerNewsPush(enableDarkTheme) {
+  function registerNewsPush(enableDarkTheme: Ref<boolean | null> | any): void {
     if (newsPushRegistered) return
     newsPushRegistered = true
 
@@ -39,10 +48,10 @@ export function useWailsEvents(options = {}) {
       configProviderProps: {
         theme: enableDarkTheme?.value ? darkTheme : lightTheme,
         max: 3,
-      },
+      } as any,
     })
 
-    EventsOn('newsPush', (data) => {
+    EventsOn('newsPush', (data: any) => {
       if (data.isRed) {
         notification.create({
           title: data.time,
@@ -76,19 +85,19 @@ export function useWailsEvents(options = {}) {
   }
 
   // 事件处理器映射（不含 newsPush，需要延迟注册）
-  const eventHandlers = {
+  const eventHandlers: Record<string, (data: any) => void> = {
     // 实时盈亏更新
-    realtime_profit: (data) => {
+    realtime_profit: (data: any) => {
       stockStore.setRealtimeProfit(data)
     },
 
     // 电报更新
-    telegraph: (data) => {
+    telegraph: (data: any) => {
       telegraph.value = data
     },
 
     // 加载状态更新
-    loadingMsg: (data) => {
+    loadingMsg: (data: any) => {
       if (data === 'done') {
         appStore.setLoading(false, '加载完成...')
         EventsEmit('loadingDone', 'app')
@@ -99,14 +108,14 @@ export function useWailsEvents(options = {}) {
   }
 
   // 注册所有事件监听器（不含 newsPush）
-  function registerEvents() {
+  function registerEvents(): void {
     Object.entries(eventHandlers).forEach(([event, handler]) => {
       EventsOn(event, handler)
     })
   }
 
   // 清理所有事件监听器
-  function unregisterEvents() {
+  function unregisterEvents(): void {
     Object.keys(eventHandlers).forEach((event) => {
       EventsOff(event)
     })

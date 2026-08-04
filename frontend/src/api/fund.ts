@@ -21,7 +21,7 @@ export async function getFollowedFund() {
  * Go: FollowFund(code string) string
  * @param {string} code - 基金代码
  */
-export async function followFund(code) {
+export async function followFund(code: string) {
   return callApi(App.FollowFund, code)
 }
 
@@ -30,7 +30,7 @@ export async function followFund(code) {
  * Go: UnFollowFund(code string) string
  * @param {string} code - 基金代码
  */
-export async function unFollowFund(code) {
+export async function unFollowFund(code: string) {
   return callApi(App.UnFollowFund, code)
 }
 
@@ -38,7 +38,7 @@ export async function unFollowFund(code) {
  * 获取关注基金列表（分页）
  * Go: GetFollowedFundPaged(page, pageSize int, keyword string) data.FollowedFundPagedResult
  */
-export async function getFollowedFundPaged(page, pageSize, keyword) {
+export async function getFollowedFundPaged(page: number, pageSize: number, keyword: string) {
   return callApi(App.GetFollowedFundPaged, page, pageSize, keyword)
 }
 
@@ -48,7 +48,7 @@ export async function getFollowedFundPaged(page, pageSize, keyword) {
  * 获取基金K线数据
  * Go: GetFundKLine(code, name string, days int) data.KLineSourceResult
  */
-export async function getFundKLine(code, name, days) {
+export async function getFundKLine(code: string, name: string, days: number) {
   return callApi(App.GetFundKLine, code, name, days)
 }
 
@@ -56,7 +56,12 @@ export async function getFundKLine(code, name, days) {
  * 获取基金历史净值
  * Go: GetFundHistoryNetValue(code string, page int, startDate, endDate string) []data.FundHistoryNetValue
  */
-export async function getFundHistoryNetValue(code, page, startDate, endDate) {
+export async function getFundHistoryNetValue(
+  code: string,
+  page: number,
+  startDate: string,
+  endDate: string
+) {
   return callApi(App.GetFundHistoryNetValue, code, page, startDate, endDate)
 }
 
@@ -66,7 +71,14 @@ export async function getFundHistoryNetValue(code, page, startDate, endDate) {
  * 获取基金排名
  * Go: GetFundRanking(type, order, startDate, endDate string, page, pageSize int) data.FundRankingResult
  */
-export async function getFundRanking(type, order, startDate, endDate, page, pageSize) {
+export async function getFundRanking(
+  type: string,
+  order: string,
+  startDate: string,
+  endDate: string,
+  page: number,
+  pageSize: number
+) {
   return callApi(App.GetFundRanking, type, order, startDate, endDate, page, pageSize)
 }
 
@@ -74,7 +86,7 @@ export async function getFundRanking(type, order, startDate, endDate, page, page
  * 获取基金Top10持仓
  * Go: GetFundTop10Holdings(code string) []data.FundHoldingStock
  */
-export async function getFundTop10Holdings(code) {
+export async function getFundTop10Holdings(code: string) {
   return callApi(App.GetFundTop10Holdings, code)
 }
 
@@ -84,7 +96,7 @@ export async function getFundTop10Holdings(code) {
  * 搜索基金代码
  * Go: SearchFundCodes(keyword string) []data.FundSearchItem
  */
-export async function searchFundCodes(keyword) {
+export async function searchFundCodes(keyword: string) {
   return callApi(App.SearchFundCodes, keyword)
 }
 
@@ -92,7 +104,7 @@ export async function searchFundCodes(keyword) {
  * 获取基金列表
  * Go: GetfundList(keyword string) []data.FundBasic
  */
-export async function getFundList(keyword) {
+export async function getFundList(keyword: string) {
   return callApi(App.GetfundList, keyword)
 }
 

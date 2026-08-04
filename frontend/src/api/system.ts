@@ -12,7 +12,7 @@ import * as App from '../../wailsjs/go/main/App'
  * 获取版本信息
  * @returns {Promise<ApiResult>}
  */
-export async function getVersionInfo() {
+export async function getVersionInfo(): Promise<any> {
   return callApi(App.GetVersionInfo)
 }
 
@@ -20,7 +20,7 @@ export async function getVersionInfo() {
  * 检查更新
  * @returns {Promise<ApiResult>}
  */
-export async function checkUpdate() {
+export async function checkUpdate(): Promise<any> {
   return callApi(App.CheckUpdate)
 }
 
@@ -30,7 +30,7 @@ export async function checkUpdate() {
  * 获取设置配置 (GetSettingConfig - 应用设置页面的配置)
  * @returns {Promise<ApiResult>}
  */
-export async function getSettings() {
+export async function getSettings(): Promise<any> {
   return callApi(App.GetSettingConfig)
 }
 
@@ -39,7 +39,7 @@ export async function getSettings() {
  * 注意：与 getSettings 不同，GetConfig 返回的是功能开关配置
  * @returns {Promise<ApiResult>}
  */
-export async function getConfig() {
+export async function getConfig(): Promise<any> {
   return callApi(App.GetConfig)
 }
 
@@ -48,7 +48,7 @@ export async function getConfig() {
  * @param {Object} settings - 设置对象
  * @returns {Promise<ApiResult>}
  */
-export async function saveSettings(settings) {
+export async function saveSettings(settings: any): Promise<any> {
   return callApi(App.SaveSettingConfig, settings)
 }
 
@@ -56,7 +56,7 @@ export async function saveSettings(settings) {
  * 重置设置
  * @returns {Promise<ApiResult>}
  */
-export async function resetSettings() {
+export async function resetSettings(): Promise<any> {
   return callApi(App.ResetSettingConfig)
 }
 
@@ -72,7 +72,7 @@ export async function resetSettings() {
  * @param {number} arg6
  * @returns {Promise<ApiResult>}
  */
-export async function saveAiResponseResult(arg1, arg2, arg3, arg4, arg5, arg6) {
+export async function saveAiResponseResult(arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: number): Promise<any> {
   return callApi(App.SaveAIResponseResult, arg1, arg2, arg3, arg4, arg5, arg6)
 }
 
@@ -82,7 +82,7 @@ export async function saveAiResponseResult(arg1, arg2, arg3, arg4, arg5, arg6) {
  * @param {string} content
  * @returns {Promise<ApiResult>}
  */
-export async function saveAsMarkdown(title, content) {
+export async function saveAsMarkdown(title: string, content: string): Promise<any> {
   return callApi(App.SaveAsMarkdown, title, content)
 }
 
@@ -92,7 +92,7 @@ export async function saveAsMarkdown(title, content) {
  * @param {string} arg2
  * @returns {Promise<ApiResult>}
  */
-export async function shareAnalysis(arg1, arg2) {
+export async function shareAnalysis(arg1: string, arg2: string): Promise<any> {
   return callApi(App.ShareAnalysis, arg1, arg2)
 }
 
@@ -103,7 +103,7 @@ export async function shareAnalysis(arg1, arg2) {
  * Go: GetAllStrategies() []*strategy.Strategy
  * @returns {Promise<ApiResult>}
  */
-export async function getAllStrategies() {
+export async function getAllStrategies(): Promise<any> {
   return callApi(App.GetAllStrategies)
 }
 
@@ -111,7 +111,7 @@ export async function getAllStrategies() {
  * 获取 AI 配置列表
  * @returns {Promise<ApiResult>}
  */
-export async function getAiConfigs() {
+export async function getAiConfigs(): Promise<any> {
   return callApi(App.GetAiConfigs)
 }
 
@@ -120,7 +120,7 @@ export async function getAiConfigs() {
  * @param {Object} config - AI 配置对象
  * @returns {Promise<ApiResult>}
  */
-export async function saveAiConfig(config) {
+export async function saveAiConfig(config: any): Promise<any> {
   return callApi(App.SaveAiConfig, config)
 }
 
@@ -129,7 +129,7 @@ export async function saveAiConfig(config) {
  * @param {number} id - 配置ID
  * @returns {Promise<ApiResult>}
  */
-export async function deleteAiConfig(id) {
+export async function deleteAiConfig(id: number): Promise<any> {
   return callApi(App.DeleteAiConfig, id)
 }
 
@@ -138,7 +138,7 @@ export async function deleteAiConfig(id) {
  * @param {number} id - 配置ID
  * @returns {Promise<ApiResult>}
  */
-export async function setActiveAiConfig(id) {
+export async function setActiveAiConfig(id: number): Promise<any> {
   return callApi(App.SetActiveAiConfig, id)
 }
 
@@ -148,7 +148,7 @@ export async function setActiveAiConfig(id) {
  * 获取定时任务列表
  * @returns {Promise<ApiResult>}
  */
-export async function getCronTasks() {
+export async function getCronTasks(): Promise<any> {
   return callApi(App.GetCronTasks)
 }
 
@@ -157,7 +157,7 @@ export async function getCronTasks() {
  * @param {Object} task - 任务配置
  * @returns {Promise<ApiResult>}
  */
-export async function createCronTask(task) {
+export async function createCronTask(task: any): Promise<any> {
   return callApi(App.CreateCronTask, task)
 }
 
@@ -166,7 +166,7 @@ export async function createCronTask(task) {
  * @param {Object} task - 任务配置
  * @returns {Promise<ApiResult>}
  */
-export async function updateCronTask(task) {
+export async function updateCronTask(task: any): Promise<any> {
   return callApi(App.UpdateCronTask, task)
 }
 
@@ -175,7 +175,7 @@ export async function updateCronTask(task) {
  * @param {number} id - 任务ID
  * @returns {Promise<ApiResult>}
  */
-export async function deleteCronTask(id) {
+export async function deleteCronTask(id: number): Promise<any> {
   return callApi(App.DeleteCronTask, id)
 }
 
@@ -185,7 +185,7 @@ export async function deleteCronTask(id) {
  * @param {boolean} enable - 是否启用
  * @returns {Promise<ApiResult>}
  */
-export async function toggleCronTask(id, enable) {
+export async function toggleCronTask(id: number, enable: boolean): Promise<any> {
   return callApi(App.ToggleCronTask, id, enable)
 }
 
@@ -194,7 +194,7 @@ export async function toggleCronTask(id, enable) {
  * @param {number} id - 任务ID
  * @returns {Promise<ApiResult>}
  */
-export async function runCronTask(id) {
+export async function runCronTask(id: number): Promise<any> {
   return callApi(App.RunCronTask, id)
 }
 
@@ -204,7 +204,7 @@ export async function runCronTask(id) {
  * 获取 MCP 服务器列表
  * @returns {Promise<ApiResult>}
  */
-export async function getMcpServers() {
+export async function getMcpServers(): Promise<any> {
   return callApi(App.GetMcpServers)
 }
 
@@ -213,7 +213,7 @@ export async function getMcpServers() {
  * @param {Object} server - 服务器配置
  * @returns {Promise<ApiResult>}
  */
-export async function saveMcpServer(server) {
+export async function saveMcpServer(server: any): Promise<any> {
   return callApi(App.SaveMcpServer, server)
 }
 
@@ -222,7 +222,7 @@ export async function saveMcpServer(server) {
  * @param {number} id - 服务器ID
  * @returns {Promise<ApiResult>}
  */
-export async function deleteMcpServer(id) {
+export async function deleteMcpServer(id: number): Promise<any> {
   return callApi(App.DeleteMcpServer, id)
 }
 
@@ -231,7 +231,7 @@ export async function deleteMcpServer(id) {
  * @param {number} id - 服务器ID
  * @returns {Promise<ApiResult>}
  */
-export async function testMcpServer(id) {
+export async function testMcpServer(id: number): Promise<any> {
   return callApi(App.TestMcpServer, id)
 }
 
@@ -241,7 +241,7 @@ export async function testMcpServer(id) {
  * 获取技能列表
  * @returns {Promise<ApiResult>}
  */
-export async function getSkills() {
+export async function getSkills(): Promise<any> {
   return callApi(App.GetSkills)
 }
 
@@ -250,7 +250,7 @@ export async function getSkills() {
  * @param {Object} skill - 技能配置
  * @returns {Promise<ApiResult>}
  */
-export async function saveSkill(skill) {
+export async function saveSkill(skill: any): Promise<any> {
   return callApi(App.SaveSkill, skill)
 }
 
@@ -259,7 +259,7 @@ export async function saveSkill(skill) {
  * @param {number} id - 技能ID
  * @returns {Promise<ApiResult>}
  */
-export async function deleteSkill(id) {
+export async function deleteSkill(id: number): Promise<any> {
   return callApi(App.DeleteSkill, id)
 }
 
@@ -267,7 +267,7 @@ export async function deleteSkill(id) {
  * 创建技能
  * Go: CreateSkill(skill *models.Skill) string
  */
-export async function createSkill(skill) {
+export async function createSkill(skill: any): Promise<any> {
   return callApi(App.CreateSkill, skill)
 }
 
@@ -275,7 +275,7 @@ export async function createSkill(skill) {
  * 更新技能
  * Go: UpdateSkill(skill *models.Skill) string
  */
-export async function updateSkill(skill) {
+export async function updateSkill(skill: any): Promise<any> {
   return callApi(App.UpdateSkill, skill)
 }
 
@@ -288,7 +288,7 @@ export async function updateSkill(skill) {
  * @param {string} promptType - 模板类型
  * @returns {Promise<ApiResult>}
  */
-export async function getPromptTemplates(name = '', promptType = '') {
+export async function getPromptTemplates(name: string = '', promptType: string = ''): Promise<any> {
   return callApi(App.GetPromptTemplates, name, promptType)
 }
 
@@ -296,7 +296,7 @@ export async function getPromptTemplates(name = '', promptType = '') {
  * 添加提示词
  * Go: AddPrompt(prompt models.Prompt) string
  */
-export async function addPrompt(prompt) {
+export async function addPrompt(prompt: any): Promise<any> {
   return callApi(App.AddPrompt, prompt)
 }
 
@@ -304,7 +304,7 @@ export async function addPrompt(prompt) {
  * 删除提示词
  * Go: DelPrompt(id uint) string
  */
-export async function delPrompt(id) {
+export async function delPrompt(id: number): Promise<any> {
   return callApi(App.DelPrompt, id)
 }
 
@@ -313,7 +313,7 @@ export async function delPrompt(id) {
  * @param {Object} template - 模板配置
  * @returns {Promise<ApiResult>}
  */
-export async function savePromptTemplate(template) {
+export async function savePromptTemplate(template: any): Promise<any> {
   return callApi(App.SavePromptTemplate, template)
 }
 
@@ -322,7 +322,7 @@ export async function savePromptTemplate(template) {
  * @param {number} id - 模板ID
  * @returns {Promise<ApiResult>}
  */
-export async function deletePromptTemplate(id) {
+export async function deletePromptTemplate(id: number): Promise<any> {
   return callApi(App.DeletePromptTemplate, id)
 }
 
@@ -333,7 +333,7 @@ export async function deletePromptTemplate(id) {
  * @param {number} lines - 获取行数
  * @returns {Promise<ApiResult>}
  */
-export async function getAppLogs(lines = 500) {
+export async function getAppLogs(lines: number = 500): Promise<any> {
   return callApi(App.GetAppLogs, lines)
 }
 
@@ -341,7 +341,7 @@ export async function getAppLogs(lines = 500) {
  * 清理日志
  * @returns {Promise<ApiResult>}
  */
-export async function clearLogs() {
+export async function clearLogs(): Promise<any> {
   return callApi(App.ClearLogs)
 }
 
@@ -352,7 +352,7 @@ export async function clearLogs() {
  * @param {string} type - 数据类型
  * @returns {Promise<ApiResult>}
  */
-export async function exportData(type = 'all') {
+export async function exportData(type: string = 'all'): Promise<any> {
   return callApi(App.ExportData, type)
 }
 
@@ -361,7 +361,7 @@ export async function exportData(type = 'all') {
  * @param {File} file - 文件
  * @returns {Promise<ApiResult>}
  */
-export async function importData(file) {
+export async function importData(file: any): Promise<any> {
   return callApi(App.ImportData, file)
 }
 
@@ -369,7 +369,7 @@ export async function importData(file) {
  * 清理缓存
  * @returns {Promise<ApiResult>}
  */
-export async function clearCache() {
+export async function clearCache(): Promise<any> {
   return callApi(App.ClearCache)
 }
 
@@ -379,7 +379,7 @@ export async function clearCache() {
  * 获取赞助信息
  * Go: GetSponsorInfo() map[string]any
  */
-export async function getSponsorInfo() {
+export async function getSponsorInfo(): Promise<any> {
   return callApi(App.GetSponsorInfo)
 }
 
@@ -387,7 +387,7 @@ export async function getSponsorInfo() {
  * 获取用户手册
  * Go: GetUserManual() string
  */
-export async function getUserManual() {
+export async function getUserManual(): Promise<any> {
   return callApi(App.GetUserManual)
 }
 
@@ -395,7 +395,7 @@ export async function getUserManual() {
  * 检查赞助码
  * Go: CheckSponsorCode(code string) map[string]any
  */
-export async function checkSponsorCode(code) {
+export async function checkSponsorCode(code: string): Promise<any> {
   return callApi(App.CheckSponsorCode, code)
 }
 
@@ -405,7 +405,7 @@ export async function checkSponsorCode(code) {
  * 导出配置
  * Go: ExportConfig() string
  */
-export async function exportConfig() {
+export async function exportConfig(): Promise<any> {
   return callApi(App.ExportConfig)
 }
 
@@ -413,7 +413,7 @@ export async function exportConfig() {
  * 更新配置
  * Go: UpdateConfig(config any) error
  */
-export async function updateConfig(config) {
+export async function updateConfig(config: any): Promise<any> {
   return callApi(App.UpdateConfig, config)
 }
 
@@ -423,7 +423,7 @@ export async function updateConfig(config) {
  * 获取多 Agent 提示词
  * Go: GetMultiAgentPrompts() []models.MultiAgentPrompt
  */
-export async function getMultiAgentPrompts() {
+export async function getMultiAgentPrompts(): Promise<any> {
   return callApi(App.GetMultiAgentPrompts)
 }
 
@@ -431,7 +431,7 @@ export async function getMultiAgentPrompts() {
  * 更新多 Agent 提示词
  * Go: UpdateMultiAgentPrompt(type, name, content string)
  */
-export async function updateMultiAgentPrompt(type, name, content) {
+export async function updateMultiAgentPrompt(type: string, name: string, content: string): Promise<any> {
   return callApi(App.UpdateMultiAgentPrompt, type, name, content)
 }
 
@@ -441,7 +441,7 @@ export async function updateMultiAgentPrompt(type, name, content) {
  * 获取 AI 模型列表
  * Go: FetchAiModels(baseUrl, apiKey string) []map[string]any
  */
-export async function fetchAiModels(baseUrl, apiKey) {
+export async function fetchAiModels(baseUrl: string, apiKey: string): Promise<any> {
   return callApi(App.FetchAiModels, baseUrl, apiKey)
 }
 
@@ -449,7 +449,7 @@ export async function fetchAiModels(baseUrl, apiKey) {
  * 获取 AI 模型详情
  * Go: FetchAiModelInfo(baseUrl, apiKey, model string) map[string]any
  */
-export async function fetchAiModelInfo(baseUrl, apiKey, model) {
+export async function fetchAiModelInfo(baseUrl: string, apiKey: string, model: string): Promise<any> {
   return callApi(App.FetchAiModelInfo, baseUrl, apiKey, model)
 }
 
@@ -459,7 +459,7 @@ export async function fetchAiModelInfo(baseUrl, apiKey, model) {
  * 发送测试通知
  * Go: SendTestNotification(message string) string
  */
-export async function sendTestNotification(message) {
+export async function sendTestNotification(message: string): Promise<any> {
   return callApi(App.SendTestNotification, message)
 }
 
@@ -467,7 +467,7 @@ export async function sendTestNotification(message) {
  * 获取机器ID
  * Go: GetMachineId() string
  */
-export async function getMachineId() {
+export async function getMachineId(): Promise<any> {
   return callApi(App.GetMachineId)
 }
 
@@ -475,7 +475,7 @@ export async function getMachineId() {
  * 获取时区
  * Go: GetTimezone() string
  */
-export async function getTimezone() {
+export async function getTimezone(): Promise<any> {
   return callApi(App.GetTimezone)
 }
 
@@ -485,7 +485,7 @@ export async function getTimezone() {
  * 获取 AI 推荐统计
  * Go: GetAiRecommendStats() map[string]any
  */
-export async function getAiRecommendStats() {
+export async function getAiRecommendStats(): Promise<any> {
   return callApi(App.GetAiRecommendStats)
 }
 
@@ -493,7 +493,7 @@ export async function getAiRecommendStats() {
  * 获取 AI 推荐股票列表
  * Go: GetAiRecommendStocksList(query data.AiRecommendStockListQuery) data.AiRecommendStockPageData
  */
-export async function getAiRecommendStocksList(query) {
+export async function getAiRecommendStocksList(query: any): Promise<any> {
   return callApi(App.GetAiRecommendStocksList, query)
 }
 
@@ -501,7 +501,7 @@ export async function getAiRecommendStocksList(query) {
  * 删除 AI 推荐股票
  * Go: DeleteAiRecommendStocks(id int) string
  */
-export async function deleteAiRecommendStocks(id) {
+export async function deleteAiRecommendStocks(id: number): Promise<any> {
   return callApi(App.DeleteAiRecommendStocks, id)
 }
 
@@ -509,7 +509,7 @@ export async function deleteAiRecommendStocks(id) {
  * 更新 AI 推荐股票预警
  * Go: UpdateAiRecommendStocksAlert(id int, enable bool) string
  */
-export async function updateAiRecommendStocksAlert(id, enable) {
+export async function updateAiRecommendStocksAlert(id: number, enable: boolean): Promise<any> {
   return callApi(App.UpdateAiRecommendStocksAlert, id, enable)
 }
 
@@ -519,7 +519,7 @@ export async function updateAiRecommendStocksAlert(id, enable) {
  * 获取 AI 响应结果列表
  * Go: GetAIResponseResultList(query any) any
  */
-export async function getAIResponseResultList(query) {
+export async function getAIResponseResultList(query: any): Promise<any> {
   return callApi(App.GetAIResponseResultList, query)
 }
 
@@ -527,7 +527,7 @@ export async function getAIResponseResultList(query) {
  * 删除 AI 响应结果
  * Go: DeleteAIResponseResult(id int) string
  */
-export async function deleteAIResponseResult(id) {
+export async function deleteAIResponseResult(id: number): Promise<any> {
   return callApi(App.DeleteAIResponseResult, id)
 }
 
@@ -535,7 +535,7 @@ export async function deleteAIResponseResult(id) {
  * 批量删除 AI 响应结果
  * Go: BatchDeleteAIResponseResult(ids []int) string
  */
-export async function batchDeleteAIResponseResult(ids) {
+export async function batchDeleteAIResponseResult(ids: any): Promise<any> {
   return callApi(App.BatchDeleteAIResponseResult, ids)
 }
 
@@ -545,7 +545,7 @@ export async function batchDeleteAIResponseResult(ids) {
  * 与 Agent 聊天
  * Go: ChatWithAgent(agentType, question string, context []any, stream bool, aiConfigId int, sysPromptId *int, enableTools bool)
  */
-export async function chatWithAgent(agentType, question, context, stream, aiConfigId, sysPromptId, enableTools) {
+export async function chatWithAgent(agentType: string, question: string, context: any, stream: boolean, aiConfigId: number, sysPromptId: any, enableTools: boolean): Promise<any> {
   return callApi(App.ChatWithAgent, agentType, question, context, stream, aiConfigId, sysPromptId, enableTools)
 }
 
@@ -553,7 +553,7 @@ export async function chatWithAgent(agentType, question, context, stream, aiConf
  * 中止 Agent 聊天
  * Go: AbortChatWithAgent() string
  */
-export async function abortChatWithAgent() {
+export async function abortChatWithAgent(): Promise<any> {
   return callApi(App.AbortChatWithAgent)
 }
 
@@ -563,7 +563,7 @@ export async function abortChatWithAgent() {
  * 保存 AI 助手会话
  * Go: SaveAiAssistantSession(key string, messages []map[string]any)
  */
-export async function saveAiAssistantSession(key, messages) {
+export async function saveAiAssistantSession(key: string, messages: any): Promise<any> {
   return callApi(App.SaveAiAssistantSession, key, messages)
 }
 
@@ -571,7 +571,7 @@ export async function saveAiAssistantSession(key, messages) {
  * 获取 AI 助手会话
  * Go: GetAiAssistantSession(key string) []map[string]any
  */
-export async function getAiAssistantSession(key) {
+export async function getAiAssistantSession(key: string): Promise<any> {
   return callApi(App.GetAiAssistantSession, key)
 }
 
@@ -581,7 +581,7 @@ export async function getAiAssistantSession(key) {
  * 分享文本
  * Go: ShareText(title, content string) string
  */
-export async function shareText(title, content) {
+export async function shareText(title: string, content: string): Promise<any> {
   return callApi(App.ShareText, title, content)
 }
 
@@ -591,7 +591,7 @@ export async function shareText(title, content) {
  * 获取定时任务列表（分页）
  * Go: GetCronTaskList(query any) any
  */
-export async function getCronTaskList(query) {
+export async function getCronTaskList(query: any): Promise<any> {
   return callApi(App.GetCronTaskList, query)
 }
 
@@ -599,7 +599,7 @@ export async function getCronTaskList(query) {
  * 获取定时任务详情
  * Go: GetCronTaskById(id int) any
  */
-export async function getCronTaskById(id) {
+export async function getCronTaskById(id: number): Promise<any> {
   return callApi(App.GetCronTaskById, id)
 }
 
@@ -607,7 +607,7 @@ export async function getCronTaskById(id) {
  * 获取定时任务类型
  * Go: GetCronTaskTypes() []map[string]any
  */
-export async function getCronTaskTypes() {
+export async function getCronTaskTypes(): Promise<any> {
   return callApi(App.GetCronTaskTypes)
 }
 
@@ -615,7 +615,7 @@ export async function getCronTaskTypes() {
  * 启用/禁用定时任务
  * Go: EnableCronTask(id int, enable bool)
  */
-export async function enableCronTask(id, enable) {
+export async function enableCronTask(id: number, enable: boolean): Promise<any> {
   return callApi(App.EnableCronTask, id, enable)
 }
 
@@ -623,7 +623,7 @@ export async function enableCronTask(id, enable) {
  * 立即执行定时任务
  * Go: ExecuteCronTaskNow(id int)
  */
-export async function executeCronTaskNow(id) {
+export async function executeCronTaskNow(id: number): Promise<any> {
   return callApi(App.ExecuteCronTaskNow, id)
 }
 
@@ -631,7 +631,7 @@ export async function executeCronTaskNow(id) {
  * 验证 cron 表达式
  * Go: ValidateCronExpr(expr string) map[string]any
  */
-export async function validateCronExpr(expr) {
+export async function validateCronExpr(expr: string): Promise<any> {
   return callApi(App.ValidateCronExpr, expr)
 }
 
@@ -639,7 +639,7 @@ export async function validateCronExpr(expr) {
  * 搜索定时任务
  * Go: SearchCronTasks(keyword string) any
  */
-export async function searchCronTasks(keyword) {
+export async function searchCronTasks(keyword: string): Promise<any> {
   return callApi(App.SearchCronTasks, keyword)
 }
 
@@ -647,7 +647,7 @@ export async function searchCronTasks(keyword) {
  * 计算下次运行时间
  * Go: CalculateNextRunTime(expr string) string
  */
-export async function calculateNextRunTime(expr) {
+export async function calculateNextRunTime(expr: string): Promise<any> {
   return callApi(App.CalculateNextRunTime, expr)
 }
 
@@ -655,7 +655,7 @@ export async function calculateNextRunTime(expr) {
  * 计算多次运行时间
  * Go: CalculateNextRunTimes(expr string, count int) []string
  */
-export async function calculateNextRunTimes(expr, count) {
+export async function calculateNextRunTimes(expr: string, count: number): Promise<any> {
   return callApi(App.CalculateNextRunTimes, expr, count)
 }
 
@@ -665,7 +665,7 @@ export async function calculateNextRunTimes(expr, count) {
  * 获取所有技能
  * Go: GetAllSkills() []models.Skill
  */
-export async function getAllSkills() {
+export async function getAllSkills(): Promise<any> {
   return callApi(App.GetAllSkills)
 }
 
@@ -673,7 +673,7 @@ export async function getAllSkills() {
  * 获取技能列表（分页）
  * Go: GetSkillList(query any) any
  */
-export async function getSkillList(query) {
+export async function getSkillList(query: any): Promise<any> {
   return callApi(App.GetSkillList, query)
 }
 
@@ -681,7 +681,7 @@ export async function getSkillList(query) {
  * 获取技能详情
  * Go: GetSkillById(id int) models.Skill
  */
-export async function getSkillById(id) {
+export async function getSkillById(id: number): Promise<any> {
   return callApi(App.GetSkillById, id)
 }
 
@@ -689,7 +689,7 @@ export async function getSkillById(id) {
  * 启用/禁用技能
  * Go: EnableSkill(id int, enable bool)
  */
-export async function enableSkill(id, enable) {
+export async function enableSkill(id: number, enable: boolean): Promise<any> {
   return callApi(App.EnableSkill, id, enable)
 }
 
@@ -697,7 +697,7 @@ export async function enableSkill(id, enable) {
  * 从URL生成技能
  * Go: GenerateSkillFromURL(url string) models.Skill
  */
-export async function generateSkillFromURL(url) {
+export async function generateSkillFromURL(url: string): Promise<any> {
   return callApi(App.GenerateSkillFromURL, url)
 }
 
@@ -707,7 +707,7 @@ export async function generateSkillFromURL(url) {
  * 获取 MCP 服务器列表（分页）
  * Go: GetMCPServerList(query any) any
  */
-export async function getMCPServerList(query) {
+export async function getMCPServerList(query: any): Promise<any> {
   return callApi(App.GetMCPServerList, query)
 }
 
@@ -715,7 +715,7 @@ export async function getMCPServerList(query) {
  * 获取 MCP 服务器详情
  * Go: GetMCPServerByID(id int) models.MCPServer
  */
-export async function getMCPServerById(id) {
+export async function getMCPServerById(id: number): Promise<any> {
   return callApi(App.GetMCPServerByID, id)
 }
 
@@ -723,7 +723,7 @@ export async function getMCPServerById(id) {
  * 启用/禁用 MCP 服务器
  * Go: EnableMCPServer(id int, enable bool)
  */
-export async function enableMCPServer(id, enable) {
+export async function enableMCPServer(id: number, enable: boolean): Promise<any> {
   return callApi(App.EnableMCPServer, id, enable)
 }
 
@@ -731,7 +731,7 @@ export async function enableMCPServer(id, enable) {
  * 创建 MCP 服务器
  * Go: CreateMCPServer(server any)
  */
-export async function createMCPServer(server) {
+export async function createMCPServer(server: any): Promise<any> {
   return callApi(App.CreateMCPServer, server)
 }
 
@@ -739,7 +739,7 @@ export async function createMCPServer(server) {
  * 更新 MCP 服务器
  * Go: UpdateMCPServer(server any)
  */
-export async function updateMCPServer(server) {
+export async function updateMCPServer(server: any): Promise<any> {
   return callApi(App.UpdateMCPServer, server)
 }
 
@@ -747,7 +747,7 @@ export async function updateMCPServer(server) {
  * 获取服务器下的 MCP 工具
  * Go: GetMCPToolsByServerID(id int) []map[string]any
  */
-export async function getMCPToolsByServerID(id) {
+export async function getMCPToolsByServerID(id: number): Promise<any> {
   return callApi(App.GetMCPToolsByServerID, id)
 }
 
@@ -755,7 +755,7 @@ export async function getMCPToolsByServerID(id) {
  * 获取所有 MCP 工具
  * Go: GetAllMCPTools() []map[string]any
  */
-export async function getAllMCPTools() {
+export async function getAllMCPTools(): Promise<any> {
   return callApi(App.GetAllMCPTools)
 }
 
@@ -765,7 +765,7 @@ export async function getAllMCPTools() {
  * 获取提示词模板列表（分页）
  * Go: GetPromptTemplateList(query any) any
  */
-export async function getPromptTemplateList(query) {
+export async function getPromptTemplateList(query: any): Promise<any> {
   return callApi(App.GetPromptTemplateList, query)
 }
 
@@ -773,7 +773,7 @@ export async function getPromptTemplateList(query) {
  * 添加提示词模板
  * Go: AddPromptTemplate(template models.PromptTemplate)
  */
-export async function addPromptTemplate(template) {
+export async function addPromptTemplate(template: any): Promise<any> {
   return callApi(App.AddPromptTemplate, template)
 }
 
@@ -781,7 +781,7 @@ export async function addPromptTemplate(template) {
  * 更新提示词模板
  * Go: UpdatePromptTemplate(template models.PromptTemplate)
  */
-export async function updatePromptTemplate(template) {
+export async function updatePromptTemplate(template: any): Promise<any> {
   return callApi(App.UpdatePromptTemplate, template)
 }
 

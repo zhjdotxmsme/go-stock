@@ -6,33 +6,56 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
+/** 应用全局状态 */
+export interface AppState {
+  /** 加载状态 */
+  loading: boolean
+  loadingMsg: string
+  /** 启用功能 */
+  enableNews: boolean
+  enableFund: boolean
+  enableAgent: boolean
+  /** 主题设置 */
+  enableDarkTheme: boolean | null
+  /** 应用内容 */
+  content: string
+  officialStatement: string
+  /** 窗口状态 */
+  isFullscreen: boolean
+  /** 市场状态 */
+  marketStatus: string
+  /** 投资格言 */
+  investmentMottos: string[]
+  currentMotto: string
+}
+
 export const useAppStore = defineStore('app', () => {
   // ========== 状态 ==========
 
   /** 加载状态 */
-  const loading = ref(true)
-  const loadingMsg = ref('加载数据中...')
+  const loading = ref<boolean>(true)
+  const loadingMsg = ref<string>('加载数据中...')
 
   /** 启用功能 */
-  const enableNews = ref(false)
-  const enableFund = ref(false)
-  const enableAgent = ref(false)
+  const enableNews = ref<boolean>(false)
+  const enableFund = ref<boolean>(false)
+  const enableAgent = ref<boolean>(false)
 
   /** 主题设置 */
-  const enableDarkTheme = ref(null)
+  const enableDarkTheme = ref<boolean | null>(null)
 
   /** 应用内容 */
-  const content = ref('未经授权,禁止商业目的!\n\n数据来源于网络,仅供参考;投资有风险,入市需谨慎')
-  const officialStatement = ref('')
+  const content = ref<string>('未经授权,禁止商业目的!\n\n数据来源于网络,仅供参考;投资有风险,入市需谨慎')
+  const officialStatement = ref<string>('')
 
   /** 窗口状态 */
-  const isFullscreen = ref(false)
+  const isFullscreen = ref<boolean>(false)
 
   /** 市场状态 */
-  const marketStatus = ref('')
+  const marketStatus = ref<string>('')
 
   /** 投资格言 */
-  const investmentMottos = [
+  const investmentMottos: string[] = [
     '投资有风险，入市需谨慎',
     '别人贪婪我恐惧，别人恐惧我贪婪',
     '股市有风险，投资需谨慎',
@@ -54,7 +77,7 @@ export const useAppStore = defineStore('app', () => {
     '控制风险比追求收益更重要',
     '学习是最好的投资',
   ]
-  const currentMotto = ref(investmentMottos[Math.floor(Math.random() * investmentMottos.length)])
+  const currentMotto = ref<string>(investmentMottos[Math.floor(Math.random() * investmentMottos.length)])
 
   // ========== 计算属性 ==========
 
@@ -65,14 +88,14 @@ export const useAppStore = defineStore('app', () => {
   /**
    * 刷新投资格言
    */
-  function refreshMotto() {
+  function refreshMotto(): void {
     currentMotto.value = investmentMottos[Math.floor(Math.random() * investmentMottos.length)]
   }
 
   /**
    * 设置加载状态
    */
-  function setLoading(value, message = null) {
+  function setLoading(value: boolean, message: string | null = null): void {
     loading.value = value
     if (message !== null) {
       if (message === 'done') {
@@ -87,28 +110,28 @@ export const useAppStore = defineStore('app', () => {
   /**
    * 设置市场状态
    */
-  function setMarketStatus(status) {
+  function setMarketStatus(status: string): void {
     marketStatus.value = status
   }
 
   /**
    * 设置官方声明
    */
-  function setOfficialStatement(statement) {
+  function setOfficialStatement(statement: string): void {
     officialStatement.value = statement
   }
 
   /**
    * 切换暗色主题
    */
-  function toggleDarkTheme() {
+  function toggleDarkTheme(): void {
     enableDarkTheme.value = !enableDarkTheme.value
   }
 
   /**
    * 切换全屏
    */
-  function toggleFullscreen() {
+  function toggleFullscreen(): void {
     isFullscreen.value = !isFullscreen.value
   }
 
