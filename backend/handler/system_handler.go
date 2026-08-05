@@ -811,8 +811,89 @@ func getBuiltinModelMaxTokens(modelName string) int {
 		"claude-3-haiku":       4096,
 		"glm-4":                8192,
 		"glm-4-plus":           4096,
+		"glm-4-air":            4096,
+		"glm-4-flash":          4096,
+		"glm-4-long":           4096,
+		"chatglm-turbo":        4096,
+		"moonshot-v1-8k":       8192,
+		"moonshot-v1-32k":      32768,
+		"moonshot-v1-128k":     131072,
+		"qwen-turbo":           8192,
+		"qwen-plus":            131072,
+		"qwen-max":             8192,
+		"qwen-long":            65536,
+		"qwen2.5-72b-instruct": 32768,
+		"hunyuan-lite":         4096,
+		"hunyuan-standard":     4096,
+		"hunyuan-pro":          4096,
+		"hunyuan-turbo":        4096,
+		"spark-lite":           4096,
+		"spark-pro":            4096,
+		"spark-max":            4096,
+		"spark-4.0-ultra":      4096,
+		"yi-light":             16384,
+		"yi-large":             16384,
+		"yi-medium":            16384,
+		"yi-spark":             16384,
+		"yi-vision":            16384,
+		"abab6.5-chat":         8192,
+		"abab6.5s-chat":        8192,
+		"abab5.5-chat":         4096,
+		"baichuan2-turbo":      4096,
+		"baichuan2-53b":        4096,
+		"ernie-4.0":            4096,
+		"ernie-3.5":            4096,
+		"ernie-speed":          4096,
+		"ernie-lite":           4096,
 	}
-	return modelTokenMap[modelName]
+
+	if maxTokens, ok := modelTokenMap[modelName]; ok {
+		return maxTokens
+	}
+
+	for prefix, maxTokens := range map[string]int{
+		"deepseek":      65536,
+		"gpt-4o":        16384,
+		"gpt-4-turbo":   4096,
+		"gpt-4-":        8192,
+		"gpt-3.5":       4096,
+		"gpt-4.1":       32768,
+		"o1-":           65536,
+		"o3-":           100000,
+		"o4-":           100000,
+		"claude-3":      8192,
+		"glm-4":         8192,
+		"chatglm":       4096,
+		"moonshot-v1":   8192,
+		"qwen-":         8192,
+		"qwen2":         32768,
+		"hunyuan-":      4096,
+		"spark-":        4096,
+		"yi-":           16384,
+		"abab":          8192,
+		"baichuan":      4096,
+		"ernie-":        4096,
+		"llama-3":       8192,
+		"llama3":        8192,
+		"mistral-":      8192,
+		"mixtral-":      32768,
+		"codestral-":    32768,
+		"gemini-1.5":    8192,
+		"gemini-2":      8192,
+		"command-r":     4096,
+		"Qwen/Qwen":     32768,
+		"deepseek-ai/":  65536,
+		"meta-llama/":   8192,
+		"mistralai/":    32768,
+		"Pro/deepseek-": 65536,
+		"Pro/qwen-":     32768,
+	} {
+		if strings.HasPrefix(modelName, prefix) {
+			return maxTokens
+		}
+	}
+
+	return 0
 }
 
 func (h *SystemHandler) GetAiAssistantSession(sessionId string) (*models.AiAssistantSessionResp, error) {
@@ -1097,6 +1178,15 @@ func (h *SystemHandler) DeleteMCPServer(id uint) string {
 	return "删除成功"
 }
 
+func (h *SystemHandler) GetMCPServerByID(id uint) *models.MCPServer {
+	server, err := data.NewMCPServerApi().GetByID(id)
+	if err != nil {
+		logger.SugaredLogger.Errorf("获取MCP服务器失败: %v", err)
+		return nil
+	}
+	return server
+}
+
 func (h *SystemHandler) GetMCPServerList(query *models.MCPServerQuery) *models.MCPServerPageResp {
 	return data.NewMCPServerApi().List(query)
 }
@@ -1157,6 +1247,15 @@ func (h *SystemHandler) DeleteSkill(id uint) string {
 	return "删除成功"
 }
 
+func (h *SystemHandler) GetSkillByID(id uint) *models.Skill {
+	skill, err := data.NewSkillApi().GetByID(id)
+	if err != nil {
+		logger.SugaredLogger.Errorf("获取技能失败: %v", err)
+		return nil
+	}
+	return skill
+}
+
 func (h *SystemHandler) GetSkillList(query *models.SkillQuery) *models.SkillPageResp {
 	return data.NewSkillApi().List(query)
 }
@@ -1194,29 +1293,29 @@ func (c *einoLLMClient) Complete(ctx context.Context, prompt string) (string, er
 	return msg.Content, nil
 }
 
-func (h *SystemHandler) GenerateSkillFromURL(url string) (*models.Skill, error) {
+func (h *SystemHandler) GenerateSkillFromURL(url string) (*models.Skill, float64, error) {
 	configs := data.GetSettingConfig().AiConfigs
 	if len(configs) == 0 {
-		return nil, fmt.Errorf("请先配置 AI 模型")
+		return nil, 0, fmt.Errorf("请先配置 AI 模型")
 	}
 	cfg := configs[0]
 	chatModel, err := agent.CreateChatModel(h.currentCtx(), *cfg)
 	if err != nil {
-		return nil, fmt.Errorf("创建 AI 模型失败: %s", err.Error())
+		return nil, 0, fmt.Errorf("创建 AI 模型失败: %s", err.Error())
 	}
 	llm := &einoLLMClient{model: chatModel}
-	skill, _, err := skill_analysis.GenerateSkillFromURL(h.currentCtx(), url, llm)
+	skill, confidence, err := skill_analysis.GenerateSkillFromURL(h.currentCtx(), url, llm)
 	if err != nil {
-		return nil, err
+		return nil, 0, fmt.Errorf("生成失败: %s", err.Error())
 	}
 	if skill == nil {
-		return nil, fmt.Errorf("生成失败：未获取到有效结果")
+		return nil, 0, fmt.Errorf("生成失败：未获取到有效结果")
 	}
 	err = data.NewSkillApi().Create(skill)
 	if err != nil {
-		return nil, fmt.Errorf("保存技能失败: %s", err.Error())
+		return nil, 0, fmt.Errorf("保存技能失败: %s", err.Error())
 	}
-	return skill, nil
+	return skill, confidence, nil
 }
 
 func (h *SystemHandler) AnalyzeSkillEffectiveness(id uint) string {
@@ -1312,5 +1411,5 @@ func (h *SystemHandler) isArm64() bool {
 }
 
 func (h *SystemHandler) isRunningAsAdmin() bool {
-	return false
+	return isRunningAsAdmin()
 }
