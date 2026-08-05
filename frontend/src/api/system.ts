@@ -5,6 +5,10 @@
 
 import { callApi } from './client'
 import * as App from '../../wailsjs/go/main/App'
+import * as SystemHandler from '../../wailsjs/go/handler/SystemHandler'
+import * as AnalysisHandler from '../../wailsjs/go/handler/AnalysisHandler'
+import * as AgentHandler from '../../wailsjs/go/handler/AgentHandler'
+import * as NotificationHandler from '../../wailsjs/go/handler/NotificationHandler'
 
 // ========== 版本信息 ==========
 
@@ -13,7 +17,7 @@ import * as App from '../../wailsjs/go/main/App'
  * @returns {Promise<ApiResult>}
  */
 export async function getVersionInfo(): Promise<any> {
-  return callApi(App.GetVersionInfo)
+  return callApi(SystemHandler.GetVersionInfo)
 }
 
 /**
@@ -21,7 +25,7 @@ export async function getVersionInfo(): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function checkUpdate(): Promise<any> {
-  return callApi(App.CheckUpdate)
+  return callApi(SystemHandler.CheckUpdate)
 }
 
 // ========== 设置相关 ==========
@@ -40,7 +44,7 @@ export async function getSettings(): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function getConfig(): Promise<any> {
-  return callApi(App.GetConfig)
+  return callApi(SystemHandler.GetConfig)
 }
 
 /**
@@ -73,7 +77,7 @@ export async function resetSettings(): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function saveAiResponseResult(arg1: string, arg2: string, arg3: string, arg4: string, arg5: string, arg6: number): Promise<any> {
-  return callApi(App.SaveAIResponseResult, arg1, arg2, arg3, arg4, arg5, arg6)
+  return callApi(AnalysisHandler.SaveAIResponseResult, arg1, arg2, arg3, arg4, arg5, arg6)
 }
 
 /**
@@ -83,7 +87,7 @@ export async function saveAiResponseResult(arg1: string, arg2: string, arg3: str
  * @returns {Promise<ApiResult>}
  */
 export async function saveAsMarkdown(title: string, content: string): Promise<any> {
-  return callApi(App.SaveAsMarkdown, title, content)
+  return callApi(AnalysisHandler.SaveAsMarkdown, title, content)
 }
 
 /**
@@ -93,7 +97,7 @@ export async function saveAsMarkdown(title: string, content: string): Promise<an
  * @returns {Promise<ApiResult>}
  */
 export async function shareAnalysis(arg1: string, arg2: string): Promise<any> {
-  return callApi(App.ShareAnalysis, arg1, arg2)
+  return callApi(AnalysisHandler.ShareAnalysis, arg1, arg2)
 }
 
 // ========== AI 配置 ==========
@@ -104,7 +108,7 @@ export async function shareAnalysis(arg1: string, arg2: string): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function getAllStrategies(): Promise<any> {
-  return callApi(App.GetAllStrategies)
+  return callApi(AgentHandler.GetAllStrategies)
 }
 
 /**
@@ -112,7 +116,7 @@ export async function getAllStrategies(): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function getAiConfigs(): Promise<any> {
-  return callApi(App.GetAiConfigs)
+  return callApi(SystemHandler.GetAiConfigs)
 }
 
 /**
@@ -158,7 +162,7 @@ export async function getCronTasks(): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function createCronTask(task: any): Promise<any> {
-  return callApi(App.CreateCronTask, task)
+  return callApi(SystemHandler.CreateCronTask, task)
 }
 
 /**
@@ -167,7 +171,7 @@ export async function createCronTask(task: any): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function updateCronTask(task: any): Promise<any> {
-  return callApi(App.UpdateCronTask, task)
+  return callApi(SystemHandler.UpdateCronTask, task)
 }
 
 /**
@@ -176,7 +180,7 @@ export async function updateCronTask(task: any): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function deleteCronTask(id: number): Promise<any> {
-  return callApi(App.DeleteCronTask, id)
+  return callApi(SystemHandler.DeleteCronTask, id)
 }
 
 /**
@@ -260,7 +264,7 @@ export async function saveSkill(skill: any): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function deleteSkill(id: number): Promise<any> {
-  return callApi(App.DeleteSkill, id)
+  return callApi(SystemHandler.DeleteSkill, id)
 }
 
 /**
@@ -268,7 +272,7 @@ export async function deleteSkill(id: number): Promise<any> {
  * Go: CreateSkill(skill *models.Skill) string
  */
 export async function createSkill(skill: any): Promise<any> {
-  return callApi(App.CreateSkill, skill)
+  return callApi(SystemHandler.CreateSkill, skill)
 }
 
 /**
@@ -276,7 +280,7 @@ export async function createSkill(skill: any): Promise<any> {
  * Go: UpdateSkill(skill *models.Skill) string
  */
 export async function updateSkill(skill: any): Promise<any> {
-  return callApi(App.UpdateSkill, skill)
+  return callApi(SystemHandler.UpdateSkill, skill)
 }
 
 // ========== 提示词管理 ==========
@@ -289,7 +293,7 @@ export async function updateSkill(skill: any): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function getPromptTemplates(name: string = '', promptType: string = ''): Promise<any> {
-  return callApi(App.GetPromptTemplates, name, promptType)
+  return callApi(AnalysisHandler.GetPromptTemplates, name, promptType)
 }
 
 /**
@@ -297,7 +301,7 @@ export async function getPromptTemplates(name: string = '', promptType: string =
  * Go: AddPrompt(prompt models.Prompt) string
  */
 export async function addPrompt(prompt: any): Promise<any> {
-  return callApi(App.AddPrompt, prompt)
+  return callApi(AnalysisHandler.AddPrompt, prompt)
 }
 
 /**
@@ -305,7 +309,7 @@ export async function addPrompt(prompt: any): Promise<any> {
  * Go: DelPrompt(id uint) string
  */
 export async function delPrompt(id: number): Promise<any> {
-  return callApi(App.DelPrompt, id)
+  return callApi(AnalysisHandler.DelPrompt, id)
 }
 
 /**
@@ -323,7 +327,7 @@ export async function savePromptTemplate(template: any): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function deletePromptTemplate(id: number): Promise<any> {
-  return callApi(App.DeletePromptTemplate, id)
+  return callApi(AnalysisHandler.DeletePromptTemplate, id)
 }
 
 // ========== 日志 ==========
@@ -380,7 +384,7 @@ export async function clearCache(): Promise<any> {
  * Go: GetSponsorInfo() map[string]any
  */
 export async function getSponsorInfo(): Promise<any> {
-  return callApi(App.GetSponsorInfo)
+  return callApi(SystemHandler.GetSponsorInfo)
 }
 
 /**
@@ -388,7 +392,7 @@ export async function getSponsorInfo(): Promise<any> {
  * Go: GetUserManual() string
  */
 export async function getUserManual(): Promise<any> {
-  return callApi(App.GetUserManual)
+  return callApi(SystemHandler.GetUserManual)
 }
 
 /**
@@ -396,7 +400,7 @@ export async function getUserManual(): Promise<any> {
  * Go: CheckSponsorCode(code string) map[string]any
  */
 export async function checkSponsorCode(code: string): Promise<any> {
-  return callApi(App.CheckSponsorCode, code)
+  return callApi(SystemHandler.CheckSponsorCode, code)
 }
 
 // ========== 配置管理 ==========
@@ -406,7 +410,7 @@ export async function checkSponsorCode(code: string): Promise<any> {
  * Go: ExportConfig() string
  */
 export async function exportConfig(): Promise<any> {
-  return callApi(App.ExportConfig)
+  return callApi(SystemHandler.ExportConfig)
 }
 
 /**
@@ -424,7 +428,7 @@ export async function updateConfig(config: any): Promise<any> {
  * Go: GetMultiAgentPrompts() []models.MultiAgentPrompt
  */
 export async function getMultiAgentPrompts(): Promise<any> {
-  return callApi(App.GetMultiAgentPrompts)
+  return callApi(AnalysisHandler.GetMultiAgentPrompts)
 }
 
 /**
@@ -432,7 +436,7 @@ export async function getMultiAgentPrompts(): Promise<any> {
  * Go: UpdateMultiAgentPrompt(type, name, content string)
  */
 export async function updateMultiAgentPrompt(type: string, name: string, content: string): Promise<any> {
-  return callApi(App.UpdateMultiAgentPrompt, type, name, content)
+  return callApi(AnalysisHandler.UpdateMultiAgentPrompt, type, name, content)
 }
 
 // ========== AI 模型 ==========
@@ -442,7 +446,7 @@ export async function updateMultiAgentPrompt(type: string, name: string, content
  * Go: FetchAiModels(baseUrl, apiKey string) []map[string]any
  */
 export async function fetchAiModels(baseUrl: string, apiKey: string): Promise<any> {
-  return callApi(App.FetchAiModels, baseUrl, apiKey)
+  return callApi(SystemHandler.FetchAiModels, baseUrl, apiKey)
 }
 
 /**
@@ -450,7 +454,7 @@ export async function fetchAiModels(baseUrl: string, apiKey: string): Promise<an
  * Go: FetchAiModelInfo(baseUrl, apiKey, model string) map[string]any
  */
 export async function fetchAiModelInfo(baseUrl: string, apiKey: string, model: string): Promise<any> {
-  return callApi(App.FetchAiModelInfo, baseUrl, apiKey, model)
+  return callApi(SystemHandler.FetchAiModelInfo, baseUrl, apiKey, model)
 }
 
 // ========== 通知/机器 ==========
@@ -460,7 +464,7 @@ export async function fetchAiModelInfo(baseUrl: string, apiKey: string, model: s
  * Go: SendTestNotification(message string) string
  */
 export async function sendTestNotification(message: string): Promise<any> {
-  return callApi(App.SendTestNotification, message)
+  return callApi(NotificationHandler.SendTestNotification, message)
 }
 
 /**
@@ -468,7 +472,7 @@ export async function sendTestNotification(message: string): Promise<any> {
  * Go: GetMachineId() string
  */
 export async function getMachineId(): Promise<any> {
-  return callApi(App.GetMachineId)
+  return callApi(SystemHandler.GetMachineId)
 }
 
 /**
@@ -476,7 +480,7 @@ export async function getMachineId(): Promise<any> {
  * Go: GetTimezone() string
  */
 export async function getTimezone(): Promise<any> {
-  return callApi(App.GetTimezone)
+  return callApi(SystemHandler.GetTimezone)
 }
 
 // ========== AI 推荐 ==========
@@ -486,7 +490,7 @@ export async function getTimezone(): Promise<any> {
  * Go: GetAiRecommendStats() map[string]any
  */
 export async function getAiRecommendStats(): Promise<any> {
-  return callApi(App.GetAiRecommendStats)
+  return callApi(AnalysisHandler.GetAiRecommendStats)
 }
 
 /**
@@ -494,7 +498,7 @@ export async function getAiRecommendStats(): Promise<any> {
  * Go: GetAiRecommendStocksList(query data.AiRecommendStockListQuery) data.AiRecommendStockPageData
  */
 export async function getAiRecommendStocksList(query: any): Promise<any> {
-  return callApi(App.GetAiRecommendStocksList, query)
+  return callApi(AnalysisHandler.GetAiRecommendStocksList, query)
 }
 
 /**
@@ -502,7 +506,7 @@ export async function getAiRecommendStocksList(query: any): Promise<any> {
  * Go: DeleteAiRecommendStocks(id int) string
  */
 export async function deleteAiRecommendStocks(id: number): Promise<any> {
-  return callApi(App.DeleteAiRecommendStocks, id)
+  return callApi(AnalysisHandler.DeleteAiRecommendStocks, id)
 }
 
 /**
@@ -510,7 +514,7 @@ export async function deleteAiRecommendStocks(id: number): Promise<any> {
  * Go: UpdateAiRecommendStocksAlert(id int, enable bool) string
  */
 export async function updateAiRecommendStocksAlert(id: number, enable: boolean): Promise<any> {
-  return callApi(App.UpdateAiRecommendStocksAlert, id, enable)
+  return callApi(AnalysisHandler.UpdateAiRecommendStocksAlert, id, enable)
 }
 
 // ========== AI 响应结果管理 ==========
@@ -520,7 +524,7 @@ export async function updateAiRecommendStocksAlert(id: number, enable: boolean):
  * Go: GetAIResponseResultList(query any) any
  */
 export async function getAIResponseResultList(query: any): Promise<any> {
-  return callApi(App.GetAIResponseResultList, query)
+  return callApi(AnalysisHandler.GetAIResponseResultList, query)
 }
 
 /**
@@ -528,7 +532,7 @@ export async function getAIResponseResultList(query: any): Promise<any> {
  * Go: DeleteAIResponseResult(id int) string
  */
 export async function deleteAIResponseResult(id: number): Promise<any> {
-  return callApi(App.DeleteAIResponseResult, id)
+  return callApi(AnalysisHandler.DeleteAIResponseResult, id)
 }
 
 /**
@@ -536,7 +540,7 @@ export async function deleteAIResponseResult(id: number): Promise<any> {
  * Go: BatchDeleteAIResponseResult(ids []int) string
  */
 export async function batchDeleteAIResponseResult(ids: any): Promise<any> {
-  return callApi(App.BatchDeleteAIResponseResult, ids)
+  return callApi(AnalysisHandler.BatchDeleteAIResponseResult, ids)
 }
 
 // ========== Agent 聊天 ==========
@@ -546,7 +550,7 @@ export async function batchDeleteAIResponseResult(ids: any): Promise<any> {
  * Go: ChatWithAgent(agentType, question string, context []any, stream bool, aiConfigId int, sysPromptId *int, enableTools bool)
  */
 export async function chatWithAgent(agentType: string, question: string, context: any, stream: boolean, aiConfigId: number, sysPromptId: any, enableTools: boolean): Promise<any> {
-  return callApi(App.ChatWithAgent, agentType, question, context, stream, aiConfigId, sysPromptId, enableTools)
+  return callApi(AgentHandler.ChatWithAgent, agentType, question, context, stream, aiConfigId, sysPromptId, enableTools)
 }
 
 /**
@@ -554,7 +558,7 @@ export async function chatWithAgent(agentType: string, question: string, context
  * Go: AbortChatWithAgent() string
  */
 export async function abortChatWithAgent(): Promise<any> {
-  return callApi(App.AbortChatWithAgent)
+  return callApi(AgentHandler.AbortChatWithAgent)
 }
 
 // ========== AI 助手会话 ==========
@@ -564,7 +568,7 @@ export async function abortChatWithAgent(): Promise<any> {
  * Go: SaveAiAssistantSession(key string, messages []map[string]any)
  */
 export async function saveAiAssistantSession(key: string, messages: any): Promise<any> {
-  return callApi(App.SaveAiAssistantSession, key, messages)
+  return callApi(SystemHandler.SaveAiAssistantSession, key, messages)
 }
 
 /**
@@ -572,7 +576,7 @@ export async function saveAiAssistantSession(key: string, messages: any): Promis
  * Go: GetAiAssistantSession(key string) []map[string]any
  */
 export async function getAiAssistantSession(key: string): Promise<any> {
-  return callApi(App.GetAiAssistantSession, key)
+  return callApi(SystemHandler.GetAiAssistantSession, key)
 }
 
 // ========== 分享 ==========
@@ -582,7 +586,7 @@ export async function getAiAssistantSession(key: string): Promise<any> {
  * Go: ShareText(title, content string) string
  */
 export async function shareText(title: string, content: string): Promise<any> {
-  return callApi(App.ShareText, title, content)
+  return callApi(AnalysisHandler.ShareText, title, content)
 }
 
 // ========== Cron 定时任务（分页/增强版） ==========
@@ -592,7 +596,7 @@ export async function shareText(title: string, content: string): Promise<any> {
  * Go: GetCronTaskList(query any) any
  */
 export async function getCronTaskList(query: any): Promise<any> {
-  return callApi(App.GetCronTaskList, query)
+  return callApi(SystemHandler.GetCronTaskList, query)
 }
 
 /**
@@ -608,7 +612,7 @@ export async function getCronTaskById(id: number): Promise<any> {
  * Go: GetCronTaskTypes() []map[string]any
  */
 export async function getCronTaskTypes(): Promise<any> {
-  return callApi(App.GetCronTaskTypes)
+  return callApi(SystemHandler.GetCronTaskTypes)
 }
 
 /**
@@ -616,7 +620,7 @@ export async function getCronTaskTypes(): Promise<any> {
  * Go: EnableCronTask(id int, enable bool)
  */
 export async function enableCronTask(id: number, enable: boolean): Promise<any> {
-  return callApi(App.EnableCronTask, id, enable)
+  return callApi(SystemHandler.EnableCronTask, id, enable)
 }
 
 /**
@@ -624,7 +628,7 @@ export async function enableCronTask(id: number, enable: boolean): Promise<any> 
  * Go: ExecuteCronTaskNow(id int)
  */
 export async function executeCronTaskNow(id: number): Promise<any> {
-  return callApi(App.ExecuteCronTaskNow, id)
+  return callApi(SystemHandler.ExecuteCronTaskNow, id)
 }
 
 /**
@@ -632,7 +636,7 @@ export async function executeCronTaskNow(id: number): Promise<any> {
  * Go: ValidateCronExpr(expr string) map[string]any
  */
 export async function validateCronExpr(expr: string): Promise<any> {
-  return callApi(App.ValidateCronExpr, expr)
+  return callApi(SystemHandler.ValidateCronExpr, expr)
 }
 
 /**
@@ -640,7 +644,7 @@ export async function validateCronExpr(expr: string): Promise<any> {
  * Go: SearchCronTasks(keyword string) any
  */
 export async function searchCronTasks(keyword: string): Promise<any> {
-  return callApi(App.SearchCronTasks, keyword)
+  return callApi(SystemHandler.SearchCronTasks, keyword)
 }
 
 /**
@@ -648,7 +652,7 @@ export async function searchCronTasks(keyword: string): Promise<any> {
  * Go: CalculateNextRunTime(expr string) string
  */
 export async function calculateNextRunTime(expr: string): Promise<any> {
-  return callApi(App.CalculateNextRunTime, expr)
+  return callApi(SystemHandler.CalculateNextRunTime, expr)
 }
 
 /**
@@ -656,7 +660,7 @@ export async function calculateNextRunTime(expr: string): Promise<any> {
  * Go: CalculateNextRunTimes(expr string, count int) []string
  */
 export async function calculateNextRunTimes(expr: string, count: number): Promise<any> {
-  return callApi(App.CalculateNextRunTimes, expr, count)
+  return callApi(SystemHandler.CalculateNextRunTimes, expr, count)
 }
 
 // ========== 技能管理（增强版） ==========
@@ -666,7 +670,7 @@ export async function calculateNextRunTimes(expr: string, count: number): Promis
  * Go: GetAllSkills() []models.Skill
  */
 export async function getAllSkills(): Promise<any> {
-  return callApi(App.GetAllSkills)
+  return callApi(SystemHandler.GetAllSkills)
 }
 
 /**
@@ -674,7 +678,7 @@ export async function getAllSkills(): Promise<any> {
  * Go: GetSkillList(query any) any
  */
 export async function getSkillList(query: any): Promise<any> {
-  return callApi(App.GetSkillList, query)
+  return callApi(SystemHandler.GetSkillList, query)
 }
 
 /**
@@ -690,7 +694,7 @@ export async function getSkillById(id: number): Promise<any> {
  * Go: EnableSkill(id int, enable bool)
  */
 export async function enableSkill(id: number, enable: boolean): Promise<any> {
-  return callApi(App.EnableSkill, id, enable)
+  return callApi(SystemHandler.EnableSkill, id, enable)
 }
 
 /**
@@ -708,7 +712,7 @@ export async function generateSkillFromURL(url: string): Promise<any> {
  * Go: GetMCPServerList(query any) any
  */
 export async function getMCPServerList(query: any): Promise<any> {
-  return callApi(App.GetMCPServerList, query)
+  return callApi(SystemHandler.GetMCPServerList, query)
 }
 
 /**
@@ -716,7 +720,7 @@ export async function getMCPServerList(query: any): Promise<any> {
  * Go: GetMCPServerByID(id int) models.MCPServer
  */
 export async function getMCPServerById(id: number): Promise<any> {
-  return callApi(App.GetMCPServerByID, id)
+  return callApi(SystemHandler.GetMCPServerByID, id)
 }
 
 /**
@@ -724,7 +728,7 @@ export async function getMCPServerById(id: number): Promise<any> {
  * Go: EnableMCPServer(id int, enable bool)
  */
 export async function enableMCPServer(id: number, enable: boolean): Promise<any> {
-  return callApi(App.EnableMCPServer, id, enable)
+  return callApi(SystemHandler.EnableMCPServer, id, enable)
 }
 
 /**
@@ -732,7 +736,7 @@ export async function enableMCPServer(id: number, enable: boolean): Promise<any>
  * Go: CreateMCPServer(server any)
  */
 export async function createMCPServer(server: any): Promise<any> {
-  return callApi(App.CreateMCPServer, server)
+  return callApi(SystemHandler.CreateMCPServer, server)
 }
 
 /**
@@ -740,7 +744,7 @@ export async function createMCPServer(server: any): Promise<any> {
  * Go: UpdateMCPServer(server any)
  */
 export async function updateMCPServer(server: any): Promise<any> {
-  return callApi(App.UpdateMCPServer, server)
+  return callApi(SystemHandler.UpdateMCPServer, server)
 }
 
 /**
@@ -748,7 +752,7 @@ export async function updateMCPServer(server: any): Promise<any> {
  * Go: GetMCPToolsByServerID(id int) []map[string]any
  */
 export async function getMCPToolsByServerID(id: number): Promise<any> {
-  return callApi(App.GetMCPToolsByServerID, id)
+  return callApi(SystemHandler.GetMCPToolsByServerID, id)
 }
 
 /**
@@ -756,7 +760,7 @@ export async function getMCPToolsByServerID(id: number): Promise<any> {
  * Go: GetAllMCPTools() []map[string]any
  */
 export async function getAllMCPTools(): Promise<any> {
-  return callApi(App.GetAllMCPTools)
+  return callApi(SystemHandler.GetAllMCPTools)
 }
 
 // ========== 提示词管理（增强版） ==========
@@ -766,7 +770,7 @@ export async function getAllMCPTools(): Promise<any> {
  * Go: GetPromptTemplateList(query any) any
  */
 export async function getPromptTemplateList(query: any): Promise<any> {
-  return callApi(App.GetPromptTemplateList, query)
+  return callApi(AnalysisHandler.GetPromptTemplateList, query)
 }
 
 /**
@@ -774,7 +778,7 @@ export async function getPromptTemplateList(query: any): Promise<any> {
  * Go: AddPromptTemplate(template models.PromptTemplate)
  */
 export async function addPromptTemplate(template: any): Promise<any> {
-  return callApi(App.AddPromptTemplate, template)
+  return callApi(AnalysisHandler.AddPromptTemplate, template)
 }
 
 /**
@@ -782,7 +786,7 @@ export async function addPromptTemplate(template: any): Promise<any> {
  * Go: UpdatePromptTemplate(template models.PromptTemplate)
  */
 export async function updatePromptTemplate(template: any): Promise<any> {
-  return callApi(App.UpdatePromptTemplate, template)
+  return callApi(AnalysisHandler.UpdatePromptTemplate, template)
 }
 
 export default {

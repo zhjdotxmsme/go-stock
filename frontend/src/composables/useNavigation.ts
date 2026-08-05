@@ -10,7 +10,7 @@ import { EventsEmit, Quit, Hide, WindowFullscreen, WindowUnfullscreen } from '..
 import { NIcon } from 'naive-ui'
 import { createMenuOptions } from '../config/navigation'
 import { useStockStore } from '../stores'
-import { GetGroupList } from '../../wailsjs/go/main/App'
+import { GetGroupList } from '../../wailsjs/go/handler/StockHandler'
 
 // ========== 图标导入 - 集中管理（多源图标库） ==========
 

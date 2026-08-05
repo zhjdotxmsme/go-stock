@@ -4,7 +4,7 @@ import {NButton, NText, NFlex, NTag, NDataTable} from "naive-ui";
 import * as fundApi from "../api/fund";
 import * as stockApi from "../api/stock";
 import * as systemApi from "../api/system";
-import {OpenURL} from "../../wailsjs/go/main/App";
+import {OpenURL} from "../../wailsjs/go/handler/SystemHandler";
 import {Environment} from "../../wailsjs/runtime";
 import {useMessage} from "naive-ui";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";

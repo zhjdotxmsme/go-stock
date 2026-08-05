@@ -5,7 +5,7 @@
 
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import type { Ref } from 'vue'
-import { IsTradingTime, IsHKTradingTime, IsUSTradingTime } from '../../wailsjs/go/main/App'
+import { IsTradingTime, IsHKTradingTime, IsUSTradingTime } from '../../wailsjs/go/handler/MarketHandler'
 import { WindowSetTitle } from '../../wailsjs/runtime'
 import { useAppStore } from '../stores'
 

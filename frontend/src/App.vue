@@ -2,7 +2,7 @@
 import { onBeforeMount, onMounted, ref } from 'vue'
 import { EventsEmit } from '../wailsjs/runtime'
 import { darkTheme, lightTheme, dateZhCN, zhCN } from 'naive-ui'
-import { GetConfig, GetVersionInfo } from '../wailsjs/go/main/App'
+import { GetConfig, GetVersionInfo } from '../wailsjs/go/handler/SystemHandler'
 import FloatingAgentAssistant from './components/FloatingAgentAssistant.vue'
 
 // ========== Composables & Stores ==========

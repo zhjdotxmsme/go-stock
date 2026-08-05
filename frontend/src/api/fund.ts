@@ -4,7 +4,7 @@
  */
 
 import { callApi } from './client'
-import * as App from '../../wailsjs/go/main/App'
+import * as FundHandler from '../../wailsjs/go/handler/FundHandler'
 
 // ========== 基金自选 ==========
 
@@ -13,7 +13,7 @@ import * as App from '../../wailsjs/go/main/App'
  * Go: GetFollowedFund() []data.FollowedFund
  */
 export async function getFollowedFund() {
-  return callApi(App.GetFollowedFund)
+  return callApi(FundHandler.GetFollowedFund)
 }
 
 /**
@@ -22,7 +22,7 @@ export async function getFollowedFund() {
  * @param {string} code - 基金代码
  */
 export async function followFund(code: string) {
-  return callApi(App.FollowFund, code)
+  return callApi(FundHandler.FollowFund, code)
 }
 
 /**
@@ -31,7 +31,7 @@ export async function followFund(code: string) {
  * @param {string} code - 基金代码
  */
 export async function unFollowFund(code: string) {
-  return callApi(App.UnFollowFund, code)
+  return callApi(FundHandler.UnFollowFund, code)
 }
 
 /**
@@ -39,7 +39,7 @@ export async function unFollowFund(code: string) {
  * Go: GetFollowedFundPaged(page, pageSize int, keyword string) data.FollowedFundPagedResult
  */
 export async function getFollowedFundPaged(page: number, pageSize: number, keyword: string) {
-  return callApi(App.GetFollowedFundPaged, page, pageSize, keyword)
+  return callApi(FundHandler.GetFollowedFundPaged, page, pageSize, keyword)
 }
 
 // ========== 基金K线 ==========
@@ -49,7 +49,7 @@ export async function getFollowedFundPaged(page: number, pageSize: number, keywo
  * Go: GetFundKLine(code, name string, days int) data.KLineSourceResult
  */
 export async function getFundKLine(code: string, name: string, days: number) {
-  return callApi(App.GetFundKLine, code, name, days)
+  return callApi(FundHandler.GetFundKLine, code, name, days)
 }
 
 /**
@@ -62,7 +62,7 @@ export async function getFundHistoryNetValue(
   startDate: string,
   endDate: string
 ) {
-  return callApi(App.GetFundHistoryNetValue, code, page, startDate, endDate)
+  return callApi(FundHandler.GetFundHistoryNetValue, code, page, startDate, endDate)
 }
 
 // ========== 基金排名 ==========
@@ -79,7 +79,7 @@ export async function getFundRanking(
   page: number,
   pageSize: number
 ) {
-  return callApi(App.GetFundRanking, type, order, startDate, endDate, page, pageSize)
+  return callApi(FundHandler.GetFundRanking, type, order, startDate, endDate, page, pageSize)
 }
 
 /**
@@ -87,7 +87,7 @@ export async function getFundRanking(
  * Go: GetFundTop10Holdings(code string) []data.FundHoldingStock
  */
 export async function getFundTop10Holdings(code: string) {
-  return callApi(App.GetFundTop10Holdings, code)
+  return callApi(FundHandler.GetFundTop10Holdings, code)
 }
 
 // ========== 基金搜索 ==========
@@ -97,7 +97,7 @@ export async function getFundTop10Holdings(code: string) {
  * Go: SearchFundCodes(keyword string) []data.FundSearchItem
  */
 export async function searchFundCodes(keyword: string) {
-  return callApi(App.SearchFundCodes, keyword)
+  return callApi(FundHandler.SearchFundCodes, keyword)
 }
 
 /**
@@ -105,7 +105,7 @@ export async function searchFundCodes(keyword: string) {
  * Go: GetfundList(keyword string) []data.FundBasic
  */
 export async function getFundList(keyword: string) {
-  return callApi(App.GetfundList, keyword)
+  return callApi(FundHandler.GetfundList, keyword)
 }
 
 export default {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {onBeforeMount, onUnmounted, ref} from 'vue'
-import {OpenURL} from "../../wailsjs/go/main/App";
+import {OpenURL} from "../../wailsjs/go/handler/SystemHandler";
 import * as marketApi from "../api/market";
 import {Environment} from "../../wailsjs/runtime";
 const list  = ref([])

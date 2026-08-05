@@ -4,7 +4,8 @@
  */
 
 import { callApi } from './client'
-import * as App from '../../wailsjs/go/main/App'
+import * as TradingRecordHandler from '../../wailsjs/go/handler/TradingRecordHandler'
+import * as StockHandler from '../../wailsjs/go/handler/StockHandler'
 
 // ========== 交易记录 ==========
 
@@ -13,7 +14,7 @@ import * as App from '../../wailsjs/go/main/App'
  * Go: GetTradingRecordList(query data.TradingRecordListQuery) data.TradingRecordPageData
  */
 export async function getTradingRecordList(query: any) {
-  return callApi(App.GetTradingRecordList, query)
+  return callApi(TradingRecordHandler.GetTradingRecordList, query)
 }
 
 /**
@@ -21,7 +22,7 @@ export async function getTradingRecordList(query: any) {
  * Go: AddTradingRecord(record data.TradingRecord) number
  */
 export async function addTradingRecord(record: any) {
-  return callApi(App.AddTradingRecord, record)
+  return callApi(TradingRecordHandler.AddTradingRecord, record)
 }
 
 /**
@@ -29,7 +30,7 @@ export async function addTradingRecord(record: any) {
  * Go: UpdateTradingRecord(record data.TradingRecord)
  */
 export async function updateTradingRecord(record: any) {
-  return callApi(App.UpdateTradingRecord, record)
+  return callApi(TradingRecordHandler.UpdateTradingRecord, record)
 }
 
 /**
@@ -37,7 +38,7 @@ export async function updateTradingRecord(record: any) {
  * Go: DeleteTradingRecord(id number)
  */
 export async function deleteTradingRecord(id: number) {
-  return callApi(App.DeleteTradingRecord, id)
+  return callApi(TradingRecordHandler.DeleteTradingRecord, id)
 }
 
 /**
@@ -45,7 +46,7 @@ export async function deleteTradingRecord(id: number) {
  * Go: GetTradingRecordById(id number) data.TradingRecord
  */
 export async function getTradingRecordById(id: number) {
-  return callApi(App.GetTradingRecordById, id)
+  return callApi(TradingRecordHandler.GetTradingRecordById, id)
 }
 
 /**
@@ -53,7 +54,7 @@ export async function getTradingRecordById(id: number) {
  * Go: GetTradingRecordStatistics() data.TradingRecordStatistics
  */
 export async function getTradingRecordStatistics() {
-  return callApi(App.GetTradingRecordStatistics)
+  return callApi(TradingRecordHandler.GetTradingRecordStatistics)
 }
 
 // ========== 辅助 ==========
@@ -63,7 +64,7 @@ export async function getTradingRecordStatistics() {
  * Go: CheckFrequentTrading(code string) Record<string,any>
  */
 export async function checkFrequentTrading(code: string) {
-  return callApi(App.CheckFrequentTrading, code)
+  return callApi(TradingRecordHandler.CheckFrequentTrading, code)
 }
 
 /**
@@ -71,7 +72,7 @@ export async function checkFrequentTrading(code: string) {
  * Go: GetStockRealTimePrice(code string) Record<string,any>
  */
 export async function getStockRealTimePrice(code: string) {
-  return callApi(App.GetStockRealTimePrice, code)
+  return callApi(StockHandler.GetStockRealTimePrice, code)
 }
 
 export default {

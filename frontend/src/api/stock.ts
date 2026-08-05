@@ -4,7 +4,11 @@
  */
 
 import { callApi } from './client'
-import * as App from '../../wailsjs/go/main/App'
+import * as StockHandler from '../../wailsjs/go/handler/StockHandler'
+import * as AnalysisHandler from '../../wailsjs/go/handler/AnalysisHandler'
+import * as AgentHandler from '../../wailsjs/go/handler/AgentHandler'
+import * as NotificationHandler from '../../wailsjs/go/handler/NotificationHandler'
+import * as SystemHandler from '../../wailsjs/go/handler/SystemHandler'
 
 // ========== 自选股相关 ==========
 
@@ -14,7 +18,7 @@ import * as App from '../../wailsjs/go/main/App'
  * @param {string} stockCode - 股票代码
  */
 export async function greet(stockCode: string): Promise<any> {
-  return callApi(App.Greet, stockCode)
+  return callApi(StockHandler.Greet, stockCode)
 }
 
 /**
@@ -23,7 +27,7 @@ export async function greet(stockCode: string): Promise<any> {
  * @param {string} stockCode - 股票代码
  */
 export async function follow(stockCode: string): Promise<any> {
-  return callApi(App.Follow, stockCode)
+  return callApi(StockHandler.Follow, stockCode)
 }
 
 /**
@@ -32,7 +36,7 @@ export async function follow(stockCode: string): Promise<any> {
  * @param {string} stockCode - 股票代码
  */
 export async function unFollow(stockCode: string): Promise<any> {
-  return callApi(App.UnFollow, stockCode)
+  return callApi(StockHandler.UnFollow, stockCode)
 }
 
 /**
@@ -41,7 +45,7 @@ export async function unFollow(stockCode: string): Promise<any> {
  * @param {number} groupId - 群组ID
  */
 export async function getFollowList(groupId: number): Promise<any> {
-  return callApi(App.GetFollowList, groupId)
+  return callApi(StockHandler.GetFollowList, groupId)
 }
 
 /**
@@ -50,7 +54,7 @@ export async function getFollowList(groupId: number): Promise<any> {
  * @param {string} key - 搜索关键词
  */
 export async function getStockList(key: string = ''): Promise<any> {
-  return callApi(App.GetStockList, key)
+  return callApi(StockHandler.GetStockList, key)
 }
 
 // ========== 群组相关 ==========
@@ -60,7 +64,7 @@ export async function getStockList(key: string = ''): Promise<any> {
  * Go: GetGroupList() []data.Group
  */
 export async function getGroupList(): Promise<any> {
-  return callApi(App.GetGroupList)
+  return callApi(StockHandler.GetGroupList)
 }
 
 /**
@@ -69,7 +73,7 @@ export async function getGroupList(): Promise<any> {
  * @param {Object} group - 群组对象
  */
 export async function addGroup(group: any): Promise<any> {
-  return callApi(App.AddGroup, group)
+  return callApi(StockHandler.AddGroup, group)
 }
 
 /**
@@ -78,7 +82,7 @@ export async function addGroup(group: any): Promise<any> {
  * @param {number} groupId - 群组ID
  */
 export async function removeGroup(groupId: number): Promise<any> {
-  return callApi(App.RemoveGroup, groupId)
+  return callApi(StockHandler.RemoveGroup, groupId)
 }
 
 /**
@@ -88,7 +92,7 @@ export async function removeGroup(groupId: number): Promise<any> {
  * @param {string} stockCode - 股票代码
  */
 export async function addStockToGroup(groupId: number, stockCode: string): Promise<any> {
-  return callApi(App.AddStockGroup, groupId, stockCode)
+  return callApi(StockHandler.AddStockGroup, groupId, stockCode)
 }
 
 /**
@@ -99,7 +103,7 @@ export async function addStockToGroup(groupId: number, stockCode: string): Promi
  * @param {number} groupId - 群组ID
  */
 export async function removeStockGroup(code: string, name: string, groupId: number): Promise<any> {
-  return callApi(App.RemoveStockGroup, code, name, groupId)
+  return callApi(StockHandler.RemoveStockGroup, code, name, groupId)
 }
 
 /**
@@ -109,7 +113,7 @@ export async function removeStockGroup(code: string, name: string, groupId: numb
  * @param {number} newSort - 新排序值
  */
 export async function updateGroupSort(id: number, newSort: number): Promise<any> {
-  return callApi(App.UpdateGroupSort, id, newSort)
+  return callApi(StockHandler.UpdateGroupSort, id, newSort)
 }
 
 /**
@@ -117,7 +121,7 @@ export async function updateGroupSort(id: number, newSort: number): Promise<any>
  * Go: InitializeGroupSort() bool
  */
 export async function initializeGroupSort(): Promise<any> {
-  return callApi(App.InitializeGroupSort)
+  return callApi(StockHandler.InitializeGroupSort)
 }
 
 // ========== K 线相关 ==========
@@ -130,7 +134,7 @@ export async function initializeGroupSort(): Promise<any> {
  * @param {number} days - 天数
  */
 export async function getStockKLine(stockCode: string, stockName: string, days: number): Promise<any> {
-  return callApi(App.GetStockKLine, stockCode, stockName, days)
+  return callApi(StockHandler.GetStockKLine, stockCode, stockName, days)
 }
 
 /**
@@ -140,7 +144,7 @@ export async function getStockKLine(stockCode: string, stockName: string, days: 
  * @param {string} stockName - 股票名称
  */
 export async function getStockMinutePriceLineData(stockCode: string, stockName: string): Promise<any> {
-  return callApi(App.GetStockMinutePriceLineData, stockCode, stockName)
+  return callApi(StockHandler.GetStockMinutePriceLineData, stockCode, stockName)
 }
 
 /**
@@ -148,14 +152,14 @@ export async function getStockMinutePriceLineData(stockCode: string, stockName: 
  * Go: GetStockEastMoneyKLine(stockCode string, period string, count int) *[]data.KLineData
  */
 export async function getEastMoneyKLine(stockCode: string, period: string = 'day', count: number = 100): Promise<any> {
-  return callApi(App.GetStockEastMoneyKLine, stockCode, period, count)
+  return callApi(StockHandler.GetStockEastMoneyKLine, stockCode, period, count)
 }
 
 /**
  * 获取 K 线数据（带降级）
  */
 export async function getStockKLineWithFallback(stockCode: string, period: string = 'day', count: number = 100): Promise<any> {
-  return callApi(App.GetStockKLineWithFallback, stockCode, period, count)
+  return callApi(StockHandler.GetStockKLineWithFallback, stockCode, period, count)
 }
 
 // ========== 交易设置 ==========
@@ -165,7 +169,7 @@ export async function getStockKLineWithFallback(stockCode: string, period: strin
  * Go: SetCostPriceAndVolume(stockCode string, price float64, volume int64) string
  */
 export async function setCostPriceAndVolume(stockCode: string, price: number, volume: number): Promise<any> {
-  return callApi(App.SetCostPriceAndVolume, stockCode, price, volume)
+  return callApi(StockHandler.SetCostPriceAndVolume, stockCode, price, volume)
 }
 
 /**
@@ -176,7 +180,7 @@ export async function setCostPriceAndVolume(stockCode: string, price: number, vo
  * @param {string} stockCode - 股票代码
  */
 export async function setAlarmChangePercent(val: number, alarmPrice: number, stockCode: string): Promise<any> {
-  return callApi(App.SetAlarmChangePercent, val, alarmPrice, stockCode)
+  return callApi(StockHandler.SetAlarmChangePercent, val, alarmPrice, stockCode)
 }
 
 /**
@@ -186,7 +190,7 @@ export async function setAlarmChangePercent(val: number, alarmPrice: number, sto
  * @param {string} stockCode - 股票代码
  */
 export async function setStockSort(sort: number, stockCode: string): Promise<any> {
-  return callApi(App.SetStockSort, sort, stockCode)
+  return callApi(StockHandler.SetStockSort, sort, stockCode)
 }
 
 /**
@@ -196,7 +200,7 @@ export async function setStockSort(sort: number, stockCode: string): Promise<any
  * @param {string} stockCode - 股票代码
  */
 export async function setStockAICron(cronText: string, stockCode: string): Promise<any> {
-  return callApi(App.SetStockAICron, cronText, stockCode)
+  return callApi(AgentHandler.SetStockAICron, cronText, stockCode)
 }
 
 /**
@@ -204,7 +208,7 @@ export async function setStockAICron(cronText: string, stockCode: string): Promi
  * Go: SetTradingPrice(stockCode string, entryPrice, takeProfitPrice, stopLossPrice, costPrice float64) string
  */
 export async function setTradingPrice(stockCode: string, entryPrice: number, takeProfitPrice: number, stopLossPrice: number, costPrice: number): Promise<any> {
-  return callApi(App.SetTradingPrice, stockCode, entryPrice, takeProfitPrice, stopLossPrice, costPrice)
+  return callApi(StockHandler.SetTradingPrice, stockCode, entryPrice, takeProfitPrice, stopLossPrice, costPrice)
 }
 
 // ========== AI 分析 ==========
@@ -214,7 +218,7 @@ export async function setTradingPrice(stockCode: string, entryPrice: number, tak
  * Go: NewChatStream(stock, stockCode, question string, aiConfigId int, sysPromptId *int, enableTools, think bool, agentMode, strategyCode string)
  */
 export async function newChatStream(stock: string, stockCode: string, question: string, aiConfigId: number, sysPromptId: any, enableTools: boolean, think: boolean, agentMode: string, strategyCode: string): Promise<any> {
-  return callApi(App.NewChatStream, stock, stockCode, question, aiConfigId, sysPromptId, enableTools, think, agentMode, strategyCode)
+  return callApi(AgentHandler.NewChatStream, stock, stockCode, question, aiConfigId, sysPromptId, enableTools, think, agentMode, strategyCode)
 }
 
 /**
@@ -222,7 +226,7 @@ export async function newChatStream(stock: string, stockCode: string, question: 
  * Go: GetAIResponseResult(stock string) *models.AIResponseResult
  */
 export async function getAIResponseResult(stock: string): Promise<any> {
-  return callApi(App.GetAIResponseResult, stock)
+  return callApi(AnalysisHandler.GetAIResponseResult, stock)
 }
 
 /**
@@ -230,7 +234,7 @@ export async function getAIResponseResult(stock: string): Promise<any> {
  * Go: GetEffectiveSponsorVip() map[string]any
  */
 export async function getEffectiveSponsorVip(): Promise<any> {
-  return callApi(App.GetEffectiveSponsorVip)
+  return callApi(SystemHandler.GetEffectiveSponsorVip)
 }
 
 // ========== 保存/分享 ==========
@@ -240,7 +244,7 @@ export async function getEffectiveSponsorVip(): Promise<any> {
  * Go: SaveImage(name, base64Data string) string
  */
 export async function saveImage(name: string, base64Data: string): Promise<any> {
-  return callApi(App.SaveImage, name, base64Data)
+  return callApi(AnalysisHandler.SaveImage, name, base64Data)
 }
 
 /**
@@ -248,7 +252,7 @@ export async function saveImage(name: string, base64Data: string): Promise<any> 
  * Go: SaveWordFile(filename string, base64Data string) string
  */
 export async function saveWordFile(filename: string, base64Data: string): Promise<any> {
-  return callApi(App.SaveWordFile, filename, base64Data)
+  return callApi(AnalysisHandler.SaveWordFile, filename, base64Data)
 }
 
 /**
@@ -256,7 +260,7 @@ export async function saveWordFile(filename: string, base64Data: string): Promis
  * Go: SendDingDingMessageByType(message string, stockCode string, msgType int) string
  */
 export async function sendDingDingMessageByType(message: string, stockCode: string, msgType: number): Promise<any> {
-  return callApi(App.SendDingDingMessageByType, message, stockCode, msgType)
+  return callApi(NotificationHandler.SendDingDingMessageByType, message, stockCode, msgType)
 }
 
 // ========== 技术指标 ==========
@@ -265,14 +269,14 @@ export async function sendDingDingMessageByType(message: string, stockCode: stri
  * 获取筹码分布
  */
 export async function getChipDistribution(stockCode: string): Promise<any> {
-  return callApi(App.GetChipDistribution, stockCode)
+  return callApi(StockHandler.GetChipDistribution, stockCode)
 }
 
 /**
  * 获取公司信息
  */
 export async function getCompanyInfo(stockCode: string): Promise<any> {
-  return callApi(App.GetTdxCompanyInfo, stockCode)
+  return callApi(StockHandler.GetTdxCompanyInfo, stockCode)
 }
 
 // ========== 搜索 ==========
@@ -281,7 +285,7 @@ export async function getCompanyInfo(stockCode: string): Promise<any> {
  * 搜索股票
  */
 export async function searchStock(keyword: string): Promise<any> {
-  return callApi(App.SearchStock, keyword)
+  return callApi(AnalysisHandler.SearchStock, keyword)
 }
 
 // ========== 东财K线分页 ==========
@@ -291,7 +295,7 @@ export async function searchStock(keyword: string): Promise<any> {
  * Go: GetStockEastMoneyKLinePage(code, period string, count, fields int)
  */
 export async function getStockEastMoneyKLinePage(code: string, period: string, count: number, fields: number): Promise<any> {
-  return callApi(App.GetStockEastMoneyKLinePage, code, period, count, fields)
+  return callApi(StockHandler.GetStockEastMoneyKLinePage, code, period, count, fields)
 }
 
 /**
@@ -299,7 +303,7 @@ export async function getStockEastMoneyKLinePage(code: string, period: string, c
  * Go: GetStockKLinePageWithFallback
  */
 export async function getStockKLinePageWithFallback(...args: any[]): Promise<any> {
-  return callApi(App.GetStockKLinePageWithFallback, ...args)
+  return callApi(StockHandler.GetStockKLinePageWithFallback, ...args)
 }
 
 // ========== 全量股票 ==========
@@ -309,7 +313,7 @@ export async function getStockKLinePageWithFallback(...args: any[]): Promise<any
  * Go: GetAllStocks(page, pageSize int, key string, indicators map[string]bool)
  */
 export async function getAllStocks(page: number, pageSize: number, key: string, indicators: any): Promise<any> {
-  return callApi(App.GetAllStocks, page, pageSize, key, indicators)
+  return callApi(AnalysisHandler.GetAllStocks, page, pageSize, key, indicators)
 }
 
 /**
@@ -317,7 +321,7 @@ export async function getAllStocks(page: number, pageSize: number, key: string, 
  * Go: GetAllStockInfoList(query data.StockInfoListQuery) data.StockInfoPageData
  */
 export async function getAllStockInfoList(query: any): Promise<any> {
-  return callApi(App.GetAllStockInfoList, query)
+  return callApi(StockHandler.GetAllStockInfoList, query)
 }
 
 /**
@@ -325,7 +329,7 @@ export async function getAllStockInfoList(query: any): Promise<any> {
  * Go: GetAllStockInfoById(id int) data.AllStockInfo
  */
 export async function getAllStockInfoById(id: number): Promise<any> {
-  return callApi(App.GetAllStockInfoById, id)
+  return callApi(StockHandler.GetAllStockInfoById, id)
 }
 
 /**
@@ -333,7 +337,7 @@ export async function getAllStockInfoById(id: number): Promise<any> {
  * Go: GetAllMarkets() []string
  */
 export async function getAllMarkets(): Promise<any> {
-  return callApi(App.GetAllMarkets)
+  return callApi(StockHandler.GetAllMarkets)
 }
 
 /**
@@ -341,7 +345,7 @@ export async function getAllMarkets(): Promise<any> {
  * Go: GetAllIndustries() []string
  */
 export async function getAllIndustries(): Promise<any> {
-  return callApi(App.GetAllIndustries)
+  return callApi(StockHandler.GetAllIndustries)
 }
 
 /**
@@ -349,7 +353,7 @@ export async function getAllIndustries(): Promise<any> {
  * Go: GetAllConcepts() []string
  */
 export async function getAllConcepts(): Promise<any> {
-  return callApi(App.GetAllConcepts)
+  return callApi(StockHandler.GetAllConcepts)
 }
 
 /**
@@ -357,7 +361,7 @@ export async function getAllConcepts(): Promise<any> {
  * Go: GetGroupStockList(groupId int) []data.GroupStock
  */
 export async function getGroupStockList(groupId: number): Promise<any> {
-  return callApi(App.GetGroupStockList, groupId)
+  return callApi(StockHandler.GetGroupStockList, groupId)
 }
 
 /**
@@ -365,7 +369,7 @@ export async function getGroupStockList(groupId: number): Promise<any> {
  * Go: GetStockCommonKLine(code, name string, days int)
  */
 export async function getStockCommonKLine(code: string, name: string, days: number): Promise<any> {
-  return callApi(App.GetStockCommonKLine, code, name, days)
+  return callApi(StockHandler.GetStockCommonKLine, code, name, days)
 }
 
 // ========== 集合竞价 ==========
@@ -375,7 +379,7 @@ export async function getStockCommonKLine(code: string, name: string, days: numb
  * Go: GetTdxCallAuction(code string, market, type int)
  */
 export async function getTdxCallAuction(code: string, market: number, type: number): Promise<any> {
-  return callApi(App.GetTdxCallAuction, code, market, type)
+  return callApi(StockHandler.GetTdxCallAuction, code, market, type)
 }
 
 // ========== 自定义策略 ==========
@@ -385,7 +389,7 @@ export async function getTdxCallAuction(code: string, market: number, type: numb
  * Go: GetAllCustomStrategies() []*data.CustomStrategy
  */
 export async function getAllCustomStrategies(): Promise<any> {
-  return callApi(App.GetAllCustomStrategies)
+  return callApi(AnalysisHandler.GetAllCustomStrategies)
 }
 
 /**
@@ -393,7 +397,7 @@ export async function getAllCustomStrategies(): Promise<any> {
  * Go: SaveCustomStrategy(strategy *data.CustomStrategy) error
  */
 export async function saveCustomStrategy(strategy: any): Promise<any> {
-  return callApi(App.SaveCustomStrategy, strategy)
+  return callApi(AnalysisHandler.SaveCustomStrategy, strategy)
 }
 
 /**
@@ -401,7 +405,7 @@ export async function saveCustomStrategy(strategy: any): Promise<any> {
  * Go: DeleteCustomStrategy(id int) error
  */
 export async function deleteCustomStrategy(id: number): Promise<any> {
-  return callApi(App.DeleteCustomStrategy, id)
+  return callApi(AnalysisHandler.DeleteCustomStrategy, id)
 }
 
 /**
@@ -409,7 +413,7 @@ export async function deleteCustomStrategy(id: number): Promise<any> {
  * Go: AIConfiguredStockPick(code string, count int)
  */
 export async function aiConfiguredStockPick(code: string, count: number): Promise<any> {
-  return callApi(App.AIConfiguredStockPick, code, count)
+  return callApi(AnalysisHandler.AIConfiguredStockPick, code, count)
 }
 
 // ========== 数据管理 ==========
@@ -419,7 +423,7 @@ export async function aiConfiguredStockPick(code: string, count: number): Promis
  * Go: BatchDeleteAllStockInfo() string
  */
 export async function batchDeleteAllStockInfo(): Promise<any> {
-  return callApi(App.BatchDeleteAllStockInfo)
+  return callApi(StockHandler.BatchDeleteAllStockInfo)
 }
 
 export default {

@@ -4,7 +4,7 @@ import {Add, ChatboxOutline, RefreshOutline} from "@vicons/ionicons5";
 import {NButton, NEllipsis, NText, useMessage, NTag, NModal, NDataTable, NPopover, NIcon} from "naive-ui";
 import * as fundApi from "../api/fund";
 import * as systemApi from "../api/system";
-import {OpenURL} from "../../wailsjs/go/main/App";
+import {OpenURL} from "../../wailsjs/go/handler/SystemHandler";
 import {Environment} from "../../wailsjs/runtime";
 import vueDanmaku from 'vue3-danmaku'
 import FundKlineChart from "./FundKlineChart.vue";

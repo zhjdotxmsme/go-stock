@@ -2293,26 +2293,7 @@ export namespace gorm {
 
 }
 
-export namespace lo {
-	
-	export class Tuple2_string_string_ {
-	    A: string;
-	    B: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new Tuple2_string_string_(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.A = source["A"];
-	        this.B = source["B"];
-	    }
-	}
-
-}
-
-export namespace main {
+export namespace handler {
 	
 	export class AiModelInfo {
 	    modelName: string;
@@ -2328,6 +2309,25 @@ export namespace main {
 	        this.modelName = source["modelName"];
 	        this.maxTokens = source["maxTokens"];
 	        this.source = source["source"];
+	    }
+	}
+
+}
+
+export namespace lo {
+	
+	export class Tuple2_string_string_ {
+	    A: string;
+	    B: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Tuple2_string_string_(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.A = source["A"];
+	        this.B = source["B"];
 	    }
 	}
 

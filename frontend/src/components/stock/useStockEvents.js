@@ -5,7 +5,8 @@
  */
 import { h, nextTick, onBeforeMount } from 'vue'
 import { NAvatar, NButton } from 'naive-ui'
-import { OpenURL, RestartAsAdmin } from '../../../wailsjs/go/main/App'
+import { RestartAsAdmin } from '../../../wailsjs/go/main/App'
+import { OpenURL } from '../../../wailsjs/go/handler/SystemHandler'
 import { Environment, EventsOn, WindowReload } from '../../../wailsjs/runtime'
 import * as stockApi from '../../api/stock'
 import * as systemApi from '../../api/system'

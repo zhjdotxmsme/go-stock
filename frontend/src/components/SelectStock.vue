@@ -3,7 +3,7 @@ import {h, onBeforeMount, onMounted, onUnmounted, ref, reactive, computed} from 
 import * as stockApi from "../api/stock";
 import * as marketApi from "../api/market";
 import * as systemApi from "../api/system";
-import {OpenURL} from "../../wailsjs/go/main/App";
+import {OpenURL} from "../../wailsjs/go/handler/SystemHandler";
 import {useMessage, NText, NTag, NButton, NPopconfirm, NCard, NTooltip, NSpace, NEllipsis} from 'naive-ui'
 import {Environment} from "../../wailsjs/runtime"
 import {BookmarkOutline, TrashOutline, CreateOutline, AddOutline, FlashOutline, TrendingUpOutline, TrendingDownOutline, GitBranchOutline} from "@vicons/ionicons5";

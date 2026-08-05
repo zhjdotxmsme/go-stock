@@ -166,9 +166,9 @@ func (a *App) registerStartupCronTasks() {
 	go MonitorFollowedStockCostPrices(a)
 	// 市场统计数据采集（交易日每5分钟）
 	go func() {
-		a.FetchAndSaveMarketStatistic()
+		a.marketHandler.FetchAndSaveMarketStatistic()
 		idMarketStat, err := a.cron.AddFunc("0 */5 9-15 * * 1-5", func() {
-			a.FetchAndSaveMarketStatistic()
+			a.marketHandler.FetchAndSaveMarketStatistic()
 		})
 		if err != nil {
 			logger.SugaredLogger.Errorf("AddFunc FetchAndSaveMarketStatistic error:%s", err.Error())
@@ -180,7 +180,7 @@ func (a *App) registerStartupCronTasks() {
 	go func() {
 		data.NewBKFundFlowApi().FetchAndSave()
 		idBKFundFlow, err := a.cron.AddFunc("@every 60s", func() {
-			if a.IsTradingTime() {
+			if a.marketHandler.IsTradingTime() {
 				data.NewBKFundFlowApi().FetchAndSave()
 			}
 		})
@@ -194,7 +194,7 @@ func (a *App) registerStartupCronTasks() {
 	go func() {
 		data.NewConceptFundFlowApi().FetchAndSave()
 		idConceptFundFlow, err := a.cron.AddFunc("@every 60s", func() {
-			if a.IsTradingTime() {
+			if a.marketHandler.IsTradingTime() {
 				data.NewConceptFundFlowApi().FetchAndSave()
 			}
 		})

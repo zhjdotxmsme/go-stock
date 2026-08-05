@@ -4,7 +4,8 @@
  */
 
 import { callApi } from './client'
-import * as App from '../../wailsjs/go/main/App'
+import * as CommodityHandler from '../../wailsjs/go/handler/CommodityHandler'
+import * as AgentHandler from '../../wailsjs/go/handler/AgentHandler'
 
 // ========== 行情 ==========
 
@@ -13,7 +14,7 @@ import * as App from '../../wailsjs/go/main/App'
  * Go: GetCommodityQuote(code string) datasource.QuoteData
  */
 export async function getCommodityQuote(code: string) {
-  return callApi(App.GetCommodityQuote, code)
+  return callApi(CommodityHandler.GetCommodityQuote, code)
 }
 
 /**
@@ -21,7 +22,7 @@ export async function getCommodityQuote(code: string) {
  * Go: GetCommodityQuoteIntl(code string) datasource.QuoteData
  */
 export async function getCommodityQuoteIntl(code: string) {
-  return callApi(App.GetCommodityQuoteIntl, code)
+  return callApi(CommodityHandler.GetCommodityQuoteIntl, code)
 }
 
 /**
@@ -29,7 +30,7 @@ export async function getCommodityQuoteIntl(code: string) {
  * Go: GetTradableCommodities() []models.CommodityAsset
  */
 export async function getTradableCommodities() {
-  return callApi(App.GetTradableCommodities)
+  return callApi(CommodityHandler.GetTradableCommodities)
 }
 
 /**
@@ -37,7 +38,7 @@ export async function getTradableCommodities() {
  * Go: GetCommodityRegistry() any
  */
 export async function getCommodityRegistry() {
-  return callApi(App.GetCommodityRegistry)
+  return callApi(CommodityHandler.GetCommodityRegistry)
 }
 
 /**
@@ -45,7 +46,7 @@ export async function getCommodityRegistry() {
  * Go: GetMacroIndicatorsEnhanced() any
  */
 export async function getMacroIndicatorsEnhanced() {
-  return callApi(App.GetMacroIndicatorsEnhanced)
+  return callApi(CommodityHandler.GetMacroIndicatorsEnhanced)
 }
 
 // ========== K线 ==========
@@ -55,7 +56,7 @@ export async function getMacroIndicatorsEnhanced() {
  * Go: GetCommodityKLine(code, period string, count int) []datasource.KLineBar
  */
 export async function getCommodityKLine(code: string, period: string, count: number) {
-  return callApi(App.GetCommodityKLine, code, period, count)
+  return callApi(CommodityHandler.GetCommodityKLine, code, period, count)
 }
 
 /**
@@ -63,7 +64,7 @@ export async function getCommodityKLine(code: string, period: string, count: num
  * Go: GetCommodityKLineIntl(code, period string, count int) []datasource.KLineBar
  */
 export async function getCommodityKLineIntl(code: string, period: string, count: number) {
-  return callApi(App.GetCommodityKLineIntl, code, period, count)
+  return callApi(CommodityHandler.GetCommodityKLineIntl, code, period, count)
 }
 
 // ========== 分析 ==========
@@ -73,7 +74,7 @@ export async function getCommodityKLineIntl(code: string, period: string, count:
  * Go: GetCommodityFundamentals(code string) string
  */
 export async function getCommodityFundamentals(code: string) {
-  return callApi(App.GetCommodityFundamentals, code)
+  return callApi(CommodityHandler.GetCommodityFundamentals, code)
 }
 
 /**
@@ -81,7 +82,7 @@ export async function getCommodityFundamentals(code: string) {
  * Go: GetCommodityCorrelation(code1, code2 string) string
  */
 export async function getCommodityCorrelation(code1: string, code2: string) {
-  return callApi(App.GetCommodityCorrelation, code1, code2)
+  return callApi(CommodityHandler.GetCommodityCorrelation, code1, code2)
 }
 
 /**
@@ -89,7 +90,7 @@ export async function getCommodityCorrelation(code1: string, code2: string) {
  * Go: GetCommodityReport(code, lang string) string
  */
 export async function getCommodityReport(code: string, lang: string) {
-  return callApi(App.GetCommodityReport, code, lang)
+  return callApi(CommodityHandler.GetCommodityReport, code, lang)
 }
 
 /**
@@ -97,7 +98,7 @@ export async function getCommodityReport(code: string, lang: string) {
  * Go: GetCommodityTechnicals(code, period string) string
  */
 export async function getCommodityTechnicals(code: string, period: string) {
-  return callApi(App.GetCommodityTechnicals, code, period)
+  return callApi(CommodityHandler.GetCommodityTechnicals, code, period)
 }
 
 /**
@@ -110,7 +111,7 @@ export async function newCommodityAnalysisStream(
   question: string,
   aiConfigId: number
 ) {
-  return callApi(App.NewCommodityAnalysisStream, code, period, question, aiConfigId)
+  return callApi(AgentHandler.NewCommodityAnalysisStream, code, period, question, aiConfigId)
 }
 
 export default {

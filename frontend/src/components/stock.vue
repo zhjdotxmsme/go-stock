@@ -5,7 +5,7 @@ import * as stockApi from '../api/stock'
 import * as systemApi from '../api/system'
 import {
   OpenURL,
-} from '../../wailsjs/go/main/App'
+} from '../../wailsjs/go/handler/SystemHandler'
 import {
   NFlex,
   NForm,

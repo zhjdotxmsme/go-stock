@@ -28,7 +28,7 @@ func (a *App) NewsPush(news *[]models.Telegraph) {
 	})
 
 	for _, telegraph := range *news {
-		if a.GetConfig().EnableOnlyPushRedNews {
+		if a.systemHandler.GetConfig().EnableOnlyPushRedNews {
 			if telegraph.IsRed || strutil.ContainsAny(telegraph.Content, stockNames) {
 				go runtime.EventsEmit(a.ctx, "newsPush", telegraph)
 			}
