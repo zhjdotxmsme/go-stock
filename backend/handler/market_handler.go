@@ -38,6 +38,14 @@ func (h *MarketHandler) LongTigerRank(date string) *[]models.LongTigerRankData {
 	return data.NewMarketNewsApi().LongTiger(date)
 }
 
+func (h *MarketHandler) StockResearchReport(stockCode string) []any {
+	return data.NewMarketNewsApi().StockResearchReport(stockCode, 7)
+}
+
+func (h *MarketHandler) StockNotice(stockCode string) []any {
+	return data.NewMarketNewsApi().StockNotice(stockCode)
+}
+
 func (h *MarketHandler) IndustryResearchReport(industryCode string) []any {
 	return data.NewMarketNewsApi().IndustryResearchReport(industryCode, 7)
 }

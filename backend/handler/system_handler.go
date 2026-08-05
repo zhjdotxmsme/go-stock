@@ -630,6 +630,19 @@ func (h *SystemHandler) GetUserManual() string {
 	return string(h.userManual)
 }
 
+// OpenURL 跨平台打开默认浏览器
+func (h *SystemHandler) OpenURL(url string) {
+	wailsruntime.BrowserOpenURL(h.currentCtx(), url)
+}
+
+// GetTimezone 返回应用使用的时区信息（固定东八区）
+func (h *SystemHandler) GetTimezone() map[string]any {
+	return map[string]any{
+		"offset":   8 * 60 * 60,
+		"location": "Asia/Shanghai",
+	}
+}
+
 func getImageBase(bytes []byte) string {
 	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(bytes)
 }
@@ -1095,58 +1108,6 @@ func (h *SystemHandler) CalculateNextRunTimes(cron string, count int) []string {
 		result = append(result, t.Format("2006-01-02 15:04:05"))
 	}
 	return result
-}
-
-// -------------------- Prompts --------------------
-
-func (h *SystemHandler) GetPromptTemplates(name, promptType string) *[]models.PromptTemplate {
-	return data.NewPromptTemplateApi().GetPromptTemplates(name, promptType)
-}
-
-func (h *SystemHandler) AddPrompt(prompt models.Prompt) string {
-	promptTemplate := models.PromptTemplate{
-		ID:      prompt.ID,
-		Content: prompt.Content,
-		Name:    prompt.Name,
-		Type:    prompt.Type,
-	}
-	return data.NewPromptTemplateApi().AddPrompt(promptTemplate)
-}
-
-func (h *SystemHandler) DelPrompt(id uint) string {
-	return data.NewPromptTemplateApi().DelPrompt(id)
-}
-
-func (h *SystemHandler) GetPromptTemplateList(query models.PromptTemplateQuery) *models.PromptTemplatePageData {
-	page, err := data.NewPromptTemplateApi().GetPromptTemplateList(&query)
-	if err != nil {
-		return &models.PromptTemplatePageData{}
-	}
-	return page
-}
-
-func (h *SystemHandler) AddPromptTemplate(template models.PromptTemplate) string {
-	return data.NewPromptTemplateApi().AddPrompt(template)
-}
-
-func (h *SystemHandler) UpdatePromptTemplate(template models.PromptTemplate) string {
-	return data.NewPromptTemplateApi().AddPrompt(template)
-}
-
-func (h *SystemHandler) DeletePromptTemplate(id uint) string {
-	return data.NewPromptTemplateApi().DelPrompt(id)
-}
-
-func (h *SystemHandler) GetMultiAgentPrompts() []models.PromptTemplate {
-	return data.GetAllMultiAgentPrompts()
-}
-
-func (h *SystemHandler) UpdateMultiAgentPrompt(roleKey, name, content string) string {
-	err := data.UpsertPromptByRoleKey(roleKey, name, content, "multi_agent")
-	if err != nil {
-		return "更新失败: " + err.Error()
-	}
-	return "更新成功"
 }
 
 // -------------------- MCP / Skills --------------------

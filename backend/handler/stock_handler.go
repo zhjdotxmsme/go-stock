@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go-stock/backend/data"
 	"go-stock/backend/db"
+	"go-stock/backend/models"
 	"strings"
 
 	"github.com/duke-git/lancet/v2/convertor"
@@ -368,4 +369,105 @@ func (h *StockHandler) GetTdxCompanyCategoryContent(stockCode string, categoryNa
 func (h *StockHandler) GetTdxSymbolBelongBoard(stockCode string) *[]data.MACBelongBoardItem {
 	api := data.NewTdxKLineApi()
 	return api.GetMACSymbolBelongBoard(stockCode)
+}
+
+// GetStockRealTimePrice 获取股票实时价格（当前价为 0 时依次回退卖一/买一/昨收）
+func (h *StockHandler) GetStockRealTimePrice(stockCode string) map[string]any {
+	stockDatas, err := data.NewStockDataApi().GetStockCodeRealTimeData(stockCode)
+	if err != nil || stockDatas == nil || len(*stockDatas) == 0 {
+		return map[string]any{
+			"code":    -1,
+			"message": "获取股票价格失败",
+			"price":   0,
+		}
+	}
+	stock := (*stockDatas)[0]
+	price, _ := convertor.ToFloat(stock.Price)
+	if price == 0 {
+		price, _ = convertor.ToFloat(stock.A1P)
+	}
+	if price == 0 {
+		price, _ = convertor.ToFloat(stock.B1P)
+	}
+	if price == 0 {
+		price, _ = convertor.ToFloat(stock.PreClose)
+	}
+	return map[string]any{
+		"code":    0,
+		"message": "success",
+		"price":   price,
+		"name":    stock.Name,
+	}
+}
+
+// GetAllStockInfoList 获取股票基本信息列表（分页）
+func (h *StockHandler) GetAllStockInfoList(query data.AllStockInfoQuery) *data.AllStockInfoPageData {
+	page, err := data.NewStockDataApi().GetAllStockInfoList(&query)
+	if err != nil {
+		return &data.AllStockInfoPageData{}
+	}
+	return page
+}
+
+// GetAllStockInfoById 根据 ID 获取股票基本信息
+func (h *StockHandler) GetAllStockInfoById(id uint) *models.AllStockInfo {
+	stock, err := data.NewStockDataApi().GetAllStockInfoById(id)
+	if err != nil {
+		return &models.AllStockInfo{}
+	}
+	return stock
+}
+
+// AddAllStockInfo 新增股票基本信息
+func (h *StockHandler) AddAllStockInfo(stock models.AllStockInfo) string {
+	err := data.NewStockDataApi().AddAllStockInfo(stock)
+	if err != nil {
+		return "操作失败: " + err.Error()
+	}
+	return "操作成功"
+}
+
+// DeleteAllStockInfo 删除股票基本信息
+func (h *StockHandler) DeleteAllStockInfo(id uint) string {
+	err := data.NewStockDataApi().DeleteAllStockInfo(id)
+	if err != nil {
+		return "删除失败: " + err.Error()
+	}
+	return "删除成功"
+}
+
+// BatchDeleteAllStockInfo 批量删除股票基本信息
+func (h *StockHandler) BatchDeleteAllStockInfo(ids []uint) string {
+	err := data.NewStockDataApi().BatchDeleteAllStockInfo(ids)
+	if err != nil {
+		return "批量删除失败: " + err.Error()
+	}
+	return "批量删除成功"
+}
+
+// GetAllMarkets 获取所有市场分类
+func (h *StockHandler) GetAllMarkets() []string {
+	markets, err := data.NewStockDataApi().GetAllMarkets()
+	if err != nil {
+		return []string{}
+	}
+	return markets
+}
+
+// GetAllIndustries 获取所有行业分类
+func (h *StockHandler) GetAllIndustries() []string {
+	industries, err := data.NewStockDataApi().GetAllIndustries()
+	if err != nil {
+		return []string{}
+	}
+	return industries
+}
+
+// GetAllConcepts 获取所有概念分类
+func (h *StockHandler) GetAllConcepts() []string {
+	concepts, err := data.NewStockDataApi().GetAllConcepts()
+	if err != nil {
+		return []string{}
+	}
+	return concepts
 }

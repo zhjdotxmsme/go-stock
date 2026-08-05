@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"go-stock/backend/agent"
@@ -19,7 +17,6 @@ import (
 	"time"
 
 	"github.com/samber/lo"
-	"golang.org/x/exp/slices"
 
 	"github.com/coocood/freecache"
 	"github.com/duke-git/lancet/v2/convertor"
@@ -38,12 +35,6 @@ type App struct {
 	cronEntrys          map[string]cron.EntryID
 	cronEntrysMu        sync.Mutex
 	AiTools             []data.Tool
-	SponsorInfo         map[string]any
-	VipLevel            int64
-	summaryMu           sync.Mutex
-	summaryCancel       context.CancelFunc
-	agentMu             sync.Mutex
-	agentCancel         context.CancelFunc
 	stockAlertMu        sync.Mutex
 	stockAlertLastSent  map[string]time.Time
 	priceAtAlertReset   map[string]float64
@@ -56,6 +47,8 @@ type App struct {
 	analysisHandler     *handler.AnalysisHandler
 	stockHandler        *handler.StockHandler
 	systemHandler       *handler.SystemHandler
+	tradingHandler      *handler.TradingRecordHandler
+	stockChangeHandler  *handler.StockChangeHandler
 }
 
 // NewApp creates a new App application struct
@@ -83,6 +76,8 @@ func NewApp() *App {
 	app.analysisHandler = handler.NewAnalysisHandler(func() context.Context { return app.ctx })
 	app.stockHandler = handler.NewStockHandler()
 	app.systemHandler = handler.NewSystemHandler(cache, func() context.Context { return app.ctx }, c, Version, VersionCommit, OFFICIAL_STATEMENT, BuildKey, icon, alipay, wxpay, wxgzh, userManual)
+	app.tradingHandler = handler.NewTradingRecordHandler()
+	app.stockChangeHandler = handler.NewStockChangeHandler()
 	return app
 }
 
@@ -136,86 +131,6 @@ func (a *App) CheckSponsorCode(sponsorCode string) map[string]any {
 
 func (a *App) CheckUpdate(flag int) {
 	a.systemHandler.CheckUpdate(flag)
-}
-
-func (a *App) syncNews() {
-	defer PanicHandler()
-	client := data.SharedHTTPClient
-	url := fmt.Sprintf("http://go-stock.sparkmemory.top:16666/FinancialNews/json?since=%d", time.Now().Add(-24*time.Hour).Unix())
-	//logger.SugaredLogger.Infof("syncNews:%s", url)
-	resp, err := client.R().SetDoNotParseResponse(true).Get(url)
-	body := resp.RawBody()
-	defer body.Close()
-	if err != nil {
-		logger.SugaredLogger.Errorf("syncNews error:%s", err.Error())
-	}
-	scanner := bufio.NewScanner(body)
-	for scanner.Scan() {
-		//line := scanner.Text()
-		//logger.SugaredLogger.Infof("Received data: %s", line)
-		news := &models.NtfyNews{}
-		err := json.Unmarshal(scanner.Bytes(), news)
-		if err != nil {
-			return
-		}
-		dataTime := time.UnixMilli(int64(news.Time * 1000))
-
-		if slice.ContainAny(news.Tags, []string{"外媒资讯", "财联社电报", "新浪财经", "外媒简讯", "外媒"}) {
-			isRed := false
-			if slice.Contain(news.Tags, "rotating_light") {
-				isRed = true
-			}
-			telegraph := &models.Telegraph{
-				Title:           news.Title,
-				Content:         news.Message,
-				DataTime:        &dataTime,
-				IsRed:           isRed,
-				Time:            dataTime.Format("15:04:05"),
-				Source:          GetSource(news.Tags),
-				SentimentResult: data.AnalyzeSentiment(news.Message).Description,
-			}
-			cnt := int64(0)
-			if telegraph.Title == "" {
-				db.Dao.Model(telegraph).Where("content=?", telegraph.Content).Count(&cnt)
-			} else {
-				db.Dao.Model(telegraph).Where("title=?", telegraph.Title).Count(&cnt)
-			}
-			if cnt == 0 {
-				db.Dao.Model(telegraph).Create(&telegraph)
-				//计算时间差如果<5分钟则推送
-				if time.Now().Sub(dataTime) < 5*time.Minute {
-					a.NewsPush(&[]models.Telegraph{*telegraph})
-				}
-				tags := slice.Filter(news.Tags, func(index int, item string) bool {
-					return !(item == "rotating_light" || item == "loudspeaker")
-				})
-				for _, subject := range tags {
-					tag := &models.Tags{
-						Name: subject,
-						Type: "subject",
-					}
-					db.Dao.Model(tag).Where("name=? and type=?", subject, "subject").FirstOrCreate(&tag)
-					db.Dao.Model(models.TelegraphTags{}).Where("telegraph_id=? and tag_id=?", telegraph.ID, tag.ID).FirstOrCreate(&models.TelegraphTags{
-						TelegraphId: telegraph.ID,
-						TagId:       tag.ID,
-					})
-				}
-			}
-		}
-	}
-}
-
-func GetSource(tags []string) string {
-	if slice.ContainAny(tags, []string{"外媒简讯", "外媒资讯", "外媒"}) {
-		return "外媒"
-	}
-	if slices.Contains(tags, "财联社电报") {
-		return "财联社电报"
-	}
-	if slices.Contains(tags, "新浪财经") {
-		return "新浪财经"
-	}
-	return ""
 }
 
 // domReady is called after front-end resources have been loaded
@@ -1316,17 +1231,6 @@ func GetStockInfos(follows ...data.FollowedStock) *[]data.StockInfo {
 	}
 	return &stockInfos
 }
-func getStockInfo(follow data.FollowedStock) *data.StockInfo {
-	stockCode := follow.StockCode
-	stockDatas, err := data.NewStockDataApi().GetStockCodeRealTimeData(stockCode)
-	if err != nil || stockDatas == nil || len(*stockDatas) == 0 {
-		return &data.StockInfo{}
-	}
-	stockData := (*stockDatas)[0]
-	addStockFollowData(follow, &stockData)
-	return &stockData
-}
-
 func addStockFollowData(follow data.FollowedStock, stockData *data.StockInfo) {
 	stockData.PrePrice = follow.Price //上次当前价格
 	stockData.Sort = follow.Sort
@@ -1531,10 +1435,6 @@ func (a *App) GetUserManual() string {
 //	}
 //	return path, true
 //}
-
-func GetImageBase(bytes []byte) string {
-	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(bytes)
-}
 
 func GenNotificationMsg(stockInfo *data.StockInfo) string {
 	Price, err := convertor.ToFloat(stockInfo.Price)
@@ -1839,7 +1739,7 @@ func (a *App) GetStockMoneyTrendByDay(stockCode string, days int) []map[string]a
 //	@receiver a
 //	@param url
 func (a *App) OpenURL(url string) {
-	runtime.BrowserOpenURL(a.ctx, url)
+	a.systemHandler.OpenURL(url)
 }
 
 // SaveImage
@@ -2094,16 +1994,12 @@ func (a *App) CalculateNextRunTimes(cron string, count int) []string {
 //   - uint: 新添加的交易记录ID
 //   - error: 错误信息
 func (a *App) AddTradingRecord(record data.TradingRecord) (uint, error) {
-	return data.NewStockDataApi().AddTradingRecord(record)
+	return a.tradingHandler.AddTradingRecord(record)
 }
 
 // GetTradingRecordList 获取交易记录列表（分页与筛选，返回结构与 AI 推荐列表一致）
 func (a *App) GetTradingRecordList(query data.TradingRecordListQuery) *data.TradingRecordPageData {
-	page, err := data.NewStockDataApi().GetTradingRecordList(query)
-	if err != nil {
-		return &data.TradingRecordPageData{}
-	}
-	return page
+	return a.tradingHandler.GetTradingRecordList(query)
 }
 
 // GetTradingRecordById 根据ID获取单个交易记录
@@ -2114,7 +2010,7 @@ func (a *App) GetTradingRecordList(query data.TradingRecordListQuery) *data.Trad
 //   - *data.TradingRecord: 交易记录指针
 //   - error: 错误信息
 func (a *App) GetTradingRecordById(id uint) (*data.TradingRecord, error) {
-	return data.NewStockDataApi().GetTradingRecordById(id)
+	return a.tradingHandler.GetTradingRecordById(id)
 }
 
 // GetTradingRecordStatistics 获取交易记录统计数据
@@ -2122,11 +2018,7 @@ func (a *App) GetTradingRecordById(id uint) (*data.TradingRecord, error) {
 // 返回值:
 //   - *data.TradingRecordStatistics: 统计数据指针
 func (a *App) GetTradingRecordStatistics() *data.TradingRecordStatistics {
-	stats, err := data.NewStockDataApi().GetTradingRecordStatistics()
-	if err != nil {
-		return &data.TradingRecordStatistics{}
-	}
-	return stats
+	return a.tradingHandler.GetTradingRecordStatistics()
 }
 
 // UpdateTradingRecord 更新交易记录
@@ -2136,7 +2028,7 @@ func (a *App) GetTradingRecordStatistics() *data.TradingRecordStatistics {
 // 返回值:
 //   - error: 错误信息
 func (a *App) UpdateTradingRecord(record data.TradingRecord) error {
-	return data.NewStockDataApi().UpdateTradingRecord(record)
+	return a.tradingHandler.UpdateTradingRecord(record)
 }
 
 // DeleteTradingRecord 删除交易记录
@@ -2146,7 +2038,7 @@ func (a *App) UpdateTradingRecord(record data.TradingRecord) error {
 // 返回值:
 //   - error: 错误信息
 func (a *App) DeleteTradingRecord(id uint) error {
-	return data.NewStockDataApi().DeleteTradingRecord(id)
+	return a.tradingHandler.DeleteTradingRecord(id)
 }
 
 // CheckFrequentTrading 检查是否频繁交易
@@ -2156,11 +2048,7 @@ func (a *App) DeleteTradingRecord(id uint) error {
 // 返回值:
 //   - map[string]any: 包含 canTrade (bool) 和 msg (string)
 func (a *App) CheckFrequentTrading(stockCode string) map[string]any {
-	canTrade, msg := data.NewStockDataApi().CheckFrequentTrading(stockCode)
-	return map[string]any{
-		"canTrade": canTrade,
-		"msg":      msg,
-	}
+	return a.tradingHandler.CheckFrequentTrading(stockCode)
 }
 
 func (a *App) FetchAndSaveMarketStatistic() {

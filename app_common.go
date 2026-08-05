@@ -1,13 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"go-stock/backend/data"
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/models"
 	"time"
-
-	"github.com/duke-git/lancet/v2/convertor"
 )
 
 // @Author spark
@@ -26,10 +23,7 @@ func FormatShanghaiTime(t time.Time) string {
 }
 
 func (a *App) GetTimezone() map[string]any {
-	return map[string]any{
-		"offset":   8 * 60 * 60,
-		"location": "Asia/Shanghai",
-	}
+	return a.systemHandler.GetTimezone()
 }
 
 func (a *App) LongTigerRank(date string) *[]models.LongTigerRankData {
@@ -37,10 +31,10 @@ func (a *App) LongTigerRank(date string) *[]models.LongTigerRankData {
 }
 
 func (a *App) StockResearchReport(stockCode string) []any {
-	return data.NewMarketNewsApi().StockResearchReport(stockCode, 7)
+	return a.marketHandler.StockResearchReport(stockCode)
 }
 func (a *App) StockNotice(stockCode string) []any {
-	return data.NewMarketNewsApi().StockNotice(stockCode)
+	return a.marketHandler.StockNotice(stockCode)
 }
 
 func (a *App) IndustryResearchReport(industryCode string) []any {
@@ -151,84 +145,43 @@ func (a *App) BatchDeleteAIResponseResult(ids []uint) string {
 }
 
 func (a *App) GetStockChanges(changeTypes []int, pageIndex, pageSize int) *data.StockChangesResponse {
-	return data.NewStockChangesApi().GetStockChanges(changeTypes, pageIndex, pageSize)
+	return a.stockChangeHandler.GetStockChanges(changeTypes, pageIndex, pageSize)
 }
 
 func (a *App) GetAllStockChangesWithPaging(pageSize int) *data.StockChangesResponse {
-	all := data.NewStockChangesApi().GetAllStockChangesWithPaging(pageSize)
-	historyService := data.NewStockChangeHistoryService()
-	_, _ = historyService.SaveStockChangesWithDedup(all.Data)
-	return all
+	return a.stockChangeHandler.GetAllStockChangesWithPaging(pageSize)
 }
 
 func (a *App) GetStockChangeHistory(query models.StockChangeHistoryQuery) *models.StockChangeHistoryPageData {
-	result, err := data.NewStockChangeHistoryService().GetHistoryList(query)
-	if err != nil {
-		return &models.StockChangeHistoryPageData{}
-	}
-	return result
+	return a.stockChangeHandler.GetStockChangeHistory(query)
 }
 
 func (a *App) SaveStockChangesToHistory(changeTypes []int) string {
-	api := data.NewStockChangesApi()
-	result := api.GetStockChanges(changeTypes, 0, 500)
-	if result == nil || len(result.Data) == 0 {
-		return "没有获取到异动数据"
-	}
-
-	err := data.NewStockChangeHistoryService().SaveStockChanges(result.Data)
-	if err != nil {
-		return "保存失败: " + err.Error()
-	}
-	return fmt.Sprintf("成功保存 %d 条异动数据", len(result.Data))
+	return a.stockChangeHandler.SaveStockChangesToHistory(changeTypes)
 }
 
 func (a *App) DeleteStockChangeHistory(days int) string {
-	err := data.NewStockChangeHistoryService().DeleteOldData(days)
-	if err != nil {
-		return "删除失败: " + err.Error()
-	}
-	return fmt.Sprintf("已删除 %d 天前的历史数据", days)
+	return a.stockChangeHandler.DeleteStockChangeHistory(days)
 }
 
 func (a *App) GetDailyChangeStats(days int) []data.DailyChangeStats {
-	result, err := data.NewStockChangeHistoryService().GetDailyChangeStats(days)
-	if err != nil {
-		return []data.DailyChangeStats{}
-	}
-	return result
+	return a.stockChangeHandler.GetDailyChangeStats(days)
 }
 
 func (a *App) GetChangeTypeDailyStats(days int) []data.ChangeTypeDailyStats {
-	result, err := data.NewStockChangeHistoryService().GetChangeTypeDailyStats(days)
-	if err != nil {
-		return []data.ChangeTypeDailyStats{}
-	}
-	return result
+	return a.stockChangeHandler.GetChangeTypeDailyStats(days)
 }
 
 func (a *App) GetChangeRank(days int, topN int) *data.ChangeRankResult {
-	result, err := data.NewStockChangeHistoryService().GetChangeRank(days, topN)
-	if err != nil {
-		return &data.ChangeRankResult{}
-	}
-	return result
+	return a.stockChangeHandler.GetChangeRank(days, topN)
 }
 
 func (a *App) GetDailyDimensionStats(dimension string, name string, days int) []data.DailyDimensionStats {
-	result, err := data.NewStockChangeHistoryService().GetDailyDimensionStats(dimension, name, days)
-	if err != nil {
-		return []data.DailyDimensionStats{}
-	}
-	return result
+	return a.stockChangeHandler.GetDailyDimensionStats(dimension, name, days)
 }
 
 func (a *App) GetTypeStatsByDate(date string) []data.TypeCountStats {
-	result, err := data.NewStockChangeHistoryService().GetTypeStatsByDate(date)
-	if err != nil {
-		return []data.TypeCountStats{}
-	}
-	return result
+	return a.stockChangeHandler.GetTypeStatsByDate(date)
 }
 
 func (a *App) GetAiRecommendStocksList(query models.AiRecommendStocksQuery) *models.AiRecommendStocksPageData {
@@ -263,95 +216,39 @@ func (a *App) DeletePromptTemplate(id uint) string {
 }
 
 func (a *App) GetAllStockInfoList(query data.AllStockInfoQuery) *data.AllStockInfoPageData {
-	page, err := data.NewStockDataApi().GetAllStockInfoList(&query)
-	if err != nil {
-		return &data.AllStockInfoPageData{}
-	}
-	return page
+	return a.stockHandler.GetAllStockInfoList(query)
 }
 
 func (a *App) GetAllStockInfoById(id uint) *models.AllStockInfo {
-	stock, err := data.NewStockDataApi().GetAllStockInfoById(id)
-	if err != nil {
-		return &models.AllStockInfo{}
-	}
-	return stock
+	return a.stockHandler.GetAllStockInfoById(id)
 }
 
 func (a *App) AddAllStockInfo(stock models.AllStockInfo) string {
-	err := data.NewStockDataApi().AddAllStockInfo(stock)
-	if err != nil {
-		return "操作失败: " + err.Error()
-	}
-	return "操作成功"
+	return a.stockHandler.AddAllStockInfo(stock)
 }
 
 func (a *App) DeleteAllStockInfo(id uint) string {
-	err := data.NewStockDataApi().DeleteAllStockInfo(id)
-	if err != nil {
-		return "删除失败: " + err.Error()
-	}
-	return "删除成功"
+	return a.stockHandler.DeleteAllStockInfo(id)
 }
 
 func (a *App) BatchDeleteAllStockInfo(ids []uint) string {
-	err := data.NewStockDataApi().BatchDeleteAllStockInfo(ids)
-	if err != nil {
-		return "批量删除失败: " + err.Error()
-	}
-	return "批量删除成功"
+	return a.stockHandler.BatchDeleteAllStockInfo(ids)
 }
 
 func (a *App) GetAllMarkets() []string {
-	markets, err := data.NewStockDataApi().GetAllMarkets()
-	if err != nil {
-		return []string{}
-	}
-	return markets
+	return a.stockHandler.GetAllMarkets()
 }
 
 func (a *App) GetAllIndustries() []string {
-	industries, err := data.NewStockDataApi().GetAllIndustries()
-	if err != nil {
-		return []string{}
-	}
-	return industries
+	return a.stockHandler.GetAllIndustries()
 }
 
 func (a *App) GetAllConcepts() []string {
-	concepts, err := data.NewStockDataApi().GetAllConcepts()
-	if err != nil {
-		return []string{}
-	}
-	return concepts
+	return a.stockHandler.GetAllConcepts()
 }
 
 func (a *App) GetStockRealTimePrice(stockCode string) map[string]any {
-	stockDatas, err := data.NewStockDataApi().GetStockCodeRealTimeData(stockCode)
-	if err != nil || stockDatas == nil || len(*stockDatas) == 0 {
-		return map[string]any{
-			"code":    -1,
-			"message": "获取股票价格失败",
-			"price":   0,
-		}
-	}
-	stock := (*stockDatas)[0]
-	price, _ := convertor.ToFloat(stock.Price)
-	if price == 0 {
-		price, _ = convertor.ToFloat(stock.A1P)
-	}
-	if price == 0 {
-		price, _ = convertor.ToFloat(stock.B1P)
-	}
-	if price == 0 {
-		price, _ = convertor.ToFloat(stock.PreClose)
-	}
-	return map[string]any{
-		"code":    0,
-		"message": "success",
-		"price":   price,
-		"name":    stock.Name,
-	}
+	return a.stockHandler.GetStockRealTimePrice(stockCode)
 }
 
 // GetBKFundFlowList 获取板块资金流向历史数据（折线图用）
