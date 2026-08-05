@@ -76,7 +76,7 @@ func NewApp() *App {
 	app.analysisHandler = handler.NewAnalysisHandler(func() context.Context { return app.ctx })
 	app.stockHandler = handler.NewStockHandler()
 	app.systemHandler = handler.NewSystemHandler(cache, func() context.Context { return app.ctx }, c, Version, VersionCommit, OFFICIAL_STATEMENT, BuildKey, icon, alipay, wxpay, wxgzh, userManual)
-	app.tradingHandler = handler.NewTradingRecordHandler()
+	app.tradingHandler = handler.NewDefaultTradingRecordHandler()
 	app.stockChangeHandler = handler.NewStockChangeHandler()
 	return app
 }

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"go-stock/backend/internal/domain/stock"
 )
@@ -28,8 +29,15 @@ type StockRepository interface {
 	// Trading records
 	AddTradingRecord(ctx context.Context, record *stock.TradingRecord) error
 	GetTradingRecordList(ctx context.Context, query stock.TradingRecordListQuery) (stock.TradingRecordPageData, error)
+	GetTradingRecordById(ctx context.Context, id uint) (*stock.TradingRecord, error)
 	UpdateTradingRecord(ctx context.Context, record *stock.TradingRecord) error
 	DeleteTradingRecord(ctx context.Context, id uint) error
+	// ListAllTradingRecords returns all trading records in chronological order
+	// (trading_time ASC, id ASC), used by service-level FIFO/statistics computation.
+	ListAllTradingRecords(ctx context.Context) ([]stock.TradingRecord, error)
+	// CountBuyTradingRecords counts 买入 records with trading_time after since;
+	// empty stockCode counts across all stocks.
+	CountBuyTradingRecords(ctx context.Context, stockCode string, since time.Time) (int64, error)
 
 	// Stock change history
 	SaveStockChangesToHistory(ctx context.Context, changes []stock.StockChangeHistory) error
