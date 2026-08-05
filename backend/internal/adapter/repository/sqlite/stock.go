@@ -5,23 +5,28 @@ package sqlite
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"go-stock/backend/data"
 	"go-stock/backend/db"
 	"go-stock/backend/internal/domain/stock"
 	"go-stock/backend/logger"
+	"go-stock/backend/models"
 )
 
 // StockRepository implements repository.StockRepository.
 //
-// Only the TradingRecord group is implemented in this slice; the remaining
-// groups are placeholders that fail loudly until their own vertical slices
-// are migrated (see TODOs below).
+// The TradingRecord and StockChangeHistory groups are implemented; the
+// remaining groups are placeholders that fail loudly until their own
+// vertical slices are migrated (see TODOs below).
 type StockRepository struct{}
 
 // NewStockRepository creates a new StockRepository.
@@ -301,20 +306,418 @@ func (r *StockRepository) RemoveStockFromGroup(ctx context.Context, groupID int,
 }
 
 // ---------------------------------------------------------------------------
-// Stock change history (TODO: migrate in the stock-change vertical slice)
+// Stock change history
+//
+// All methods are pure-DB and written directly with GORM on the legacy
+// models.StockChangeHistory model; realtime change items are fetched by the
+// caller (handler) and only persisted here.
 // ---------------------------------------------------------------------------
 
+// StockChangeHistoryToDomain maps the legacy DB model to the domain model.
+func StockChangeHistoryToDomain(m *models.StockChangeHistory) stock.StockChangeHistory {
+	if m == nil {
+		return stock.StockChangeHistory{}
+	}
+	return stock.StockChangeHistory{
+		ID:         m.ID,
+		ChangeTime: m.ChangeTime,
+		ChangeDate: m.ChangeDate,
+		StockCode:  m.StockCode,
+		StockName:  m.StockName,
+		Market:     m.Market,
+		ChangeType: m.ChangeType,
+		TypeName:   m.TypeName,
+		Volume:     m.Volume,
+		Price:      m.Price,
+		ChangeRate: m.ChangeRate,
+		Amount:     m.Amount,
+		Industry:   m.Industry,
+		Concept:    m.Concept,
+		CreatedAt:  m.CreatedAt,
+	}
+}
+
+// StockChangeHistoryFromDomain maps the domain model to the legacy DB model.
+func StockChangeHistoryFromDomain(h *stock.StockChangeHistory) models.StockChangeHistory {
+	if h == nil {
+		return models.StockChangeHistory{}
+	}
+	return models.StockChangeHistory{
+		ID:         h.ID,
+		ChangeTime: h.ChangeTime,
+		ChangeDate: h.ChangeDate,
+		StockCode:  h.StockCode,
+		StockName:  h.StockName,
+		Market:     h.Market,
+		ChangeType: h.ChangeType,
+		TypeName:   h.TypeName,
+		Volume:     h.Volume,
+		Price:      h.Price,
+		ChangeRate: h.ChangeRate,
+		Amount:     h.Amount,
+		Industry:   h.Industry,
+		Concept:    h.Concept,
+		CreatedAt:  h.CreatedAt,
+	}
+}
+
+// StockChangeHistoryPageDataFromDomain maps a domain page result back to the
+// models-layer type (used by handlers that keep models-typed signatures).
+func StockChangeHistoryPageDataFromDomain(p *stock.StockChangeHistoryPageData) *models.StockChangeHistoryPageData {
+	if p == nil {
+		return &models.StockChangeHistoryPageData{}
+	}
+	list := make([]models.StockChangeHistory, 0, len(p.List))
+	for i := range p.List {
+		list = append(list, StockChangeHistoryFromDomain(&p.List[i]))
+	}
+	return &models.StockChangeHistoryPageData{
+		List:       list,
+		Total:      p.Total,
+		Page:       p.Page,
+		PageSize:   p.PageSize,
+		TotalPages: p.TotalPages,
+	}
+}
+
 func (r *StockRepository) SaveStockChangesToHistory(ctx context.Context, changes []stock.StockChangeHistory) error {
-	// TODO: implement when migrating the stock-change slice
-	return errNotImplemented
+	if len(changes) == 0 {
+		return nil
+	}
+	histories := make([]models.StockChangeHistory, 0, len(changes))
+	for i := range changes {
+		histories = append(histories, StockChangeHistoryFromDomain(&changes[i]))
+	}
+	return db.Dao.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "change_date"}, {Name: "stock_code"}, {Name: "change_time"}},
+		DoNothing: true,
+	}).CreateInBatches(histories, 100).Error
+}
+
+func (r *StockRepository) SaveStockChangesToHistoryWithDedup(ctx context.Context, changes []stock.StockChangeHistory) (int, error) {
+	if len(changes) == 0 {
+		return 0, nil
+	}
+	histories := make([]models.StockChangeHistory, 0, len(changes))
+	for i := range changes {
+		histories = append(histories, StockChangeHistoryFromDomain(&changes[i]))
+	}
+	result := db.Dao.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "change_date"}, {Name: "stock_code"}, {Name: "change_time"}, {Name: "change_type"}, {Name: "price"}, {Name: "change_rate"}, {Name: "amount"}, {Name: "volume"}},
+		DoNothing: true,
+	}).CreateInBatches(histories, 100)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return int(result.RowsAffected), nil
 }
 
 func (r *StockRepository) GetStockChangeHistory(ctx context.Context, query stock.StockChangeHistoryQuery) (stock.StockChangeHistoryPageData, error) {
-	// TODO: implement when migrating the stock-change slice
-	return stock.StockChangeHistoryPageData{}, errNotImplemented
+	dbQuery := db.Dao.Model(&models.StockChangeHistory{})
+
+	if query.StockCode != "" {
+		dbQuery = dbQuery.Where("stock_code LIKE ?", "%"+query.StockCode+"%")
+	}
+	if query.StockName != "" {
+		dbQuery = dbQuery.Where("stock_name LIKE ?", "%"+query.StockName+"%")
+	}
+	if query.ChangeType > 0 {
+		dbQuery = dbQuery.Where("change_type = ?", query.ChangeType)
+	}
+	if len(query.ChangeTypes) > 0 {
+		dbQuery = dbQuery.Where("change_type IN ?", query.ChangeTypes)
+	}
+	if query.TypeName != "" {
+		dbQuery = dbQuery.Where("type_name = ?", query.TypeName)
+	}
+	if query.StartDate != "" {
+		dbQuery = dbQuery.Where("change_date >= ?", query.StartDate)
+	}
+	if query.EndDate != "" {
+		dbQuery = dbQuery.Where("change_date <= ?", query.EndDate)
+	}
+	if query.StartTime != "" {
+		dbQuery = dbQuery.Where("change_time >= ?", query.StartTime)
+	}
+	if query.EndTime != "" {
+		dbQuery = dbQuery.Where("change_time <= ?", query.EndTime)
+	}
+	if query.MinVolume > 0 {
+		dbQuery = dbQuery.Where("volume >= ?", query.MinVolume)
+	}
+	if query.MinAmount > 0 {
+		dbQuery = dbQuery.Where("amount >= ?", query.MinAmount)
+	}
+	if query.MinChangeRate != 0 {
+		dbQuery = dbQuery.Where("change_rate >= ?", query.MinChangeRate)
+	}
+	if query.MaxChangeRate != 0 {
+		dbQuery = dbQuery.Where("change_rate <= ?", query.MaxChangeRate)
+	}
+	if query.Industry != "" {
+		dbQuery = dbQuery.Where("industry LIKE ?", "%"+query.Industry+"%")
+	}
+	if query.Concept != "" {
+		dbQuery = dbQuery.Where("concept LIKE ?", "%"+query.Concept+"%")
+	}
+
+	var total int64
+	if err := dbQuery.Count(&total).Error; err != nil {
+		return stock.StockChangeHistoryPageData{}, err
+	}
+
+	var list []models.StockChangeHistory
+	offset := (query.Page - 1) * query.PageSize
+	if err := dbQuery.Order("change_date DESC, change_time DESC").Offset(offset).Limit(query.PageSize).Find(&list).Error; err != nil {
+		return stock.StockChangeHistoryPageData{}, err
+	}
+
+	totalPages := int(total) / query.PageSize
+	if int(total)%query.PageSize > 0 {
+		totalPages++
+	}
+
+	items := make([]stock.StockChangeHistory, 0, len(list))
+	for i := range list {
+		items = append(items, StockChangeHistoryToDomain(&list[i]))
+	}
+	return stock.StockChangeHistoryPageData{
+		List:       items,
+		Total:      total,
+		Page:       query.Page,
+		PageSize:   query.PageSize,
+		TotalPages: totalPages,
+	}, nil
 }
 
-func (r *StockRepository) DeleteStockChangeHistory(ctx context.Context, id uint) error {
-	// TODO: implement when migrating the stock-change slice
-	return errNotImplemented
+func (r *StockRepository) DeleteStockChangeHistoryBefore(ctx context.Context, cutoffDate string) error {
+	return db.Dao.Where("change_date < ?", cutoffDate).Delete(&models.StockChangeHistory{}).Error
+}
+
+// ---------------------------------------------------------------------------
+// Stock change statistics (pure DB aggregations, SQL ported verbatim)
+// ---------------------------------------------------------------------------
+
+const (
+	upChangeTypes   = "4,8201,8202,8193,64,8207,8209,8211,8213,8215"
+	downChangeTypes = "8,8203,8204,8194,128,8208,8210,8212,8214,8216"
+)
+
+func (r *StockRepository) GetDailyChangeStats(ctx context.Context, startDate string) ([]stock.DailyChangeStats, error) {
+	type rawDailyStats struct {
+		ChangeDate string
+		TotalCount int64
+		UpCount    int64
+		DownCount  int64
+	}
+
+	var rawStats []rawDailyStats
+	err := db.Dao.Model(&models.StockChangeHistory{}).
+		Select("change_date, count(*) as total_count, sum(case when change_type in (4, 8201, 8202, 8193, 64, 8207, 8209, 8211, 8213, 8215) then 1 else 0 end) as up_count, sum(case when change_type in (8, 8203, 8204, 8194, 128, 8208, 8210, 8212, 8214, 8216) then 1 else 0 end) as down_count").
+		Where("change_date >= ?", startDate).
+		Group("change_date").
+		Order("change_date ASC").
+		Find(&rawStats).Error
+	if err != nil {
+		return nil, err
+	}
+
+	type limitStats struct {
+		ChangeDate string
+		LimitUp    int64
+		LimitDown  int64
+	}
+	var limitData []limitStats
+	err = db.Dao.Model(&models.StockChangeHistory{}).
+		Select("change_date, sum(case when change_type = 4 then 1 else 0 end) as limit_up, sum(case when change_type = 8 then 1 else 0 end) as limit_down").
+		Where("change_date >= ? AND change_type IN (4, 8)", startDate).
+		Group("change_date").
+		Order("change_date ASC").
+		Find(&limitData).Error
+	if err != nil {
+		return nil, err
+	}
+
+	limitMap := make(map[string]limitStats)
+	for _, l := range limitData {
+		limitMap[l.ChangeDate] = l
+	}
+
+	var result []stock.DailyChangeStats
+	for _, rs := range rawStats {
+		l := limitMap[rs.ChangeDate]
+		result = append(result, stock.DailyChangeStats{
+			ChangeDate: rs.ChangeDate,
+			TotalCount: rs.TotalCount,
+			UpCount:    rs.UpCount,
+			DownCount:  rs.DownCount,
+			LimitUp:    l.LimitUp,
+			LimitDown:  l.LimitDown,
+		})
+	}
+	return result, nil
+}
+
+func (r *StockRepository) GetChangeTypeDailyStats(ctx context.Context, startDate string) ([]stock.ChangeTypeDailyStats, error) {
+	var result []stock.ChangeTypeDailyStats
+	err := db.Dao.Model(&models.StockChangeHistory{}).
+		Select("change_date, type_name, count(*) as count").
+		Where("change_date >= ?", startDate).
+		Group("change_date, type_name").
+		Order("change_date ASC, count DESC").
+		Find(&result).Error
+	return result, err
+}
+
+func (r *StockRepository) GetChangeRank(ctx context.Context, startDate string, topN int) (*stock.ChangeRankResult, error) {
+	type rankRow struct {
+		Name     string
+		Code     string
+		TotalCnt int
+		UpCnt    int
+		DownCnt  int
+	}
+
+	var stockRows []rankRow
+	err := db.Dao.Model(&models.StockChangeHistory{}).
+		Select("stock_name as name, stock_code as code, count(*) as total_cnt, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_cnt, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_cnt").
+		Where("change_date >= ?", startDate).
+		Group("stock_code, stock_name").
+		Order("total_cnt DESC").
+		Limit(topN).
+		Find(&stockRows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	var topStocks []stock.ChangeRankItem
+	for _, row := range stockRows {
+		topStocks = append(topStocks, stock.ChangeRankItem{Name: row.Name, Code: row.Code, Count: int64(row.TotalCnt), UpCount: int64(row.UpCnt), DownCount: int64(row.DownCnt)})
+	}
+
+	var industryRows []rankRow
+	err = db.Dao.Model(&models.StockChangeHistory{}).
+		Select("industry as name, '' as code, count(*) as total_cnt, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_cnt, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_cnt").
+		Where("change_date >= ? AND industry != '' AND industry IS NOT NULL", startDate).
+		Group("industry").
+		Order("total_cnt DESC").
+		Limit(topN).
+		Find(&industryRows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	var topIndustries []stock.ChangeRankItem
+	for _, row := range industryRows {
+		topIndustries = append(topIndustries, stock.ChangeRankItem{Name: row.Name, Count: int64(row.TotalCnt), UpCount: int64(row.UpCnt), DownCount: int64(row.DownCnt)})
+	}
+
+	type conceptRow struct {
+		Concept string
+		Cnt     int
+		UpCnt   int
+		DownCnt int
+	}
+	var conceptRows []conceptRow
+	err = db.Dao.Model(&models.StockChangeHistory{}).
+		Select("concept, count(*) as cnt, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_cnt, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_cnt").
+		Where("change_date >= ? AND concept != '' AND concept IS NOT NULL", startDate).
+		Group("concept").
+		Find(&conceptRows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	type conceptAgg struct {
+		Count     int64
+		UpCount   int64
+		DownCount int64
+	}
+	conceptAggMap := make(map[string]conceptAgg)
+	for _, row := range conceptRows {
+		concepts := splitChangeConcepts(row.Concept)
+		for _, c := range concepts {
+			agg := conceptAggMap[c]
+			agg.Count += int64(row.Cnt)
+			agg.UpCount += int64(row.UpCnt)
+			agg.DownCount += int64(row.DownCnt)
+			conceptAggMap[c] = agg
+		}
+	}
+
+	var topConcepts []stock.ChangeRankItem
+	for name, agg := range conceptAggMap {
+		topConcepts = append(topConcepts, stock.ChangeRankItem{Name: name, Count: agg.Count, UpCount: agg.UpCount, DownCount: agg.DownCount})
+	}
+	sort.Slice(topConcepts, func(i, j int) bool {
+		return topConcepts[i].Count > topConcepts[j].Count
+	})
+	if len(topConcepts) > topN {
+		topConcepts = topConcepts[:topN]
+	}
+
+	return &stock.ChangeRankResult{
+		TopStocks:     topStocks,
+		TopIndustries: topIndustries,
+		TopConcepts:   topConcepts,
+	}, nil
+}
+
+func (r *StockRepository) GetDailyDimensionStats(ctx context.Context, dimension, name, startDate string) ([]stock.DailyDimensionStats, error) {
+	var result []stock.DailyDimensionStats
+	query := db.Dao.Model(&models.StockChangeHistory{}).
+		Select("change_date, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_count, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_count, count(*) as total_count").
+		Where("change_date >= ?", startDate).
+		Group("change_date").
+		Order("change_date ASC")
+
+	switch dimension {
+	case "stock":
+		query = query.Where("stock_code = ? OR stock_name = ?", name, name)
+	case "industry":
+		query = query.Where("industry = ?", name)
+	case "concept":
+		query = query.Where("concept LIKE ?", "%"+name+"%")
+	case "type":
+		query = query.Where("type_name = ?", name)
+	default:
+		return nil, fmt.Errorf("unsupported dimension: %s", dimension)
+	}
+
+	err := query.Find(&result).Error
+	return result, err
+}
+
+func (r *StockRepository) GetTypeStatsByDate(ctx context.Context, date string) ([]stock.TypeCountStats, error) {
+	var result []stock.TypeCountStats
+	err := db.Dao.Model(&models.StockChangeHistory{}).
+		Select("type_name, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_count, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_count, count(*) as total_count").
+		Where("change_date = ?", date).
+		Group("type_name").
+		Order("total_count DESC").
+		Find(&result).Error
+	return result, err
+}
+
+// splitChangeConcepts 概念字段拆分(与 data 层 splitConcepts 逻辑逐字一致)。
+func splitChangeConcepts(conceptStr string) []string {
+	conceptStr = strings.TrimSpace(conceptStr)
+	if conceptStr == "" {
+		return nil
+	}
+	if strings.HasPrefix(conceptStr, "[") {
+		var concepts []string
+		if err := json.Unmarshal([]byte(conceptStr), &concepts); err == nil {
+			return concepts
+		}
+	}
+	parts := strings.Split(conceptStr, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }

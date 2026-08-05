@@ -40,7 +40,19 @@ type StockRepository interface {
 	CountBuyTradingRecords(ctx context.Context, stockCode string, since time.Time) (int64, error)
 
 	// Stock change history
+	// SaveStockChangesToHistory 按 (change_date, stock_code, change_time) 去重落库。
 	SaveStockChangesToHistory(ctx context.Context, changes []stock.StockChangeHistory) error
+	// SaveStockChangesToHistoryWithDedup 按全字段维度去重落库,返回实际新增条数。
+	SaveStockChangesToHistoryWithDedup(ctx context.Context, changes []stock.StockChangeHistory) (int, error)
 	GetStockChangeHistory(ctx context.Context, query stock.StockChangeHistoryQuery) (stock.StockChangeHistoryPageData, error)
-	DeleteStockChangeHistory(ctx context.Context, id uint) error
+	// DeleteStockChangeHistoryBefore 删除 change_date 早于 cutoffDate 的历史数据。
+	DeleteStockChangeHistoryBefore(ctx context.Context, cutoffDate string) error
+
+	// Stock change statistics (pure DB aggregations)
+	GetDailyChangeStats(ctx context.Context, startDate string) ([]stock.DailyChangeStats, error)
+	GetChangeTypeDailyStats(ctx context.Context, startDate string) ([]stock.ChangeTypeDailyStats, error)
+	GetChangeRank(ctx context.Context, startDate string, topN int) (*stock.ChangeRankResult, error)
+	// GetDailyDimensionStats dimension 取值为 stock/industry/concept/type。
+	GetDailyDimensionStats(ctx context.Context, dimension, name, startDate string) ([]stock.DailyDimensionStats, error)
+	GetTypeStatsByDate(ctx context.Context, date string) ([]stock.TypeCountStats, error)
 }

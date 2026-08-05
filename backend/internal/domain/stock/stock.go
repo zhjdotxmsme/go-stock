@@ -145,10 +145,10 @@ func (GroupStock) TableName() string {
 
 // TradingRecord 交易日志
 type TradingRecord struct {
-	ID                 uint      `gorm:"primaryKey"`
-	StockCode          string    `gorm:"index"`
+	ID                 uint   `gorm:"primaryKey"`
+	StockCode          string `gorm:"index"`
 	StockName          string
-	Direction          string    `gorm:"index"` // 买入/卖出
+	Direction          string `gorm:"index"` // 买入/卖出
 	Price              float64
 	Volume             int64
 	Amount             float64   `gorm:"-"` // 计算字段: Price * Volume
@@ -158,8 +158,8 @@ type TradingRecord struct {
 	TakeProfitPrice    float64
 	Fee                float64
 	MarketValue        float64
-	Mindset            string    `gorm:"type:text"`
-	RecordedClosePrice float64   `json:"recordedClosePrice" gorm:"column:recorded_close_price"`
+	Mindset            string  `gorm:"type:text"`
+	RecordedClosePrice float64 `json:"recordedClosePrice" gorm:"column:recorded_close_price"`
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 }
@@ -204,4 +204,70 @@ type TradingRecordStatistics struct {
 	HoldingsAmount  float64 `json:"holdingsAmount"`
 	CurrentValue    float64 `json:"currentValue"`
 	StockCount      int64   `json:"stockCount"`
+}
+
+// StockChangeItem 实时异动项(来自外部数据源,非 DB 模型)。
+// service 的外部拉取函数注入使用该类型,字段与 data 层异动项一一对应。
+type StockChangeItem struct {
+	Time       string  `json:"time"`
+	Code       string  `json:"code"`
+	Name       string  `json:"name"`
+	Market     int     `json:"market"`
+	ChangeType int     `json:"changeType"`
+	TypeName   string  `json:"typeName"`
+	Volume     int64   `json:"volume"`
+	Price      float64 `json:"price"`
+	ChangeRate float64 `json:"changeRate"`
+	Amount     float64 `json:"amount"`
+	Industry   string  `json:"industry"`
+	Concept    string  `json:"concept"`
+}
+
+// DailyChangeStats 每日异动统计
+type DailyChangeStats struct {
+	ChangeDate string `json:"changeDate"`
+	TotalCount int64  `json:"totalCount"`
+	UpCount    int64  `json:"upCount"`
+	DownCount  int64  `json:"downCount"`
+	LimitUp    int64  `json:"limitUp"`
+	LimitDown  int64  `json:"limitDown"`
+}
+
+// ChangeTypeDailyStats 异动类型每日统计
+type ChangeTypeDailyStats struct {
+	ChangeDate string `json:"changeDate"`
+	TypeName   string `json:"typeName"`
+	Count      int64  `json:"count"`
+}
+
+// ChangeRankItem 异动榜单项
+type ChangeRankItem struct {
+	Name      string `json:"name"`
+	Code      string `json:"code,omitempty"`
+	Count     int64  `json:"count"`
+	UpCount   int64  `json:"upCount"`
+	DownCount int64  `json:"downCount"`
+}
+
+// ChangeRankResult 异动榜单结果
+type ChangeRankResult struct {
+	TopStocks     []ChangeRankItem `json:"topStocks"`
+	TopIndustries []ChangeRankItem `json:"topIndustries"`
+	TopConcepts   []ChangeRankItem `json:"topConcepts"`
+}
+
+// DailyDimensionStats 按维度(个股/行业/概念/类型)的每日涨跌统计
+type DailyDimensionStats struct {
+	ChangeDate string `json:"changeDate"`
+	UpCount    int64  `json:"upCount"`
+	DownCount  int64  `json:"downCount"`
+	TotalCount int64  `json:"totalCount"`
+}
+
+// TypeCountStats 指定日期的异动类型统计
+type TypeCountStats struct {
+	TypeName   string `json:"typeName"`
+	UpCount    int64  `json:"upCount"`
+	DownCount  int64  `json:"downCount"`
+	TotalCount int64  `json:"totalCount"`
 }

@@ -68,7 +68,7 @@ func NewApp() *App {
 		priceAtAlertReset:  make(map[string]float64),
 	}
 	app.notificationHandler = handler.NewNotificationHandler(cache, func() context.Context { return app.ctx })
-	app.fundHandler = handler.NewFundHandler()
+	app.fundHandler = handler.NewDefaultFundHandler()
 	app.commodityHandler = handler.NewCommodityHandler()
 	app.newsHandler = handler.NewNewsHandler()
 	app.marketHandler = handler.NewMarketHandler(cache, func() context.Context { return app.ctx })
@@ -77,7 +77,7 @@ func NewApp() *App {
 	app.stockHandler = handler.NewStockHandler()
 	app.systemHandler = handler.NewSystemHandler(cache, func() context.Context { return app.ctx }, c, Version, VersionCommit, OFFICIAL_STATEMENT, BuildKey, icon, alipay, wxpay, wxgzh, userManual)
 	app.tradingHandler = handler.NewDefaultTradingRecordHandler()
-	app.stockChangeHandler = handler.NewStockChangeHandler()
+	app.stockChangeHandler = handler.NewDefaultStockChangeHandler()
 	return app
 }
 

@@ -1,15 +1,39 @@
 package handler
 
 import (
+	"context"
+
 	"go-stock/backend/data"
+	"go-stock/backend/internal/adapter/repository/sqlite"
+	"go-stock/backend/internal/domain/fund"
+	fundsvc "go-stock/backend/internal/service/fund"
 )
 
 // FundHandler handles fund-related Wails bindings.
-type FundHandler struct{}
+// External data-source calls (ranking/K-line/net-value/holdings/search) still
+// go directly through the data-layer API; the followed-fund CRUD is delegated
+// to the fund service.
+type FundHandler struct {
+	svc *fundsvc.Service
+}
 
 // NewFundHandler creates a new FundHandler.
-func NewFundHandler() *FundHandler {
-	return &FundHandler{}
+func NewFundHandler(svc *fundsvc.Service) *FundHandler {
+	return &FundHandler{svc: svc}
+}
+
+// NewDefaultFundHandler wires the production dependencies (sqlite repository
+// + fund-basic crawl) and returns the handler. The wiring lives here because
+// backend/internal packages cannot be imported by the main package.
+func NewDefaultFundHandler() *FundHandler {
+	crawlFn := func(fundCode string) (*fund.FundBasic, error) {
+		crawled, err := data.NewFundApi().CrawlFundBasic(fundCode)
+		if err != nil || crawled == nil {
+			return nil, err
+		}
+		return sqlite.FundBasicToDomain(crawled), nil
+	}
+	return NewFundHandler(fundsvc.NewService(sqlite.NewFundRepository(), crawlFn))
 }
 
 // GetfundList searches fund basic info by keyword.
@@ -19,17 +43,25 @@ func (h *FundHandler) GetfundList(key string) []data.FundBasic {
 
 // GetFollowedFund returns all followed funds.
 func (h *FundHandler) GetFollowedFund() []data.FollowedFund {
-	return data.NewFundApi().GetFollowedFund()
+	funds, err := h.svc.GetFollowedFund(context.Background())
+	if err != nil {
+		return []data.FollowedFund{}
+	}
+	result := make([]data.FollowedFund, 0, len(funds))
+	for i := range funds {
+		result = append(result, *sqlite.FollowedFundFromDomain(&funds[i]))
+	}
+	return result
 }
 
 // FollowFund adds a fund to the follow list.
 func (h *FundHandler) FollowFund(fundCode string) string {
-	return data.NewFundApi().FollowFund(fundCode)
+	return h.svc.FollowFund(context.Background(), fundCode)
 }
 
 // UnFollowFund removes a fund from the follow list.
 func (h *FundHandler) UnFollowFund(fundCode string) string {
-	return data.NewFundApi().UnFollowFund(fundCode)
+	return h.svc.UnFollowFund(context.Background(), fundCode)
 }
 
 // GetFundKLine returns fund K-line data with source fallback.
@@ -71,5 +103,9 @@ func (h *FundHandler) SearchFundCodes(keyword string) []data.FundSearchItem {
 
 // GetFollowedFundPaged returns followed funds with pagination.
 func (h *FundHandler) GetFollowedFundPaged(pageIndex, pageSize int, keyword string) *data.FollowedFundPagedResult {
-	return data.NewFundApi().GetFollowedFundPaged(pageIndex, pageSize, keyword)
+	paged, err := h.svc.GetFollowedFundPaged(context.Background(), pageIndex, pageSize, keyword)
+	if err != nil || paged == nil {
+		return &data.FollowedFundPagedResult{}
+	}
+	return sqlite.FollowedFundPagedResultFromDomain(paged)
 }
