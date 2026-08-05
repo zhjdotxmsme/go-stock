@@ -72,7 +72,6 @@ const formValue = ref({
   enableAgent: false,
   qgqpBId: '',
   updateChannel: 'release',
-  promptPlazaApiBase: '',
   quickThinkModelId: null,
   deepThinkModelId: null,
 })
@@ -289,7 +288,6 @@ onMounted(() => {
     formValue.value.enableAgent = res.enableAgent;
     formValue.value.qgqpBId = res.qgqpBId;
     formValue.value.updateChannel = res.updateChannel || 'release';
-    formValue.value.promptPlazaApiBase = res.promptPlazaApiBase || '';
     formValue.value.quickThinkModelId = res.quickThinkModelId || null;
     formValue.value.deepThinkModelId = res.deepThinkModelId || null;
   })
@@ -353,7 +351,6 @@ function saveConfig() {
     enableAgent: formValue.value.enableAgent,
     qgqpBId: formValue.value.qgqpBId,
     updateChannel: formValue.value.updateChannel,
-    promptPlazaApiBase: formValue.value.promptPlazaApiBase,
     quickThinkModelId: formValue.value.quickThinkModelId,
     deepThinkModelId: formValue.value.deepThinkModelId,
   })
@@ -759,26 +756,6 @@ function saveMultiAgentPrompt() {
                   </n-gradient-text>
                 </n-popover>
               </n-input-group>
-            </n-form-item-gi>
-
-            <n-form-item-gi :span="11" label="提示词广场地址：" path="promptPlazaApiBase">
-              <n-input type="text" placeholder="http://go-stock.sparkmemory.top:1918/api" v-model:value="formValue.promptPlazaApiBase" clearable/>
-              <n-tooltip placement="top">
-                <template #trigger>
-                  <n-icon color="#0e7a0d" size="20">
-                    <HelpCircleFilledIcon />
-                  </n-icon>
-                </template>
-                <template #default>
-                  <n-gradient-text :type="'warning'">
-                  <div style="max-width: 400px;text-align: left">
-                    提示词广场服务接口地址<br>
-                    默认: http://go-stock.sparkmemory.top:1918/api<br>
-                    如已部署提示词广场服务，可修改为实际地址
-                  </div>
-                  </n-gradient-text>
-                </template>
-              </n-tooltip>
             </n-form-item-gi>
           </n-grid>
         </n-card>

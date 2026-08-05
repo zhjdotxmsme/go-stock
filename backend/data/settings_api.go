@@ -60,7 +60,6 @@ type Settings struct {
 	EmApiKey               string `json:"emApiKey" gorm:"column:em_api_key"`
 	WindowWidth            int    `json:"windowWidth"`
 	WindowHeight           int    `json:"windowHeight"`
-	PromptPlazaApiBase     string `json:"promptPlazaApiBase" gorm:"column:prompt_plaza_api_base"`
 	// free-stockdb 本地数据引擎
 	FreeStockDBEnable    bool   `json:"freeStockDBEnable" gorm:"column:free_stock_db_enable"`
 	FreeStockDBPath      string `json:"freeStockDBPath" gorm:"column:free_stock_db_path"`
@@ -180,7 +179,6 @@ func UpdateConfig(s *SettingConfig) string {
 			"em_api_key":                 s.EmApiKey,
 			"window_width":               s.WindowWidth,
 			"window_height":              s.WindowHeight,
-			"prompt_plaza_api_base":      s.PromptPlazaApiBase,
 		})
 		if result.Error != nil {
 			logger.SugaredLogger.Errorf("更新配置失败: %v", result.Error)

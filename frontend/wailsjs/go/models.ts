@@ -1394,7 +1394,6 @@ export namespace data {
 	    emApiKey: string;
 	    windowWidth: number;
 	    windowHeight: number;
-	    promptPlazaApiBase: string;
 	    freeStockDBEnable: boolean;
 	    freeStockDBPath: string;
 	    freeStockDBAddr: string;
@@ -1454,7 +1453,6 @@ export namespace data {
 	        this.emApiKey = source["emApiKey"];
 	        this.windowWidth = source["windowWidth"];
 	        this.windowHeight = source["windowHeight"];
-	        this.promptPlazaApiBase = source["promptPlazaApiBase"];
 	        this.freeStockDBEnable = source["freeStockDBEnable"];
 	        this.freeStockDBPath = source["freeStockDBPath"];
 	        this.freeStockDBAddr = source["freeStockDBAddr"];
