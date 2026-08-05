@@ -78,106 +78,26 @@
             </NScrollbar>
             </div>
 
-            <div class="chat-footer">
-              <div class="chat-footer-row">
-                <NSelect
-                  v-model:value="aiConfigId"
-                  :options="aiConfigOptions"
-                  size="small"
-                  filterable
-                  to="body"
-                  placement="top-start"
-                  placeholder="选择模型"
-                  :consistent-menu-width="false"
-                  :menu-props="{ style: { zIndex: 10002 } }"
-                  class="chat-footer-select"
-                />
-                <NSelect
-                  v-model:value="sysPromptId"
-                  :options="sysPromptOptions"
-                  size="small"
-                  clearable
-                  to="body"
-                  placement="top-start"
-                  placeholder="系统提示词"
-                  :consistent-menu-width="false"
-                  :menu-props="{ style: { zIndex: 10002 } }"
-                  class="chat-footer-prompt"
-                />
-                <NSelect
-                  v-model:value="userPromptId"
-                  :options="userPromptOptions"
-                  size="small"
-                  clearable
-                  to="body"
-                  placement="top-start"
-                  placeholder="用户提示词"
-                  :consistent-menu-width="false"
-                  :menu-props="{ style: { zIndex: 10002 } }"
-                  class="chat-footer-prompt"
-                  @update:value="onUserPromptChange"
-                />
-                <div class="chat-footer-thinking">
-                  <span class="chat-footer-thinking-label">思考模式</span>
-                  <NSwitch v-model:value="thinkingMode" size="small" />
-                </div>
-                <div class="chat-footer-memory">
-                  <span class="chat-footer-thinking-label">记忆模式</span>
-                  <NSwitch v-model:value="memoryMode" size="small" />
-                  <NSelect
-                    v-if="memoryMode"
-                    v-model:value="memoryCount"
-                    :options="memoryCountOptions"
-                    size="small"
-                    :consistent-menu-width="false"
-                    to="body"
-                    placement="top-start"
-                    :menu-props="{ style: { zIndex: 10002 } }"
-                    class="chat-footer-memory-count"
-                  />
-                </div>
-                <div class="chat-footer-agent-mode">
-                  <NSelect
-                    v-model:value="agentMode"
-                    :options="agentModeOptions"
-                    size="small"
-                    to="body"
-                    placement="top-start"
-                    placeholder="Agent模式"
-                    :consistent-menu-width="false"
-                    :menu-props="{ style: { zIndex: 10002 } }"
-                    class="chat-footer-agent-mode-select"
-                  />
-                </div>
-              </div>
-              <div class="chat-footer-input">
-                <NInput
-                  v-model:value="inputValue"
-                  type="textarea"
-                  placeholder="输入消息，回车发送..."
-                  :autosize="{ minRows: 2, maxRows: 4 }"
-                  :disabled="isStreamLoad"
-                  @keydown.enter.exact.prevent="sendMessage"
-                />
-                <NButton
-                  v-if="isStreamLoad"
-                  type="warning"
-                  quaternary
-                  class="chat-footer-abort"
-                  @click="abortStream(true)"
-                >
-                  中断
-                </NButton>
-                <NButton
-                  type="primary"
-                  :loading="isStreamLoad"
-                  :disabled="isStreamLoad || !canSend"
-                  @click="sendMessage"
-                >
-                  发送
-                </NButton>
-              </div>
-            </div>
+            <AgentChatFooter
+              v-model:ai-config-id="aiConfigId"
+              v-model:sys-prompt-id="sysPromptId"
+              v-model:user-prompt-id="userPromptId"
+              v-model:thinking-mode="thinkingMode"
+              v-model:memory-mode="memoryMode"
+              v-model:memory-count="memoryCount"
+              v-model:agent-mode="agentMode"
+              v-model:input-value="inputValue"
+              :ai-config-options="aiConfigOptions"
+              :sys-prompt-options="sysPromptOptions"
+              :user-prompt-options="userPromptOptions"
+              :memory-count-options="memoryCountOptions"
+              :agent-mode-options="agentModeOptions"
+              :can-send="canSend"
+              :is-stream-load="isStreamLoad"
+              :send-message="sendMessage"
+              :abort-stream="abortStream"
+              :on-user-prompt-change="onUserPromptChange"
+            />
         </NCard>
       </div>
     </div>
@@ -185,9 +105,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, onBeforeMount } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeMount } from 'vue'
 import { useRoute } from 'vue-router'
-import { NButton, NCard, NIcon, NInput, NScrollbar, NSelect, NSpin, NSwitch, useMessage } from 'naive-ui'
+import { NButton, NCard, NIcon, NScrollbar, useMessage } from 'naive-ui'
 import {
   CloseOutline,
   SparklesOutline,
@@ -200,103 +120,38 @@ import {
   ChevronUpOutline
 } from '@vicons/ionicons5'
 import * as systemApi from '../api/system'
-import * as stockApi from '../api/stock'
-import { EventsOff, EventsOn } from '../../wailsjs/runtime'
-import { MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
-import html2canvas from 'html2canvas'
 import MessageBubble from './agent/MessageBubble.vue'
+import { onMdHtmlChanged } from './agent/codeCollapse'
+import { useMessageGroups } from './agent/useMessageGroups'
+import { useShareExport } from './agent/useShareExport'
+import { useAgentOptions } from './agent/useAgentOptions'
+import { useChatSession } from './agent/useChatSession'
+import { useAgentStream } from './agent/useAgentStream'
+import AgentChatFooter from './agent/AgentChatFooter.vue'
 
-const STORAGE_KEY_MODEL_ID = 'go-stock-agent-last-model-id'
 
 const route = useRoute()
 const message = useMessage()
 
 const showButton = computed(() => route.name !== 'agent')
 
-const panelVisible = ref(false)
 const inputValue = ref('')
-const isStreamLoad = ref(false)
-const sentFromFloating = ref(false)
 const messages = ref([])
-let formatTimer = null
-const sessionId = ref('')
-const aiConfigOptions = ref([])
-const aiConfigId = ref(null)
 
-function modelLabelForConfig(configId) {
-  const opts = aiConfigOptions.value
-  if (!opts?.length) return ''
-  const id = configId != null ? Number(configId) : Number(opts[0].value)
-  const found = opts.find(o => Number(o.value) === id)
-  return found?.label != null ? String(found.label) : ''
-}
-
-const sysPromptTemplates = ref([])
-const sysPromptOptions = computed(() =>
-  sysPromptTemplates.value.map(t => ({ label: t.name ?? '', value: t.ID ?? t.id }))
-)
-const sysPromptId = ref(null)
-
-const userPromptTemplates = ref([])
-const userPromptOptions = computed(() =>
-  userPromptTemplates.value.map(t => ({ label: t.name ?? '', value: t.ID ?? t.id }))
-)
-const userPromptId = ref(null)
-const thinkingMode = ref(true)
-const memoryMode = ref(false)
-const memoryCount = ref(1)
-const memoryCountOptions = [
-  { label: '1 条', value: 1 },
-  { label: '2 条', value: 2 },
-  { label: '3 条', value: 3 },
-  { label: '4 条', value: 4 },
-  { label: '5 条', value: 5 },
-  { label: '10 条', value: 10 },
-]
-const agentMode = ref('auto')
-const agentModeOptions = [
-  { label: '🤖 自动选择', value: 'auto' },
-  { label: '⚡ 快速模式', value: 'react' },
-  { label: '🧠 规划模式', value: 'plan_execute' },
-]
-
-watch(agentMode, (val) => {
-  if (val === 'react') showHint('⚡ 快速模式推荐使用DeepSeek最新版')
-  else if (val === 'plan_execute') showHint('🧠 规划模式推荐使用GLM最新版')
-})
-
-watch(aiConfigId, (val) => {
-  const label = modelLabelForConfig(val).toLowerCase()
-  const labelCompact = label.replace(/[\s_-]/g, '')
-  if (label.includes('deepseek-chat')) {
-    agentMode.value = 'plan_execute'
-    thinkingMode.value = false
-    showHint('deepseek-chat 已使用规划模式并关闭思考模式')
-  } else if (label.includes('deepseek')) {
-    showHint('⚡ DeepSeek模型推荐使用快速模式')
-  } else if (labelCompact.includes('glm5.1')) {
-    agentMode.value = 'plan_execute'
-    thinkingMode.value = true
-    showHint('GLM 5.1 已使用规划模式并开启思考模式')
-  } else if (label.includes('glm')) {
-    showHint('🧠 GLM模型推荐使用规划模式')
-  }
-})
-
-function onUserPromptChange(id) {
-  if (!id) return
-  const t = userPromptTemplates.value.find(x => (x.ID ?? x.id) === id)
-  if (t?.content) inputValue.value = t.content
-}
+// ---- 模型/提示词/模式选项（agent/useAgentOptions） ----
+const {
+  aiConfigOptions, aiConfigId, modelLabelForConfig,
+  sysPromptTemplates, sysPromptOptions, sysPromptId,
+  userPromptTemplates, userPromptOptions, userPromptId,
+  thinkingMode, memoryMode, memoryCount, memoryCountOptions,
+  agentMode, agentModeOptions, onUserPromptChange, loadPromptTemplates,
+} = useAgentOptions({ inputValue, showHint })
 
 const canSend = computed(() => !!inputValue.value.trim())
 const scrollbarRef = ref(null)
 const darkTheme = ref(false)
-const shareLoading = ref(false)
-const exportImageKey = ref('')
-const shareTipVisible = ref(false)
-const shareTipText = ref('')
+const theme = computed(() => (darkTheme.value ? 'dark' : 'light'))
 const hintVisible = ref(false)
 const hintText = ref('')
 let hintTimer = null
@@ -307,746 +162,40 @@ function showHint(text) {
   if (hintTimer) clearTimeout(hintTimer)
   hintTimer = setTimeout(() => { hintVisible.value = false }, 3000)
 }
-const vipLevel = ref(0)
-const vipLoaded = ref(false)
-const vipLoading = ref(false)
-const isAborted = ref(false)
-const expandedGroups = ref(new Set())
-const reasoningExpandedMap = ref({})
 
-const hasBackgroundTask = computed(() => isStreamLoad.value && sentFromFloating.value && !panelVisible.value)
-const AGENT_EVENT = 'agent-message'
+// ---- 消息分组与展开状态（agent/useMessageGroups） ----
+const {
+  messageGroups, expandedGroups, reasoningExpandedMap,
+  isGroupExpanded, toggleGroup, initDefaultExpanded, ensureLatestGroupExpanded, toggleReasoning,
+} = useMessageGroups({ messages })
 
-const messageGroups = computed(() => {
-  const groups = []
-  let currentGroup = null
-  
-  for (let i = 0; i < messages.value.length; i++) {
-    const msg = messages.value[i]
-    if (msg.role === 'user') {
-      if (currentGroup) {
-        groups.push(currentGroup)
-      }
-      currentGroup = {
-        id: i,
-        userMsg: msg,
-        userIndex: i,
-        assistantMsg: null,
-        assistantIndex: -1
-      }
-    } else if (msg.role === 'assistant' && currentGroup) {
-      currentGroup.assistantMsg = msg
-      currentGroup.assistantIndex = i
-    }
-  }
-  if (currentGroup) {
-    groups.push(currentGroup)
-  }
-  return groups
+// ---- 复制/分享/导出图片（agent/useShareExport） ----
+const {
+  shareLoading, exportImageKey, shareTipVisible, shareTipText,
+  copyAiContent, shareTextToCommunity, shareAiContent,
+  getLastAssistantContent, shareAiToCommunity, exportAiReplyImage,
+} = useShareExport({ messages, darkTheme })
+
+// ---- 会话管理与面板开合（agent/useChatSession） ----
+const {
+  sessionId, panelVisible, vipLevel,
+  loadHistory, saveHistory, openPanel, closePanel, togglePanel, scrollToBottom,
+} = useChatSession({ messages, scrollbarRef, message, initDefaultExpanded })
+
+// ---- 流式对话与事件订阅（agent/useAgentStream） ----
+const {
+  isStreamLoad, sentFromFloating, isAborted,
+  abortStream, sendMessage, startNewChat,
+} = useAgentStream({
+  messages, inputValue, sessionId, message,
+  aiConfigId, aiConfigOptions, sysPromptId, memoryMode, memoryCount,
+  thinkingMode, agentMode, modelLabelForConfig,
+  shareTipText, shareTipVisible,
+  saveHistory, scrollToBottom,
+  ensureLatestGroupExpanded, messageGroups, reasoningExpandedMap,
 })
 
-function isGroupExpanded(groupIndex) {
-  return expandedGroups.value.has(groupIndex)
-}
-
-function toggleGroup(groupIndex) {
-  const newSet = new Set(expandedGroups.value)
-  if (newSet.has(groupIndex)) {
-    newSet.delete(groupIndex)
-  } else {
-    newSet.add(groupIndex)
-  }
-  expandedGroups.value = newSet
-}
-
-function initDefaultExpanded() {
-  if (messageGroups.value.length > 0 && expandedGroups.value.size === 0) {
-    expandedGroups.value = new Set([messageGroups.value.length - 1])
-  }
-}
-
-function ensureLatestGroupExpanded() {
-  if (messageGroups.value.length > 0) {
-    const lastIndex = messageGroups.value.length - 1
-    const newSet = new Set(expandedGroups.value)
-    newSet.add(lastIndex)
-    expandedGroups.value = newSet
-  }
-}
-
-function toggleReasoning(index) {
-  reasoningExpandedMap.value = {
-    ...reasoningExpandedMap.value,
-    [index]: !reasoningExpandedMap.value[index]
-  }
-}
-
-function getStepDotClass(step) {
-  if (step.includes('✅')) return 'step-done'
-  if (step.includes('🔧')) return 'step-tool'
-  if (step.includes('⚡') || step.includes('🧠') || step.includes('📋') || step.includes('🔄')) return 'step-active'
-  return ''
-}
-
-function onMdHtmlChanged() {
-  nextTick(() => {
-    document.querySelectorAll('.msg-markdown .md-editor-code-block').forEach(block => {
-      if (block.querySelector('.code-collapse-btn')) return
-      const codeEl = block.querySelector('code')
-      if (!codeEl) return
-      const lang = (codeEl.className || '').toLowerCase()
-      const isJson = lang.includes('json') || lang.includes('language-json')
-      const text = codeEl.textContent || ''
-      const lineCount = text.split('\n').length
-      if (!isJson && lineCount <= 8) return
-
-      block.classList.add('code-collapsed')
-      const btn = document.createElement('span')
-      btn.className = 'code-collapse-btn'
-      btn.textContent = '展开'
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation()
-        const collapsed = block.classList.toggle('code-collapsed')
-        btn.textContent = collapsed ? '展开' : '收起'
-      })
-      block.appendChild(btn)
-    })
-  })
-}
-
-async function copyAiContent(msg) {
-  const text = (msg?.content ?? '').trim()
-  if (!text) {
-    message.warning('暂无可复制的 AI 正文内容')
-    return
-  }
-  try {
-    if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text)
-      message.success('已复制 AI 回答内容')
-    } else {
-      const textarea = document.createElement('textarea')
-      textarea.value = text
-      textarea.style.position = 'fixed'
-      textarea.style.opacity = '0'
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-      message.success('已复制 AI 回答内容')
-    }
-  } catch (e) {
-    message.error('复制失败，请手动选择文本')
-  }
-}
-
-function shareTextToCommunity(text, title) {
-  if (shareLoading.value) return
-  shareLoading.value = true
-  shareTipText.value = '正在分享到社区...'
-  shareTipVisible.value = true
-  systemApi.shareText(text, title)
-    .then(({data: msg}) => {
-      shareTipText.value = msg
-      shareTipVisible.value = true
-    })
-    .catch((err) => {
-      shareTipText.value = '分享失败: ' + (err?.message ?? err)
-      shareTipVisible.value = true
-    })
-    .finally(() => {
-      shareLoading.value = false
-    })
-}
-
-function shareAiContent(msg) {
-  const text = (msg?.content ?? '').trim()
-  if (!text) {
-    shareTipText.value = '暂无可分享的 AI 正文内容'
-    shareTipVisible.value = true
-    return
-  }
-  shareTextToCommunity(text, 'go-stock AI Agent助手')
-}
-
-function getLastAssistantContent() {
-  for (let i = messages.value.length - 1; i >= 0; i--) {
-    const m = messages.value[i]
-    if (m?.role === 'assistant') {
-      const text = (m?.content ?? '').trim()
-      if (text) return text
-    }
-  }
-  return ''
-}
-
-function shareAiToCommunity() {
-  const text = getLastAssistantContent()
-  if (!text) {
-    shareTipText.value = '暂无可分享的 AI 回复内容'
-    shareTipVisible.value = true
-    return
-  }
-  shareTextToCommunity(text, 'go-stock AI Agent助手')
-}
-
-async function exportAiReplyImage(assistantIndex, evt) {
-  const msg = messages.value[assistantIndex]
-  if (msg?.role !== 'assistant') return
-  if (!(msg.content ?? '').trim()) {
-    shareTipText.value = '暂无可导出的 AI 回答内容'
-    shareTipVisible.value = true
-    return
-  }
-  const editorId = 'agent-msg-' + assistantIndex
-  const bubble = evt?.currentTarget?.closest?.('.msg-bubble')
-  const key = String(assistantIndex)
-  if (exportImageKey.value) return
-  exportImageKey.value = key
-  await nextTick()
-  try {
-    const target = document.getElementById(`${editorId}-preview-wrapper`) ||
-      document.getElementById(`${editorId}-preview`) ||
-      bubble?.querySelector('.md-editor-preview') ||
-      null
-    if (!target) {
-      shareTipText.value = '未找到预览区域，请展开回答后重试'
-      shareTipVisible.value = true
-      return
-    }
-    const savedStyles = []
-    const overflowParents = []
-    let el = target.parentElement
-    while (el && el !== document.body) {
-      const style = getComputedStyle(el)
-      if (style.overflow === 'hidden' || style.overflowY === 'hidden' || style.overflowY === 'auto' || style.overflowY === 'scroll') {
-        savedStyles.push({ el, overflow: el.style.overflow, overflowY: el.style.overflowY, height: el.style.height, maxHeight: el.style.maxHeight })
-        overflowParents.push(el)
-        el.style.overflow = 'visible'
-        el.style.overflowY = 'visible'
-        el.style.height = 'auto'
-        el.style.maxHeight = 'none'
-      }
-      el = el.parentElement
-    }
-    const savedTargetStyle = { height: target.style.height, maxHeight: target.style.maxHeight, overflow: target.style.overflow, overflowY: target.style.overflowY }
-    target.style.height = 'auto'
-    target.style.maxHeight = 'none'
-    target.style.overflow = 'visible'
-    target.style.overflowY = 'visible'
-    await nextTick()
-    const canvas = await html2canvas(target, {
-      useCORS: true,
-      scale: 2,
-      allowTaint: true,
-      logging: false,
-      backgroundColor: darkTheme.value ? '#1e1e1e' : '#ffffff'
-    })
-    target.style.height = savedTargetStyle.height
-    target.style.maxHeight = savedTargetStyle.maxHeight
-    target.style.overflow = savedTargetStyle.overflow
-    target.style.overflowY = savedTargetStyle.overflowY
-    savedStyles.forEach(({ el, overflow, overflowY, height, maxHeight }) => {
-      el.style.overflow = overflow
-      el.style.overflowY = overflowY
-      el.style.height = height
-      el.style.maxHeight = maxHeight
-    })
-    const dataUrl = canvas.toDataURL('image/png')
-    const base64 = dataUrl.replace(/^data:image\/png;base64,/, '')
-    const safeTime = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')
-    const result = (await stockApi.saveImage(`go-stock-agent-${safeTime}`, base64)).data
-    if (result && !result.includes('异常') && !result.includes('无法')) {
-      shareTipText.value = '已导出为 PNG 图片：' + result
-    } else {
-      shareTipText.value = result || '导出取消'
-    }
-    shareTipVisible.value = true
-  } catch (e) {
-    shareTipText.value = '导出图片失败: ' + (e?.message ?? e)
-    shareTipVisible.value = true
-  } finally {
-    exportImageKey.value = ''
-  }
-}
-
-function abortStream(showTip = true) {
-  if (!isStreamLoad.value) return
-  isAborted.value = true
-  isStreamLoad.value = false
-  stopFormatTimer()
-  const last = messages.value[messages.value.length - 1]
-  if (last && last.role === 'assistant') {
-    if (last.rawContent) {
-      const fmt = formatMarkdown(last.rawContent)
-      last.content = fmt.content
-      if (fmt.jsonMarkdown) last.jsonMarkdown = fmt.jsonMarkdown
-    }
-    if (last.rawReasoning) {
-      const fmt = formatMarkdown(last.rawReasoning)
-      last.reasoning = fmt.content
-    }
-  }
-  if (showTip) {
-    shareTipText.value = '已中断本次 AI 回答'
-    shareTipVisible.value = true
-  }
-  systemApi.abortChatWithAgent()
-}
-
-const theme = computed(() => (darkTheme.value ? 'dark' : 'light'))
-
-async function loadHistory() {
-  try {
-    const resp = (await systemApi.getAiAssistantSession('')).data
-    if (resp?.sessionId) {
-      sessionId.value = resp.sessionId
-    }
-    const list = resp?.messages
-    if (Array.isArray(list) && list.length > 0) {
-      messages.value = list.map(m => ({
-        role: m.role ?? '',
-        content: m.content ?? '',
-        time: m.time ?? '',
-        modelName: m.modelName ?? '',
-        reasoning: m.reasoning ?? '',
-        steps: m.steps ?? [],
-        jsonMarkdown: m.jsonMarkdown ?? ''
-      }))
-      nextTick(() => {
-        initDefaultExpanded()
-      })
-    }
-  } catch (_) {
-  }
-}
-
-function saveHistory() {
-  if (messages.value.length === 0) return
-  const list = messages.value.map(m => ({
-    role: m.role,
-    content: m.content,
-    time: m.time ?? '',
-    modelName: m.modelName ?? '',
-    reasoning: m.reasoning ?? '',
-    steps: m.steps ?? [],
-    jsonMarkdown: m.jsonMarkdown ?? ''
-  }))
-  systemApi.saveAiAssistantSession(sessionId.value, list).catch(() => {})
-}
-
-function openPanel() {
-  panelVisible.value = true
-  if (!sessionId.value) {
-    sessionId.value = Date.now().toString()
-  }
-  if (messages.value.length === 0) {
-    messages.value = [
-      {
-        role: 'assistant',
-        content: '我是 go-stock AI Agent 助手，可以帮您分析股票、查询市场数据、获取研究报告等。请问有什么可以帮您的？',
-        time: new Date().toLocaleString(),
-        modelName: '',
-        reasoning: ''
-      }
-    ]
-  }
-  nextTick(() => {
-    initDefaultExpanded()
-    scrollToBottom()
-  })
-}
-
-function closePanel() {
-  panelVisible.value = false
-}
-
-async function ensureVipInfo() {
-  if (vipLoaded.value || vipLoading.value) return
-  vipLoading.value = true
-  try {
-    const res = (await systemApi.getSponsorInfo()).data
-    const lvl = Number(res?.vipLevel ?? 0)
-    vipLevel.value = Number.isNaN(lvl) ? 0 : lvl
-  } catch (_) {
-    vipLevel.value = 0
-  } finally {
-    vipLoaded.value = true
-    vipLoading.value = false
-  }
-}
-
-async function togglePanel() {
-  if (!panelVisible.value) {
-    await ensureVipInfo()
-    if ((vipLevel.value ?? 0) < 2) {
-      message.warning('go-stock AI Agent 助手功能仅对 VIP2 及以上赞助用户开放，请前往关于页面查看赞助方式。')
-      return
-    }
-    openPanel()
-  } else {
-    closePanel()
-  }
-}
-
-function scrollToBottom() {
-  nextTick(() => {
-    scrollbarRef.value?.scrollTo({ top: 99999, behavior: 'smooth' })
-  })
-}
-
-function sendMessage() {
-  if (isStreamLoad.value) {
-    abortStream(false)
-  }
-  const text = inputValue.value.trim()
-  if (!text) {
-    message.warning('请输入你的问题')
-    return
-  }
-
-  messages.value.push({
-    role: 'user',
-    content: text,
-    time: new Date().toLocaleString(),
-    modelName: '',
-    reasoning: '',
-    steps: []
-  })
-  const configId = aiConfigId.value ?? aiConfigOptions.value[0]?.value ?? 0
-  const modelName = modelLabelForConfig(configId)
-  messages.value.push({
-    role: 'assistant',
-    content: '',
-    rawContent: '',
-    time: new Date().toLocaleString(),
-    modelName,
-    reasoning: '',
-    rawReasoning: '',
-    steps: [],
-    jsonMarkdown: ''
-  })
-  inputValue.value = ''
-  isStreamLoad.value = true
-  isAborted.value = false
-  sentFromFloating.value = true
-  startFormatTimer()
-  saveHistory()
-  nextTick(() => {
-    ensureLatestGroupExpanded()
-    const lastGroup = messageGroups.value[messageGroups.value.length - 1]
-    if (lastGroup) {
-      reasoningExpandedMap.value = {
-        ...reasoningExpandedMap.value,
-        [lastGroup.assistantIndex]: true,
-        ['j-' + lastGroup.assistantIndex]: true
-      }
-    }
-    scrollToBottom()
-  })
-  systemApi.chatWithAgent(text, configId, sysPromptId.value, memoryMode.value, memoryCount.value, thinkingMode.value, agentMode.value === 'auto' ? '' : agentMode.value)
-}
-
-function startNewChat() {
-  if (isStreamLoad.value) {
-    message.warning('当前有回答正在生成，请先中断或等待完成')
-    return
-  }
-  messages.value = []
-  sessionId.value = Date.now().toString()
-}
-
-function startFormatTimer() {
-  stopFormatTimer()
-  formatTimer = setInterval(() => {
-    const last = messages.value[messages.value.length - 1]
-    if (last && last.role === 'assistant') {
-      if (last.rawContent) {
-        const fmt = formatMarkdown(last.rawContent)
-        last.content = fmt.content
-        if (fmt.jsonMarkdown) last.jsonMarkdown = fmt.jsonMarkdown
-      }
-      if (last.rawReasoning) {
-        const fmt = formatMarkdown(last.rawReasoning)
-        last.reasoning = fmt.content
-      }
-    }
-  }, 1500)
-}
-
-function stopFormatTimer() {
-  if (formatTimer) {
-    clearInterval(formatTimer)
-    formatTimer = null
-  }
-}
-
-function formatMarkdown(content) {
-  if (!content) return { content: '', jsonMarkdown: '' }
-
-  const { content: cleaned, jsonMarkdown } = extractJsonMarkdown(content)
-
-  let inCodeBlock = false
-  const lines = cleaned.split('\n')
-  const result = []
-
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i]
-    const trimmed = line.replace(/^[\t ]+/, '')
-
-    if (trimmed.startsWith('```')) {
-      inCodeBlock = !inCodeBlock
-      if (!inCodeBlock) {
-        result.push(trimmed)
-        continue
-      }
-    }
-
-    if (inCodeBlock) {
-      result.push(line)
-      continue
-    }
-
-    if (trimmed !== line && trimmed !== '') {
-      line = trimmed
-    }
-
-    if (i > 0 && isBlockElement(trimmed)) {
-      const prev = result.length > 0 ? result[result.length - 1] : ''
-      if (prev !== '' && !isBlockElement(prev.replace(/^[\t ]+/, ''))) {
-        result.push('')
-      }
-    }
-
-    line = splitInlineHeading(line)
-
-    result.push(line)
-  }
-
-  return {
-    content: result.join('\n'),
-    jsonMarkdown
-  }
-}
-
-function hasMarkdownContent(str) {
-  if (!str || typeof str !== 'string') return false
-  return /(^|\n)\s*#{1,6}\s/.test(str) ||
-    /(^|\n)\s*\|/.test(str) ||
-    /(^|\n)\s*---/.test(str) ||
-    /(^|\n)\s*[-*+]\s/.test(str) ||
-    /(^|\n)\s*>\s/.test(str) ||
-    /(^|\n)\s*```/.test(str)
-}
-
-function extractMarkdownFromJson(obj) {
-  if (typeof obj === 'string') return obj
-  if (Array.isArray(obj)) {
-    const items = obj.map(item => typeof item === 'string' ? item : JSON.stringify(item, null, 2))
-    return items.join('\n\n')
-  }
-  if (typeof obj === 'object' && obj !== null) {
-    for (const key of ['response', 'content', 'text', 'result', 'answer', 'message', 'output']) {
-      if (obj[key] != null) {
-        const val = obj[key]
-        if (typeof val === 'string' && hasMarkdownContent(val)) return val
-        if (typeof val === 'object') {
-          const extracted = extractMarkdownFromJson(val)
-          if (extracted) return extracted
-        }
-      }
-    }
-    const values = Object.values(obj).filter(v => typeof v === 'string' && hasMarkdownContent(v))
-    if (values.length > 0) return values.join('\n\n')
-    const strValues = Object.values(obj).filter(v => typeof v === 'string')
-    if (strValues.length > 0) return strValues.join('\n\n')
-  }
-  return null
-}
-
-function extractJsonMarkdown(content) {
-  if (!content) return { content: '', jsonMarkdown: '' }
-  const cleaned = []
-  const jsonParts = []
-  let i = 0
-  const len = content.length
-  let inCodeBlock = false
-
-  while (i < len) {
-    if (content.substring(i, i + 3) === '```') {
-      inCodeBlock = !inCodeBlock
-      cleaned.push('```')
-      i += 3
-      continue
-    }
-
-    if (inCodeBlock) {
-      cleaned.push(content[i])
-      i++
-      continue
-    }
-
-    if (content[i] === '{') {
-      const end = findJsonEnd(content, i)
-      if (end > i) {
-        const jsonStr = content.substring(i, end + 1)
-        try {
-          const obj = JSON.parse(jsonStr)
-          const md = extractMarkdownFromJson(obj)
-          if (md) {
-            jsonParts.push(md)
-          } else {
-            cleaned.push('\n\n```json\n' + jsonStr + '\n```\n\n')
-          }
-          i = end + 1
-          continue
-        } catch {}
-      }
-    }
-    cleaned.push(content[i])
-    i++
-  }
-
-  return {
-    content: cleaned.join(''),
-    jsonMarkdown: jsonParts.join('\n\n---\n\n')
-  }
-}
-
-function findJsonEnd(content, start) {
-  let depth = 0
-  let bracketDepth = 0
-  let inStr = false
-  let escape = false
-  for (let i = start; i < content.length; i++) {
-    const ch = content[i]
-    if (escape) { escape = false; continue }
-    if (ch === '\\' && inStr) { escape = true; continue }
-    if (ch === '"') { inStr = !inStr; continue }
-    if (inStr) continue
-    if (ch === '[') bracketDepth++
-    else if (ch === ']') bracketDepth--
-    else if (ch === '{') depth++
-    else if (ch === '}') {
-      depth--
-      if (depth === 0 && bracketDepth === 0) return i
-    }
-  }
-  return -1
-}
-
-function splitInlineHeading(line) {
-  const match = line.match(/(#{1,6}\s+\S)/)
-  if (!match) return line
-  const idx = match.index
-  if (idx === 0) return line
-  const prefix = line.substring(0, idx)
-  if (prefix.trim() === '') return line
-  return prefix + '\n\n' + line.substring(idx)
-}
-
-function isBlockElement(line) {
-  if (!line || line.length === 0) return false
-  if (line[0] === '#') return true
-  if (line.startsWith('- ') || line.startsWith('* ') || line.startsWith('+ ')) return true
-  if (line.startsWith('```')) return true
-  if (line.startsWith('> ')) return true
-  if (line.length >= 2 && line[0] >= '1' && line[0] <= '9' && line[1] === '.') return true
-  if (line.startsWith('---') || line.startsWith('***') || line.startsWith('___')) return true
-  if (line.startsWith('|')) return true
-  return false
-}
-
-function parseStepText(text) {
-  if (!text) return [text]
-  const trimmed = text.trim()
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return [text]
-  try {
-    const obj = JSON.parse(trimmed)
-    if (Array.isArray(obj)) {
-      return obj.map((item, i) => `${i + 1}. ${typeof item === 'string' ? item : JSON.stringify(item)}`)
-    }
-    if (typeof obj === 'object' && obj !== null) {
-      const steps = obj.steps || obj.step || obj.plan || obj.items || obj.list
-      if (Array.isArray(steps)) {
-        return steps.map((item, i) => `${i + 1}. ${typeof item === 'string' ? item : JSON.stringify(item)}`)
-      }
-      const entries = Object.entries(obj)
-      if (entries.length > 0) {
-        return entries.map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
-      }
-    }
-    return [text]
-  } catch {
-    return [text]
-  }
-}
-
-function onAgentMessage(msg) {
-  if (isAborted.value) return
-
-  if (msg.content === 'agent-DONE' || (msg?.response_meta?.finish_reason === 'stop')) {
-    isStreamLoad.value = false
-    sentFromFloating.value = false
-    isAborted.value = false
-    stopFormatTimer()
-    const last = messages.value[messages.value.length - 1]
-    if (last && last.role === 'assistant') {
-      if (last.rawContent) {
-        const fmt = formatMarkdown(last.rawContent)
-        last.content = fmt.content
-        if (fmt.jsonMarkdown) last.jsonMarkdown = fmt.jsonMarkdown
-      }
-      if (last.rawReasoning) {
-        const fmt = formatMarkdown(last.rawReasoning)
-        last.reasoning = fmt.content
-      }
-    }
-    saveHistory()
-    nextTick(scrollToBottom)
-    if (msg.content === 'agent-DONE' && last && last.role === 'assistant' && last.content) {
-      const user = messages.value[messages.value.length - 2]
-      systemApi.saveAIResponseResult("agent","市场分析", last.content, sessionId.value,user.content, aiConfigId.value)
-    }
-    return
-  }
-
-  const roleLower = String(msg?.role || '').toLowerCase()
-  if (roleLower !== 'assistant') {
-    return
-  }
-
-  const last = messages.value[messages.value.length - 1]
-  if (last && last.role === 'assistant') {
-    if (msg?.reasoning_content) {
-      const rc = msg.reasoning_content
-      if (rc.startsWith('[STEP]')) {
-        const stepText = rc.replace(/^\[STEP\]/, '').trim()
-        if (stepText) {
-          if (!last.steps) last.steps = []
-          const parsed = parseStepText(stepText)
-          last.steps.push(...parsed)
-        }
-      } else {
-        last.rawReasoning = (last.rawReasoning || '') + rc
-        last.reasoning = last.rawReasoning
-      }
-    }
-    if (msg?.content) {
-      last.rawContent = (last.rawContent || '') + msg.content
-      last.content = last.rawContent
-    }
-    nextTick(scrollToBottom)
-  }
-}
-
-function loadPromptTemplates() {
-  systemApi.getPromptTemplates('', '').then(({data: res}) => {
-    const list = Array.isArray(res) ? res : []
-    sysPromptTemplates.value = list.filter(t => t.type === '模型系统Prompt')
-    userPromptTemplates.value = list.filter(t => t.type === '模型用户Prompt')
-  })
-}
+const hasBackgroundTask = computed(() => isStreamLoad.value && sentFromFloating.value && !panelVisible.value)
 
 watch(panelVisible, (v) => {
   if (v) {
@@ -1062,42 +211,10 @@ onBeforeMount(() => {
 })
 
 onMounted(() => {
-  EventsOn(AGENT_EVENT, onAgentMessage)
-  loadHistory()
-  systemApi.getAiConfigs().then(({data: res}) => {
-    const list = Array.isArray(res) ? res : []
-    aiConfigOptions.value = list.map((c, index) => {
-      const id = c.ID != null ? Number(c.ID) : (c.id != null ? Number(c.id) : index)
-      const name = c.name ?? c.Name ?? ''
-      const modelName = c.modelName ?? c.ModelName ?? ''
-      return {
-        label: name + (modelName ? ' [' + modelName + ']' : ''),
-        value: id
-      }
-    })
-    if (aiConfigOptions.value.length) {
-      const lastModelId = localStorage.getItem(STORAGE_KEY_MODEL_ID)
-      if (lastModelId) {
-        const foundId = Number(lastModelId)
-        const isValid = aiConfigOptions.value.some(opt => opt.value === foundId)
-        aiConfigId.value = isValid ? foundId : aiConfigOptions.value[0].value
-      } else {
-        aiConfigId.value = aiConfigOptions.value[0].value
-      }
-    }
-  })
   loadPromptTemplates()
 })
 
-watch(aiConfigId, (newId) => {
-  if (newId != null) {
-    localStorage.setItem(STORAGE_KEY_MODEL_ID, String(newId))
-  }
-})
 
-onBeforeUnmount(() => {
-  EventsOff(AGENT_EVENT)
-})
 </script>
 
 <style scoped>
@@ -1666,78 +783,6 @@ onBeforeUnmount(() => {
   color: rgba(255, 255, 255, 0.78);
 }
 
-.chat-footer {
-  flex-shrink: 0;
-  padding: 12px 16px 16px;
-  border-top: 1px solid var(--n-border-color);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: var(--n-color-modal);
-}
-.chat-footer-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.chat-footer-select {
-  flex: 1;
-  min-width: 0;
-}
-.chat-footer-select .n-select {
-  width: 100%;
-}
-.chat-footer-prompt {
-  flex: 0 0 120px;
-  min-width: 0;
-}
-.chat-footer-prompt .n-select {
-  width: 100%;
-}
-.chat-footer-thinking {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-.chat-footer-thinking-label {
-  font-size: 12px;
-  color: var(--n-text-color-2);
-}
-.chat-footer-memory {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-.chat-footer-memory-count {
-  width: 70px;
-}
-.chat-footer-agent-mode-select {
-  width: 120px;
-}
-.chat-footer-memory-count .n-select {
-  width: 100%;
-}
-.chat-footer-input {
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
-}
-.chat-footer-input .n-input {
-  flex: 1;
-  min-width: 0;
-}
-.chat-footer-input .n-input :deep(textarea) {
-  text-align: left;
-}
-.chat-footer-input .n-button {
-  flex-shrink: 0;
-}
-.chat-footer-abort {
-  color: #f97316;
-}
 
 .fade-enter-active,
 .fade-leave-active {
@@ -1775,10 +820,6 @@ onBeforeUnmount(() => {
 </style>
 
 <style>
-body > div:has(.n-select-menu) {
-  z-index: 10002 !important;
-}
-
 .msg-markdown .md-editor-code-block {
   position: relative;
 }

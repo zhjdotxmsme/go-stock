@@ -14,6 +14,7 @@ declare module 'vue' {
     About: typeof import('./src/components/about.vue')['default']
     ActionChecklist: typeof import('./src/components/ActionChecklist.vue')['default']
     AgentChat: typeof import('./src/components/agent-chat.vue')['default']
+    AgentChatFooter: typeof import('./src/components/agent/AgentChatFooter.vue')['default']
     AiRecommendStocksList: typeof import('./src/components/aiRecommendStocksList.vue')['default']
     AllStockList: typeof import('./src/components/allStockList.vue')['default']
     AnalyzeMartket: typeof import('./src/components/AnalyzeMartket.vue')['default']
