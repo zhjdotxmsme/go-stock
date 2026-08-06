@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -32,6 +33,10 @@ type DailyPickEngine struct {
 	maxWorkers int
 	strategies []ScoringStrategy
 
+	// enhanceCfg 管线增强配置（D7 硬过滤 / D1 九因子评分 / D3 风控叠加，方案 §8.1 A1）。
+	// 默认全开、失败降级；不影响 Score 等旧字段逻辑。
+	enhanceCfg PickEnhanceConfig
+
 	// progressHook, if set, is called as scoring progresses: (stage, done, total).
 	// Stages: "baseline" (stage-1 K-line scoring), "research" (stage-2 report
 	// pre-fetch), "final" (stage-2 full scoring of the shortlist).
@@ -42,6 +47,7 @@ type DailyPickEngine struct {
 	macroScore        float64               // 0-1 macro environment score
 	industryRankMap   map[string]float64    // industryName → score (0-1)
 	stockIndustryMap  map[string]string     // stockCode → industryName
+	stockConceptMap   map[string]string     // stockCode → raw concept string
 	researchReportMap map[string]int        // stockCode → report count (pre-fetched)
 }
 
@@ -49,6 +55,7 @@ type DailyPickEngine struct {
 func NewDailyPickEngine() *DailyPickEngine {
 	return &DailyPickEngine{
 		maxWorkers: 10,
+		enhanceCfg: DefaultPickEnhanceConfig(),
 		strategies: []ScoringStrategy{
 			&MATrendStrategy{},
 			&OversoldReversalStrategy{},
@@ -65,6 +72,13 @@ func NewDailyPickEngine() *DailyPickEngine {
 // WithStrategies replaces the default strategy list. Useful for testing.
 func (e *DailyPickEngine) WithStrategies(s []ScoringStrategy) *DailyPickEngine {
 	e.strategies = s
+	return e
+}
+
+// WithEnhanceConfig sets the pipeline enhancement config (D7/D1/D3). Useful for
+// switching off individual enhancement steps or overriding their parameters.
+func (e *DailyPickEngine) WithEnhanceConfig(cfg PickEnhanceConfig) *DailyPickEngine {
+	e.enhanceCfg = cfg
 	return e
 }
 
@@ -109,6 +123,13 @@ func (e *DailyPickEngine) RunDailyPick(ctx context.Context, tradeDate string, to
 	}
 	logger.SugaredLogger.Infof("daily_pick: %d candidates to score", len(candidates))
 
+	// Step 1.5: D7 候选池硬过滤（快照级；日线级规则因无 K 线数据跳过并记录）。
+	// 失败降级：任何异常都回落原始候选池。
+	candidates = e.applyHardFilter(candidates)
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("daily_pick: no candidate stocks left after hard filter for %s", tradeDate)
+	}
+
 	// Pre-fetch macro and industry data (one-off, cheap requests).
 	// Research reports are deliberately NOT pre-fetched here: they are the most
 	// expensive per-stock call and are deferred to stage 2 (shortlist only).
@@ -128,11 +149,20 @@ func (e *DailyPickEngine) RunDailyPick(ctx context.Context, tradeDate string, to
 	e.prefetchResearchData(ctx, shortlist)
 	result := e.scoreCandidates(ctx, shortlist, tradeDate, "final")
 
+	// Step 2.5: D1 九因子评分 + D3 风控叠加（复用已获取的 K 线，无额外网络调用；
+	// 结果写入 D12 新字段，旧字段不动；失败降级只记日志）。
+	result = e.enhanceResults(result)
+
 	// Step 3: Filter successful scores and rank
 	var picks []models.DailyPick
 	for _, r := range result {
 		if r.err != nil {
 			logger.SugaredLogger.Debugf("daily_pick: skip %s: %v", r.pick.StockCode, r.err)
+			continue
+		}
+		if e.riskExcluded(r.pick) {
+			logger.SugaredLogger.Infof("daily_pick: %s excluded by risk (level=%s score=%.1f)",
+				r.pick.StockCode, r.pick.RiskLevel, r.pick.RiskScore)
 			continue
 		}
 		if r.pick.Score > 0 {
@@ -164,9 +194,12 @@ func (e *DailyPickEngine) RunDailyPick(ctx context.Context, tradeDate string, to
 }
 
 // scored pairs a computed pick with its scoring error.
+// tech carries the K-line data fetched during scoring for reuse by the
+// enhancement post-pass (nil on the RunWithConfig path).
 type scored struct {
 	pick models.DailyPick
 	err  error
+	tech *stockTechData
 }
 
 // scoreCandidates scores the given candidates in parallel, reporting progress
@@ -187,9 +220,9 @@ func (e *DailyPickEngine) scoreCandidates(ctx context.Context, candidates []stoc
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			p, err := e.scoreStock(ctx, candidate, tradeDate, nil, nil)
+			p, tech, err := e.scoreStockTech(ctx, candidate, tradeDate, nil, nil)
 			mu.Lock()
-			result = append(result, scored{pick: p, err: err})
+			result = append(result, scored{pick: p, err: err, tech: tech})
 			done++
 			e.reportProgress(stage, done, len(candidates))
 			mu.Unlock()
@@ -233,9 +266,18 @@ func shortlistCandidates(results []scored, topN int) []stockCandidate {
 }
 
 // stockCandidate holds minimal info about a candidate stock.
+// Snapshot fields are populated from all_stock_info (DB path only) for the D7
+// hard filter; HasSnapshot=false (EastMoney fallback path) bypasses the filter.
 type stockCandidate struct {
 	Code string
 	Name string
+
+	HasSnapshot   bool
+	Price         float64
+	ChangePercent float64
+	Amount        float64
+	VolumeRatio   float64
+	TurnoverRate  float64
 }
 
 // getCandidateStocks queries the local all_stock_info table for A-share candidates.
@@ -257,8 +299,14 @@ func (e *DailyPickEngine) getCandidateStocks(ctx context.Context, tradeDate stri
 
 	return slice.Map(infos, func(_ int, info models.AllStockInfo) stockCandidate {
 		return stockCandidate{
-			Code: info.SECUCODE,
-			Name: info.SECURITYNAMEABBR,
+			Code:          info.SECUCODE,
+			Name:          info.SECURITYNAMEABBR,
+			HasSnapshot:   true,
+			Price:         parseFloat64(info.NEWPRICE),
+			ChangePercent: parseFloat64(info.CHANGERATE),
+			Amount:        parseFloat64(info.DEALAMOUNT),
+			VolumeRatio:   parseFloat64(info.VOLUMERATIO),
+			TurnoverRate:  parseFloat64(info.TURNOVERRATE),
 		}
 	})
 }
@@ -329,6 +377,14 @@ func (e *DailyPickEngine) getCandidatesFromEastMoney(ctx context.Context) []stoc
 // overrides is an optional map of parameter overrides (e.g. {"rsi_period": 10}) from AI config.
 // activeStrategies, if non-nil, replaces e.strategies for strategy scoring (used by RunWithConfig).
 func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandidate, tradeDate string, overrides map[string]float64, activeStrategies []ScoringStrategy) (models.DailyPick, error) {
+	pick, _, err := e.scoreStockTech(ctx, candidate, tradeDate, overrides, activeStrategies)
+	return pick, err
+}
+
+// scoreStockTech is scoreStock plus the fetched K-line data, letting the
+// enhancement post-pass (D1 scoring / D3 risk / D12 fields) reuse it instead
+// of issuing another network request per stock.
+func (e *DailyPickEngine) scoreStockTech(ctx context.Context, candidate stockCandidate, tradeDate string, overrides map[string]float64, activeStrategies []ScoringStrategy) (models.DailyPick, *stockTechData, error) {
 	pick := models.DailyPick{
 		StockCode: candidate.Code,
 		StockName: candidate.Name,
@@ -343,7 +399,7 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 	// EastMoney push API is blocked from this network.
 	klineData := NewStockDataApi().GetKLineData(apiCode, "240", 60)
 	if klineData == nil || len(*klineData) < 20 {
-		return pick, fmt.Errorf("insufficient kline data: %d bars", lenPtr(klineData))
+		return pick, nil, fmt.Errorf("insufficient kline data: %d bars", lenPtr(klineData))
 	}
 
 	klines := *klineData
@@ -362,6 +418,8 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 		volume[i] = parseFloat64(k.Volume)
 	}
 
+	tech := &stockTechData{KLines: klines, CloseP: closeP, HighP: highP, LowP: lowP, Volume: volume}
+
 	// Today's data
 	today := klines[n-1]
 	pick.ClosePrice = parseFloat64(today.Close)
@@ -371,13 +429,16 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 	pick.Volume = int64(parseFloat64(today.Volume))
 	pick.TurnoverRate = parseFloat64(today.TurnoverRate)
 	pick.ChangePercent = parseFloat64(today.ChangePercent)
+	// D12 扩展字段：成交额/量比（K 线自带，无额外请求）
+	pick.Amount = parseFloat64(today.Amount)
+	pick.VolumeRatio = parseFloat64(today.VolumeRatio)
 
 	// Check basic filters
 	if pick.ClosePrice < 5 || pick.ClosePrice > 200 {
-		return pick, fmt.Errorf("price %.2f out of range [5,200]", pick.ClosePrice)
+		return pick, tech, fmt.Errorf("price %.2f out of range [5,200]", pick.ClosePrice)
 	}
 	if pick.ChangePercent > 9.5 || pick.ChangePercent < -5 {
-		return pick, fmt.Errorf("change %.2f%% too extreme", pick.ChangePercent)
+		return pick, tech, fmt.Errorf("change %.2f%% too extreme", pick.ChangePercent)
 	}
 
 	// Compute technical indicators
@@ -435,6 +496,14 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 	industryRankScore := e.lookupIndustryRankScore(industryName)
 	researchCount := e.researchReportMap[candidate.Code]
 
+	// D12 扩展字段：行业/概念（预取 map 查找，无额外请求）
+	pick.Industry = industryName
+	if concepts := splitConcepts(e.stockConceptMap[candidate.Code]); len(concepts) > 0 {
+		if data, err := json.Marshal(concepts); err == nil {
+			pick.Concepts = string(data)
+		}
+	}
+
 	strategyCtx := &StrategyContext{
 		KLines:              klines,
 		CloseP:              closeP,
@@ -486,7 +555,7 @@ func (e *DailyPickEngine) scoreStock(ctx context.Context, candidate stockCandida
 		}
 	}
 
-	return pick, nil
+	return pick, tech, nil
 }
 
 // ---- Multi-factor scoring functions (each returns 0-1) ----
@@ -730,25 +799,31 @@ func (e *DailyPickEngine) prefetchMacroData() {
 //
 // Called once per RunDailyPick before parallel scoring.
 func (e *DailyPickEngine) prefetchIndustryRankings(ctx context.Context) {
-	// Build stockIndustryMap from database
+	// Build stockIndustryMap / stockConceptMap from database
 	var infos []struct {
 		SECUCODE  string
 		INDUSTRY  string
+		CONCEPT   string
 	}
 	err := db.Dao.WithContext(ctx).
 		Model(&models.AllStockInfo{}).
 		Where("secucode IS NOT NULL AND industry IS NOT NULL AND industry != ''").
-		Select("secucode, industry").
+		Select("secucode, industry, concept").
 		Find(&infos).Error
 	if err != nil {
 		logger.SugaredLogger.Errorf("daily_pick: query stock industry error: %v", err)
 		e.stockIndustryMap = make(map[string]string)
+		e.stockConceptMap = make(map[string]string)
 		e.industryRankMap = make(map[string]float64)
 		return
 	}
 	e.stockIndustryMap = make(map[string]string, len(infos))
+	e.stockConceptMap = make(map[string]string, len(infos))
 	for _, row := range infos {
 		e.stockIndustryMap[row.SECUCODE] = row.INDUSTRY
+		if row.CONCEPT != "" {
+			e.stockConceptMap[row.SECUCODE] = row.CONCEPT
+		}
 	}
 
 	// Fetch industry rankings from Sina
