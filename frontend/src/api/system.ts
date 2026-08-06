@@ -31,37 +31,12 @@ export async function checkUpdate(): Promise<any> {
 // ========== 设置相关 ==========
 
 /**
- * 获取设置配置 (GetSettingConfig - 应用设置页面的配置)
- * @returns {Promise<ApiResult>}
- */
-export async function getSettings(): Promise<any> {
-  return callApi(App.GetSettingConfig)
-}
-
-/**
  * 获取运行时配置 (GetConfig - 功能开关如 enableFund/enableAgent/darkTheme)
  * 注意：与 getSettings 不同，GetConfig 返回的是功能开关配置
  * @returns {Promise<ApiResult>}
  */
 export async function getConfig(): Promise<any> {
   return callApi(SystemHandler.GetConfig)
-}
-
-/**
- * 保存设置
- * @param {Object} settings - 设置对象
- * @returns {Promise<ApiResult>}
- */
-export async function saveSettings(settings: any): Promise<any> {
-  return callApi(App.SaveSettingConfig, settings)
-}
-
-/**
- * 重置设置
- * @returns {Promise<ApiResult>}
- */
-export async function resetSettings(): Promise<any> {
-  return callApi(App.ResetSettingConfig)
 }
 
 // ========== AI 分析结果保存 ==========
@@ -119,42 +94,7 @@ export async function getAiConfigs(): Promise<any> {
   return callApi(SystemHandler.GetAiConfigs)
 }
 
-/**
- * 保存 AI 配置
- * @param {Object} config - AI 配置对象
- * @returns {Promise<ApiResult>}
- */
-export async function saveAiConfig(config: any): Promise<any> {
-  return callApi(App.SaveAiConfig, config)
-}
-
-/**
- * 删除 AI 配置
- * @param {number} id - 配置ID
- * @returns {Promise<ApiResult>}
- */
-export async function deleteAiConfig(id: number): Promise<any> {
-  return callApi(App.DeleteAiConfig, id)
-}
-
-/**
- * 设置活跃 AI 配置
- * @param {number} id - 配置ID
- * @returns {Promise<ApiResult>}
- */
-export async function setActiveAiConfig(id: number): Promise<any> {
-  return callApi(App.SetActiveAiConfig, id)
-}
-
 // ========== Cron 定时任务 ==========
-
-/**
- * 获取定时任务列表
- * @returns {Promise<ApiResult>}
- */
-export async function getCronTasks(): Promise<any> {
-  return callApi(App.GetCronTasks)
-}
 
 /**
  * 创建定时任务
@@ -183,43 +123,7 @@ export async function deleteCronTask(id: number): Promise<any> {
   return callApi(SystemHandler.DeleteCronTask, id)
 }
 
-/**
- * 切换定时任务启用状态
- * @param {number} id - 任务ID
- * @param {boolean} enable - 是否启用
- * @returns {Promise<ApiResult>}
- */
-export async function toggleCronTask(id: number, enable: boolean): Promise<any> {
-  return callApi(App.ToggleCronTask, id, enable)
-}
-
-/**
- * 手动运行定时任务
- * @param {number} id - 任务ID
- * @returns {Promise<ApiResult>}
- */
-export async function runCronTask(id: number): Promise<any> {
-  return callApi(App.RunCronTask, id)
-}
-
 // ========== MCP 服务 ==========
-
-/**
- * 获取 MCP 服务器列表
- * @returns {Promise<ApiResult>}
- */
-export async function getMcpServers(): Promise<any> {
-  return callApi(App.GetMcpServers)
-}
-
-/**
- * 保存 MCP 服务器配置
- * @param {Object} server - 服务器配置
- * @returns {Promise<ApiResult>}
- */
-export async function saveMcpServer(server: any): Promise<any> {
-  return callApi(App.SaveMcpServer, server)
-}
 
 /**
  * 删除 MCP 服务器
@@ -227,7 +131,7 @@ export async function saveMcpServer(server: any): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function deleteMcpServer(id: number): Promise<any> {
-  return callApi(App.DeleteMcpServer, id)
+  return callApi(SystemHandler.DeleteMCPServer, id)
 }
 
 /**
@@ -236,27 +140,10 @@ export async function deleteMcpServer(id: number): Promise<any> {
  * @returns {Promise<ApiResult>}
  */
 export async function testMcpServer(id: number): Promise<any> {
-  return callApi(App.TestMcpServer, id)
+  return callApi(SystemHandler.TestMCPServer, id)
 }
 
 // ========== 技能管理 ==========
-
-/**
- * 获取技能列表
- * @returns {Promise<ApiResult>}
- */
-export async function getSkills(): Promise<any> {
-  return callApi(App.GetSkills)
-}
-
-/**
- * 保存技能
- * @param {Object} skill - 技能配置
- * @returns {Promise<ApiResult>}
- */
-export async function saveSkill(skill: any): Promise<any> {
-  return callApi(App.SaveSkill, skill)
-}
 
 /**
  * 删除技能
@@ -313,68 +200,12 @@ export async function delPrompt(id: number): Promise<any> {
 }
 
 /**
- * 保存提示词模板
- * @param {Object} template - 模板配置
- * @returns {Promise<ApiResult>}
- */
-export async function savePromptTemplate(template: any): Promise<any> {
-  return callApi(App.SavePromptTemplate, template)
-}
-
-/**
  * 删除提示词模板
  * @param {number} id - 模板ID
  * @returns {Promise<ApiResult>}
  */
 export async function deletePromptTemplate(id: number): Promise<any> {
   return callApi(AnalysisHandler.DeletePromptTemplate, id)
-}
-
-// ========== 日志 ==========
-
-/**
- * 获取应用日志
- * @param {number} lines - 获取行数
- * @returns {Promise<ApiResult>}
- */
-export async function getAppLogs(lines: number = 500): Promise<any> {
-  return callApi(App.GetAppLogs, lines)
-}
-
-/**
- * 清理日志
- * @returns {Promise<ApiResult>}
- */
-export async function clearLogs(): Promise<any> {
-  return callApi(App.ClearLogs)
-}
-
-// ========== 数据管理 ==========
-
-/**
- * 导出数据
- * @param {string} type - 数据类型
- * @returns {Promise<ApiResult>}
- */
-export async function exportData(type: string = 'all'): Promise<any> {
-  return callApi(App.ExportData, type)
-}
-
-/**
- * 导入数据
- * @param {File} file - 文件
- * @returns {Promise<ApiResult>}
- */
-export async function importData(file: any): Promise<any> {
-  return callApi(App.ImportData, file)
-}
-
-/**
- * 清理缓存
- * @returns {Promise<ApiResult>}
- */
-export async function clearCache(): Promise<any> {
-  return callApi(App.ClearCache)
 }
 
 // ========== 赞助/用户 ==========
@@ -601,10 +432,10 @@ export async function getCronTaskList(query: any): Promise<any> {
 
 /**
  * 获取定时任务详情
- * Go: GetCronTaskById(id int) any
+ * Go: GetCronTaskByID(id int) any
  */
 export async function getCronTaskById(id: number): Promise<any> {
-  return callApi(App.GetCronTaskById, id)
+  return callApi(SystemHandler.GetCronTaskByID, id)
 }
 
 /**
@@ -683,10 +514,10 @@ export async function getSkillList(query: any): Promise<any> {
 
 /**
  * 获取技能详情
- * Go: GetSkillById(id int) models.Skill
+ * Go: GetSkillByID(id int) models.Skill
  */
 export async function getSkillById(id: number): Promise<any> {
-  return callApi(App.GetSkillById, id)
+  return callApi(SystemHandler.GetSkillByID, id)
 }
 
 /**
@@ -795,10 +626,7 @@ export default {
   checkUpdate,
 
   // 设置相关
-  getSettings,
   getConfig,
-  saveSettings,
-  resetSettings,
 
   // AI 分析结果保存
   saveAiResponseResult,
@@ -808,17 +636,11 @@ export default {
   // AI 配置
   getAllStrategies,
   getAiConfigs,
-  saveAiConfig,
-  deleteAiConfig,
-  setActiveAiConfig,
 
   // Cron 定时任务
-  getCronTasks,
   createCronTask,
   updateCronTask,
   deleteCronTask,
-  toggleCronTask,
-  runCronTask,
   // Cron（增强版）
   getCronTaskList,
   getCronTaskById,
@@ -831,8 +653,6 @@ export default {
   calculateNextRunTimes,
 
   // MCP 服务
-  getMcpServers,
-  saveMcpServer,
   deleteMcpServer,
   testMcpServer,
   // MCP（增强版）
@@ -845,8 +665,6 @@ export default {
   getAllMCPTools,
 
   // 技能管理
-  getSkills,
-  saveSkill,
   deleteSkill,
   // 技能（增强版）
   createSkill,
@@ -861,21 +679,13 @@ export default {
   addPrompt,
   delPrompt,
   getPromptTemplates,
-  savePromptTemplate,
   deletePromptTemplate,
   // 提示词（增强版）
   getPromptTemplateList,
   addPromptTemplate,
   updatePromptTemplate,
 
-  // 日志
-  getAppLogs,
-  clearLogs,
 
-  // 数据管理
-  exportData,
-  importData,
-  clearCache,
 
   // 赞助/用户
   getSponsorInfo,

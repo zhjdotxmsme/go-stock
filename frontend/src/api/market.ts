@@ -4,7 +4,6 @@
  */
 
 import { callApi } from './client'
-import * as App from '../../wailsjs/go/main/App'
 import * as MarketHandler from '../../wailsjs/go/handler/MarketHandler'
 import * as StockChangeHandler from '../../wailsjs/go/handler/StockChangeHandler'
 import * as AnalysisHandler from '../../wailsjs/go/handler/AnalysisHandler'
@@ -14,23 +13,6 @@ import * as NewsHandler from '../../wailsjs/go/handler/NewsHandler'
 // ========== 市场行情 ==========
 
 /**
- * 获取市场快讯
- * @param {number} count - 数量
- * @returns {Promise<ApiResult>}
- */
-export async function getMarketNews(count: number = 20): Promise<any> {
-  return callApi(App.GetMarketNews, count)
-}
-
-/**
- * 获取全球股指
- * @returns {Promise<ApiResult>}
- */
-export async function getGlobalIndices(): Promise<any> {
-  return callApi(App.GetGlobalStockIndices)
-}
-
-/**
  * 获取行业排名
  * @param {string} sort - 排序字段
  * @param {number} count - 数量
@@ -38,32 +20,6 @@ export async function getGlobalIndices(): Promise<any> {
  */
 export async function getIndustryRank(sort: string = '', count: number = 50): Promise<any> {
   return callApi(MarketHandler.GetIndustryRank, sort, count)
-}
-
-/**
- * 获取个股资金流向
- * @param {number} count - 数量
- * @returns {Promise<ApiResult>}
- */
-export async function getStockMoneyFlow(count: number = 50): Promise<any> {
-  return callApi(App.GetStockMoneyFlow, count)
-}
-
-/**
- * 获取板块资金流向
- * @returns {Promise<ApiResult>}
- */
-export async function getSectorMoneyFlow(): Promise<any> {
-  return callApi(App.GetSectorMoneyFlow)
-}
-
-/**
- * 获取龙虎榜数据
- * @param {string} date - 日期
- * @returns {Promise<ApiResult>}
- */
-export async function getLongHuBang(date: string = ''): Promise<any> {
-  return callApi(App.GetLongHuBang, date)
 }
 
 /**
@@ -115,25 +71,7 @@ export async function getAllStockChangesWithPaging(pageSize: number): Promise<an
   return callApi(StockChangeHandler.GetAllStockChangesWithPaging, pageSize)
 }
 
-/**
- * 获取异动统计
- * @returns {Promise<ApiResult>}
- */
-export async function getChangeStats(): Promise<any> {
-  return callApi(App.GetChangeStats)
-}
-
 // ========== 电报/新闻 ==========
-
-/**
- * 获取财经电报
- * @param {number} count - 数量
- * @param {number} offset - 偏移
- * @returns {Promise<ApiResult>}
- */
-export async function getTelegraph(count: number = 50, offset: number = 0): Promise<any> {
-  return callApi(App.GetTelegraph, count, offset)
-}
 
 /**
  * 获取电报列表（按来源）
@@ -161,15 +99,6 @@ export async function getGlobalStockIndexes(): Promise<any> {
   return callApi(MarketHandler.GlobalStockIndexes)
 }
 
-/**
- * 获取新闻列表
- * @param {Object} options - 查询选项
- * @returns {Promise<ApiResult>}
- */
-export async function getNewsList(options: any = {}): Promise<any> {
-  return callApi(App.GetNewsList, options)
-}
-
 // ========== 交易时间 ==========
 
 /**
@@ -194,18 +123,6 @@ export async function isHKTradingTime(): Promise<any> {
  */
 export async function isUSTradingTime(): Promise<any> {
   return callApi(MarketHandler.IsUSTradingTime)
-}
-
-// ========== 实时价格 ==========
-
-/**
- * 获取实时行情
- * @param {string|Array} codes - 股票代码或代码数组
- * @returns {Promise<ApiResult>}
- */
-export async function getRealtimeQuote(codes: string | string[]): Promise<any> {
-  const codeList = Array.isArray(codes) ? codes : [codes]
-  return callApi(App.GetRealtimeQuote, codeList.join(','))
 }
 
 // ========== 情绪分析 ==========
@@ -539,25 +456,17 @@ export async function getLatestTradingDay(): Promise<any> {
 
 export default {
   // 市场行情
-  getMarketNews,
-  getGlobalIndices,
   getIndustryRank,
-  getStockMoneyFlow,
-  getSectorMoneyFlow,
-  getLongHuBang,
 
   // 异动监控
   getStockChanges,
   getStockChangeHistory,
   saveStockChangesToHistory,
   getAllStockChangesWithPaging,
-  getChangeStats,
 
   // 电报/新闻
-  getTelegraph,
   getTelegraphList,
   refreshTelegraphList,
-  getNewsList,
 
   // 交易时间
   isTradingTime,
@@ -568,8 +477,6 @@ export default {
   summaryStockNews,
   abortSummaryStockNews,
 
-  // 实时价格
-  getRealtimeQuote,
 
   // 全球股指
   getGlobalStockIndexes,
