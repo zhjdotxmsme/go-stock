@@ -1,6 +1,6 @@
 # go-stock 重构进度看板
 
-> 更新于 2026-08-05，基于 `feat/multi-agent-analysis` 分支实际仓库状态（HEAD: ff1ce59）。
+> 更新于 2026-08-05（第二次），基于 `feat/multi-agent-analysis` 分支实际仓库状态（HEAD: 1d2f664）。
 > 关联方案：`go-stock-全面重构方案.md`（v2.1）
 
 ---
@@ -9,138 +9,96 @@
 
 | 维度 | 当前值 | 目标值 | 状态 |
 |------|--------|--------|------|
-| `app.go` 行数 | 2,145（+app_common.go 346） | < 200 | 🟡 已从 3,488 降 38%，方法全部委托，剩余为生命周期/监控内部逻辑 |
-| `backend/data/` 文件数 | 137 | < 15（按子包拆分后） | ❌ 仍是上帝包，但 tools.go 已拆分 |
-| 后端 Handler 拆分 | 11/11 | 11 | ✅ 9 域 handler + trading + stockchange，App 方法全部委托 |
-| Service/Port/Adapter 层 | trading 垂直切片完成 | 全域迁移 | 🟡 模板已确立 |
-| 前端超大组件 | 最大 1,516 行 | < 1,500 | ✅ 三大组件（4,832/3,121/1,954）全部拆分完成 |
-| 前端 API 抽象层 | ✅ 完成（TS） | 完成 | ✅ |
-| 股票代码归一化 | `backend/stockcode/` 已建 | 全链路统一 | 🟡 后端完成，前端已引入工具 |
-| 大宗商品 AI 专家路由 | ✅ 完成 | 完成 | ✅ |
+| `app.go` 行数 | **184**（原 3,488） | < 200 | ✅ 达标；生命周期拆至 app_lifecycle/app_monitor/app_tradingtime |
+| Wails 绑定 | 214 方法直连 11 个 handler | 直连 | ✅ 前端已迁移至 handler 命名空间 |
+| `backend/data/` 文件数 | 137 | < 15 | ❌ 仍是上帝包（tools.go 已拆 10 域文件） |
+| Service/Port/Adapter 层 | 3 个垂直切片（trading/stockchange/fund） | 全域迁移 | 🟡 模板确立，逐步迁移中 |
+| 前端超大组件 | 最大 1,516 行 | < 1,500 | ✅ 三大组件全部拆分 |
+| 废弃功能清理 | 弹幕 + 提示词广场全清 | 完成 | ✅ |
+| Phase 6/7/8 功能包 | 14 个新包全部落地（带测试） | 落地+接线 | 🟡 **包已完成，生产接线未做** |
 
 ---
 
 ## 二、Phase 状态
 
-### Phase 0：大宗商品 AI 专家路由重构 ✅ 已完成
+### Phase 0-4 ✅ 完成或接近完成
+- Phase 0 商品专家路由 ✅；Phase 1 基础设施 ✅（port/domain/stockcode/handler 全齐）
+- Phase 3 tools.go 拆分 ✅（2,760→581+10 域文件，94 工具字节一致）
+- Phase 4 前端 ✅（三大组件拆分、Pinia、api 层 TS、广场/弹幕清理、28 个死 api 包装删除、4 个坏调用修复）
 
-### Phase 1：基础设施 🟡 大部分完成
+### Phase 5：清理 🟢 大部分完成
+- app.go 3,488 → **184 行**；app_common.go 346 → 20 行
+- 剩余：数据源适配器迁移 ❌、VIP 策略调整 ❌、全量功能测试 ❌
 
-| 任务 | 状态 | 备注 |
+### Phase 6：DSA 量化选股 🟡 包完成，未接线
+
+| 任务 | 状态 | 位置 |
 |------|------|------|
-| `backend/stockcode/` 归一化包 | ✅ | |
-| `backend/internal/domain/` 领域模型 | ✅ | 7 个领域 |
-| `backend/internal/port/` 接口层 | ✅ | datasource + repository |
-| `backend/handler/` 全部拆分 | ✅ | 11 个 handler 文件，App 委托接线完成 |
-| `frontend/src/utils/stockCode.js` | ✅ | |
-| 删除废弃组件 | 🟡 | 弹幕已删；promptPlaza/promptQa/agent-chat_bk/FloatingAiAssistant 仍存在 |
+| D1 9 因子评分 | ✅ 包完成 | `backend/agent/strategy/scoring/`（13 文件 1,517 行，14 测试） |
+| D2 LLM 二次排序 | ✅ 包完成 | `backend/agent/strategy/ranking/`（1,023 行，13 测试） |
+| D3 风控叠加 | ✅ 包完成 | `backend/agent/strategy/risk/`（17 检查+7 板块桶，10 测试） |
+| D5 决策标尺 | ✅ 包完成 | `backend/internal/domain/analysis/decision_scale.go` |
+| D12 68 字段 Pick 模型 | ✅ | `backend/models/daily_pick.go` +62 字段（AutoMigrate） |
+| D9 种子化旋转 | ✅ 包完成 | `scoring/selection_variant.go` |
 
-### Phase 2：股票核心模块 🟡
+### Phase 7：Agent 风控辩论 + 学习 🟡 包完成，未接线
 
-| 任务 | 状态 | 备注 |
+| 任务 | 状态 | 位置 |
 |------|------|------|
-| Router 层归一化 | ✅ | |
-| 数据源适配器迁入 `adapter/datasource/` | ❌ | 仍在 `backend/data/` |
-| 股票 Service 层 | ❌ | trading 域已建模板，stock 域未迁移 |
-| StockHandler 拆分 | ✅ | 含 AllStockInfo/实时价格 |
+| D4 风控否决状态机 | ✅ | `risk/override.go`（veto/downgrade，7 测试） |
+| D6 11 类分歧分类 | ✅ | `backend/agent/strategy/disagreement/` |
+| T1 三方风控辩论 | ✅ | `backend/agent/multi/risk_debate/`（695 行，8 测试） |
+| T2 反思记忆 | ✅ | `backend/agent/memory/`（SQLite FTS5+LIKE 降级，6 测试） |
+| T3/T4 | ✅ | 历史提交已完成 |
 
-### Phase 3：Agent 与分析 🟡
+### Phase 8：选股高级功能 🟡 包完成，未接线
 
-| 任务 | 状态 | 备注 |
+| 任务 | 状态 | 位置 |
 |------|------|------|
-| `tools.go` 拆分（2,760 → 581 + 10 域文件） | ✅ | 94 个工具字节级一致 |
-| Agent tools 迁移到 `agent/tools/` | ❌ | 拆分完成，未迁包 |
-| AnalysisHandler 拆分 | ✅ | |
-| T3 多层降级信号提取 / T4 LLM 双层分配 | ✅ | |
-| T5/T6/T7 | ❌ | |
-
-### Phase 4：前端重构 🟢 接近完成
-
-| 任务 | 状态 | 备注 |
-|------|------|------|
-| Pinia stores / api/ 层 / TypeScript | ✅ | |
-| `StockLightweightKlineChart.vue` 拆分 | ✅ | 4,832 → 1,372（5 composables + series.js） |
-| `stock.vue` 拆分 | ✅ | 3,121 → 1,442（7 script 块 + 2 弹窗子组件，删弹幕） |
-| `FloatingAgentAssistant.vue` 拆分 | ✅ | 1,954 → 862（7 composables + AgentChatFooter） |
-| 孤儿 composable 清理 | ✅ | 删除 6 个未接线的前序重写版 |
-| 前端导航重构 | 🟡 | 配置已建，Research Center 拆分未完全落地 |
-| 合并重复组件 | ✅ | FundFlowChart |
-
-### Phase 5：剩余模块 + 清理 🟡 进行中
-
-| 任务 | 状态 | 备注 |
-|------|------|------|
-| 全部 Handler 拆分 | ✅ | 含 trading/stockchange 两个新增 |
-| `app.go` 缩减 | 🟡 | 2,145 行；剩余为 domReady/价格监控/InitCronTasks 等内部逻辑 |
-| `backend/data/` 清空 | ❌ | |
-| VIP 策略调整 | ❌ | |
-| 全量功能测试 | ❌ | 拆分后建议在 Wails 环境实测（见风险节） |
-
-### Phase 6-8：DSA 量化选股 / 风控辩论 / 选股高级功能 ❌ 未启动
+| D7 硬过滤器 | ✅ | `backend/agent/strategy/filter/`（38 参数+瀑布诊断） |
+| D8 热点生命周期 | ✅ | `backend/internal/service/market/hotspot.go`（5 阶段+5 角色） |
+| D10 后分析链 | ✅ | `backend/agent/strategy/postanalysis/` |
+| D11 4 模式编排 | ✅ | `multi/mode.go`（standard=现有管线逐字一致，T1/技能挂点预留） |
 
 ---
 
-## 三、关键文件状态
+## 三、关键遗留（按优先级）
 
-### 后端
-
-| 文件/目录 | 状态 |
-|-----------|------|
-| `app.go` | 2,145 行（原 3,488），方法全部委托 handler |
-| `backend/handler/` | 14 个文件（11 handler + 3 个 admin 平台文件） |
-| `backend/data/tools.go` | 581 行（原 2,760），+10 个 tools_*.go 域文件 |
-| `backend/data/stock_data_api.go` | 3,066 行，data 包最大文件，待处理 |
-| `backend/internal/service/trading/` | 首个垂直切片（含测试） |
-| `backend/internal/adapter/repository/sqlite/` | StockRepository 实现（trading 部分，15 个方法 TODO 占位） |
-
-### 前端
-
-| 文件/目录 | 状态 |
-|-----------|------|
-| `stock.vue` | 1,442 行（原 3,121） |
-| `StockLightweightKlineChart.vue` | 1,372 行（原 4,832） |
-| `FloatingAgentAssistant.vue` | 862 行（原 1,954） |
-| `cron-task-manager.vue` | 1,516 行，现最大组件 |
-| `components/stock/` `components/kline/` `components/agent/` | 拆分产物目录 |
+1. **⚠️ 生产接线（最高优先级）**：Phase 6-8 的 14 个包全部是独立纯函数/注入式实现，**尚未接入任何生产调用链**：
+   - D1/D2/D3/D7/D9/D10 → `daily_pick_engine.go` 选股管线
+   - T1/D6/D4 → multi 引擎（D11 已留 RiskDebateHook 挂点）
+   - D5 → 合成输出与前端 DecisionDashboard
+   - T2 → Agent Prompt 注入
+2. **⚠️ Wails 环境实测**：本轮改动量极大（20+ commit），build/单测/字节比对全过，但未实际运行。重点回归：K线指标、多单拖拽、AI 弹窗、浮动助手流式对话、MCP/Cron/Skill 管理页（修复过的 4 个调用）。
+3. 数据源适配器迁移 `adapter/datasource/`（❌ 未启动）
+4. 剩余 service 切片（news/system/analysis/market 等，模板已确立）
+5. 预存在问题：`go vet ./backend/data` 测试文件报错、`TestCheckStockBaseInfo` 失败、`backend/models` 测试 import cycle、`backend/agent/tools` 测试需运行时 DB、GOOS=darwin/linux 交叉编译 yahoo_finance_api.go 失败——均为历史遗留。
 
 ---
 
-## 四、本轮提交（2026-08-05）
+## 四、本轮提交（2026-08-05 第二次，Phase 6-8）
 
 ```
-ff1ce59 refactor(frontend): split FloatingAgentAssistant.vue 1821 -> 862 lines
-ea7cd04 refactor(frontend): split stock.vue 3121 -> 1442 lines, remove danmaku feature
-5c3ccf7 refactor(frontend): split StockLightweightKlineChart.vue 4556 -> 1372 lines
-5dba10a refactor(data): split 2760-line tools.go into 10 domain files
-be0142c feat(service): first Handler->Service->Port<-Adapter vertical slice (trading)
-20b1952 refactor(handler): complete remaining wiring and remove dead code
-1ed9474 refactor(handler): wire App methods to delegate to all 9 handlers
+1d2f664 feat(agent): D11 4-mode orchestration with stage budget control
+65d3dd7 feat(strategy): D10 pluggable post-analysis chain
+773247e feat(strategy): D7 hard filters + D8 hotspot lifecycle
+33a688b feat(agent): T2 reflection memory system (SQLite FTS5)
+3b8b70e feat(agent): T1 three-way risk debate + risk judge with veto
+b2a4ebb feat(strategy): D4 risk override state machine + D6 disagreement classification
+75a6413 feat(models): D12 extend DailyPick 62 fields + D9 seeded rotation
+d04b5dd feat(ranking): D2 LLM re-ranking with model-chain fallback
+03e9f10 feat(risk): D3 risk overlay + D5 decision scale
+9ce104e feat(scoring): D1 9-factor quantitative scoring system
+1650df9 fix(frontend): repair 4 broken api wrappers, remove 28 dead ones
+5439b18 refactor(wails): bind all 11 handlers directly (app.go -> 184 lines)
 ```
 
 ---
 
-## 五、风险与待验证项
-
-1. **运行时未实测**：所有拆分均通过 build/字节级比对验证，但未在 Wails 环境实际运行。重点回归点：K线指标开关/信号评估、多单拖拽、分组拖拽排序、AI 弹窗导出、浮动助手流式对话。
-2. **`go vet ./backend/data` 预存在报错**（测试文件 import 问题），非本轮引入。
-3. **`TestCheckStockBaseInfo` 预存在失败**（Wails EventsEmit 无生命周期 ctx）。
-4. `vue3-danmaku` 依赖仍在 package.json（弹幕代码已删），待 `npm uninstall`。
-5. cron entry 双 map 兼容逻辑（`removeLegacyCronEntry`）待 InitCronTasks 委托后移除。
-
-## 六、下一步建议
-
-1. **Wails 环境实测回归**（拆分规模大，优先验证运行时）
-2. 继续 service 切片迁移：fund / news / stockchange / stock（复用 trading 模板，注意 `backend/internal` 不可被 main 包 import，需 handler 内装配）
-3. 数据源适配器迁移到 `adapter/datasource/`
-4. `app.go` 内部逻辑收口：InitCronTasks 委托 systemHandler、价格监控提取
-5. 删除剩余废弃组件（promptPlaza/promptQa/agent-chat_bk/FloatingAiAssistant）
-6. Phase 6-8 功能增强
-
----
-
-## 七、更新记录
+## 五、更新记录
 
 | 日期 | 更新内容 |
 |------|----------|
 | 2026-08-04 | 初版 |
-| 2026-08-05 | Handler 全量接线完成；service 首个切片；tools.go 拆分；前端三大组件拆分完成 |
+| 2026-08-05 | Handler 全量接线；service 切片；tools.go 拆分；前端三大组件拆分 |
+| 2026-08-05(2) | app.go 达标 184 行；Wails 直连 handler；Phase 6-8 全部 14 个功能包落地（未接线） |
