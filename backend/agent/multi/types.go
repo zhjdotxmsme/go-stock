@@ -1,6 +1,10 @@
 package multi
 
-import "github.com/cloudwego/eino/schema"
+import (
+	"go-stock/backend/agent/multi/risk_debate"
+
+	"github.com/cloudwego/eino/schema"
+)
 
 // AgentReport is the output of each analyst node
 type AgentReport struct {
@@ -57,6 +61,13 @@ type FinalReport struct {
 	ExitZone  *PriceZone      `json:"exitZone"`  // 卖出区间，nil=未提供
 	RiskLevel string          `json:"riskLevel"` // low / medium / high
 	Checklist []ChecklistItem `json:"checklist"` // 操作检查清单
+
+	// A3 增强字段（D6 分歧分类 / T1 风控辩论 / D4 风控否决，仅 full/specialist/quick 模式填充；
+	// standard 模式不填，零值经 omitempty 不出现在事件 JSON 中，前端无感知）
+	DisagreementClass string `json:"disagreementClass,omitempty"` // D6 分歧分类
+	DecisionHint      string `json:"decisionHint,omitempty"`      // D6 决策路径提示
+	RiskJudgeDecision string `json:"riskJudgeDecision,omitempty"` // T1 风控裁判裁决 BUY/SELL/HOLD
+	GuardrailReason   string `json:"guardrailReason,omitempty"`   // D4 风控否决/降级理由
 }
 
 // PolicyReport is the output of the policy analyst
@@ -95,6 +106,13 @@ type AgentContext struct {
 	Reports      []AgentReport
 	Debate       *DebateResult
 	FinalReport  *FinalReport
+
+	// A3 增强状态（仅模式管线填充；standard 管线不触碰，保持行为不变）
+	DisagreementClass string                        // D6 分歧分类结果
+	DecisionHint      string                        // D6 决策路径提示
+	SynthesisGuidance string                        // D6 注入合成 Prompt 的引导文本
+	RiskDebate        *risk_debate.RiskDebateResult // T1 风控辩论结果
+
 	// StreamCh is an optional channel for streaming token-level output to the frontend.
 	// When set, each node pushes streaming events as it processes.
 	StreamCh chan *schema.Message

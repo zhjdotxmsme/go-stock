@@ -75,6 +75,11 @@ func RunSynthesis(ctx context.Context, ac *AgentContext) (*FinalReport, error) {
 			synthesisContent += "\n\n【策略视角】\n" + s.Prompt
 		}
 	}
+	// D6 分歧引导（A3）：仅模式管线设置 SynthesisGuidance，
+	// standard 管线该字段恒为空，Prompt 与历史版本逐字节一致。
+	if ac.SynthesisGuidance != "" {
+		synthesisContent += "\n\n【分析师分歧引导】\n" + ac.SynthesisGuidance
+	}
 
 	messages := []*schema.Message{
 		{Role: schema.System, Content: synthesisContent},

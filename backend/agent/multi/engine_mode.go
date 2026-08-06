@@ -60,6 +60,8 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 			} else {
 				ac.Reports = e.runParallelAnalysts(stageCtx, ac)
 			}
+			// D6 分歧分类（A3）：分类结果透出事件，引导文本注入合成 Prompt
+			e.classifyDisagreement(ac, ch, !cfg.DisagreementGuidanceOff)
 		case stageDebate:
 			debateResult, err := RunDebate(stageCtx, ac, 2)
 			if err != nil {
@@ -67,16 +69,14 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 			}
 			ac.Debate = debateResult
 		case stageRiskDebate:
-			if cfg.RiskDebate != nil {
-				if err := cfg.RiskDebate(stageCtx, ac); err != nil {
-					logger.SugaredLogger.Errorf("risk debate error: %v", err)
-				}
-			} else {
-				emitEvent(ch, "agent:phase", map[string]string{
-					"phase": stage.id, "status": "skipped",
-					"label": "风控辩论未配置，已跳过",
-				})
-				skipEndEvent = true
+			// T1 真实接线（A3）：自定义挂点优先，否则引擎默认三方风控辩论 + D4 否决。
+			// 失败降级：记日志继续，不否决、不阻塞结果。
+			hook := cfg.RiskDebate
+			if hook == nil {
+				hook = e.defaultRiskDebateHook()
+			}
+			if err := hook(stageCtx, ac); err != nil {
+				logger.SugaredLogger.Errorf("risk debate error (继续,不否决不阻塞): %v", err)
 			}
 		case stageSkills:
 			if len(cfg.SkillAgents) == 0 {
@@ -98,6 +98,11 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 				logger.SugaredLogger.Errorf("synthesis error: %v", err)
 			}
 			ac.FinalReport = finalReport
+			// D6 分类结果回写 FinalReport（透出到 agent:final）
+			if finalReport != nil {
+				finalReport.DisagreementClass = ac.DisagreementClass
+				finalReport.DecisionHint = ac.DecisionHint
+			}
 		}
 		cancel()
 

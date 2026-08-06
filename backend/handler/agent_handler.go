@@ -152,7 +152,11 @@ func (h *AgentHandler) NewChatStream(stock string, stockCode string, question st
 		}
 	}()
 	// Use the multi-agent engine as the primary analysis path
+	// agentMode: quick/standard/full/specialist（空/未知 → standard，行为不变）
 	engine := multi.NewMultiAgentEngine(aiConfigId)
+	if mode := multi.ParseAgentMode(agentMode); mode != multi.ModeStandard {
+		engine.WithConfig(multi.EngineConfig{Mode: mode})
+	}
 	resultCh := engine.Run(h.currentCtx(), stockCode, stock, "", question, strategyCode)
 
 	for msg := range resultCh {

@@ -29,6 +29,7 @@ var roleTierMap = map[string]LLMTier{
 	// 深度思考模型 (Tier Deep) - 复杂决策和综合
 	"synthesis":     LLMTierDeep, // 最终综合 - 需要深度推理
 	"risk_judge":    LLMTierDeep, // 风控裁判 - 需要审慎判断
+	"risk_debate":   LLMTierQuick, // 风控辩论三方 - 快速模型
 	"struct_extract": LLMTierQuick, // 结构化提取 - 简单任务
 
 	// 快速模型 (Tier Quick) - 7个分析师 + 辩论研究员

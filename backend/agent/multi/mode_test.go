@@ -69,9 +69,9 @@ func TestPlanStages(t *testing.T) {
 		}
 	}
 
-	// full：分析师 → 辩论 → 风控辩论 → 合成；辩论/风控可跳过，合成必需
+	// full（A3 顺序）：分析师 → 辩论 → 合成 → 风控辩论（T1+D4 需要合成信号，故风控在合成后）
 	full := planStages(EngineConfig{Mode: ModeFull})
-	wantIDs := []string{stageAnalysts, stageDebate, stageRiskDebate, stageSynthesis}
+	wantIDs := []string{stageAnalysts, stageDebate, stageSynthesis, stageRiskDebate}
 	if len(full) != len(wantIDs) {
 		t.Fatalf("full 计划长度: %d", len(full))
 	}
@@ -80,13 +80,13 @@ func TestPlanStages(t *testing.T) {
 			t.Errorf("full[%d]: got %s, want %s", i, full[i].id, id)
 		}
 	}
-	if full[3].required != true || full[1].required != false || full[2].required != false {
+	if full[2].required != true || full[1].required != false || full[3].required != false {
 		t.Errorf("full required 标记: %v", full)
 	}
 
-	// specialist：full + 技能阶段（在合成之前）
+	// specialist：full + 技能阶段（在合成之前），风控辩论最后
 	spec := planStages(EngineConfig{Mode: ModeSpecialist})
-	wantIDs = []string{stageAnalysts, stageDebate, stageRiskDebate, stageSkills, stageSynthesis}
+	wantIDs = []string{stageAnalysts, stageDebate, stageSkills, stageSynthesis, stageRiskDebate}
 	if len(spec) != len(wantIDs) {
 		t.Fatalf("specialist 计划长度: %d", len(spec))
 	}
@@ -95,8 +95,8 @@ func TestPlanStages(t *testing.T) {
 			t.Errorf("specialist[%d]: got %s, want %s", i, spec[i].id, id)
 		}
 	}
-	if spec[3].required {
-		t.Error("技能阶段应可被预算跳过")
+	if spec[2].required || spec[4].required {
+		t.Error("技能与风控辩论阶段应可被预算跳过")
 	}
 }
 

@@ -5,6 +5,8 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	"go-stock/backend/agent/multi/risk_debate"
 )
 
 // 4 模式 Agent 编排（方案 §8.1 D11）。
@@ -19,7 +21,7 @@ const (
 	ModeQuick AgentMode = "quick"
 	// ModeStandard 标准模式：7 分析师并行 → 多空辩论 → 合成（默认）。
 	ModeStandard AgentMode = "standard"
-	// ModeFull 完整模式：standard + 风控辩论阶段（挂点，可接 T1 risk_debate）。
+	// ModeFull 完整模式：standard + 合成后风控辩论（T1 已默认接线）+ D4 风控否决。
 	ModeFull AgentMode = "full"
 	// ModeSpecialist 专家模式：full + 技能 Agent（挂点，SkillRouter 预留）。
 	ModeSpecialist AgentMode = "specialist"
@@ -60,8 +62,16 @@ type EngineConfig struct {
 	StageTimeout   time.Duration // 单阶段超时，0 = 不限
 
 	QuickAnalysts []string      // quick 模式分析师子集，默认 ["technical"]
-	RiskDebate    RiskDebateHook // full/specialist 风控辩论挂点（nil = 跳过该阶段）
+	RiskDebate    RiskDebateHook // full/specialist 风控辩论挂点（nil = 引擎默认 T1 接线）
 	SkillAgents   []SkillAgent  // specialist 技能 Agent 列表（空 = 跳过该阶段）
+
+	// RiskDebateCall 风控辩论 LLM 调用注入（测试/自定义模型用）；
+	// nil 时默认接线按 LLMTierQuick/Deep 从 AI 配置装配。
+	RiskDebateCall risk_debate.LLMCallFunc
+
+	// DisagreementGuidanceOff 关闭 D6 分歧引导注入合成 Prompt（默认 false=开启）。
+	// 分类与事件透出不受此开关影响。
+	DisagreementGuidanceOff bool
 }
 
 // DefaultEngineConfig 返回默认配置（standard 模式，15s 阶段最小预算）。
@@ -110,15 +120,19 @@ func planStages(cfg EngineConfig) []plannedStage {
 			{stageSynthesis, true, "正在生成最终报告..."},
 		}
 	case ModeFull, ModeSpecialist:
+		// A3 顺序（DSA）：分析师 → 多空辩论 → [技能] → 合成 → 风控辩论（T1+D4 在合成后，
+		// 因为风控裁判需要 Trader 决策 = 合成最终信号，D4 否决在合成信号上调整）。
 		stages := []plannedStage{
 			{stageAnalysts, true, "各维度分析师并行分析中..."},
 			{stageDebate, false, "多空研究员辩论中..."},
-			{stageRiskDebate, false, "风控辩论中..."},
 		}
 		if cfg.Mode == ModeSpecialist {
 			stages = append(stages, plannedStage{stageSkills, false, "技能 Agent 分析中..."})
 		}
-		stages = append(stages, plannedStage{stageSynthesis, true, "正在生成最终报告..."})
+		stages = append(stages,
+			plannedStage{stageSynthesis, true, "正在生成最终报告..."},
+			plannedStage{stageRiskDebate, false, "风控辩论中..."},
+		)
 		return stages
 	default:
 		return nil
