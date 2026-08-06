@@ -19,11 +19,19 @@ import (
 // MultiAgentEngine orchestrates the multi-agent stock analysis pipeline.
 type MultiAgentEngine struct {
 	aiConfigID int
+	config     EngineConfig
 }
 
 // NewMultiAgentEngine creates a new engine with the given AI config ID.
+// 默认 standard 模式（行为与历史版本完全一致），模式/预算可通过 WithConfig 覆盖。
 func NewMultiAgentEngine(aiConfigID int) *MultiAgentEngine {
-	return &MultiAgentEngine{aiConfigID: aiConfigID}
+	return &MultiAgentEngine{aiConfigID: aiConfigID, config: DefaultEngineConfig()}
+}
+
+// WithConfig 设置引擎配置（模式/预算/挂点），返回引擎自身便于链式调用。
+func (e *MultiAgentEngine) WithConfig(cfg EngineConfig) *MultiAgentEngine {
+	e.config = cfg.normalize()
+	return e
 }
 
 // Run executes the full multi-agent analysis pipeline:
@@ -61,6 +69,13 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 		if isSimpleQuery(userQuery) {
 			logger.SugaredLogger.Infof("simple query detected, using fast path: %q", userQuery)
 			e.runSimpleQuery(ctx, ac, ch)
+			return
+		}
+
+		// 非 standard 模式走模式编排管线（quick/full/specialist，方案 §8.1 D11）；
+		// standard 模式继续执行下方现有管线，行为不变。
+		if e.config.normalize().Mode != ModeStandard {
+			e.runModePipeline(ctx, ac, ch)
 			return
 		}
 
