@@ -69,7 +69,7 @@ func RunLockupAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, erro
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: GetRolePrompt("multi_lockup", LockupAnalystPrompt)},
+		{Role: schema.System, Content: GetRolePrompt("multi_lockup", LockupAnalystPrompt) + memoryInjection(ctx, ac, "lockup")},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的解禁压力\n\n数据:\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 

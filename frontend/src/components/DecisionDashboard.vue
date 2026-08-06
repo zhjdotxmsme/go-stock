@@ -24,6 +24,11 @@
       <div class="db-card risk-card" v-if="report.riskLevel">
         <RiskBadge :level="report.riskLevel" />
       </div>
+
+      <!-- D5 决策标尺 -->
+      <div class="db-card scale-card" v-if="report.decisionSignal">
+        <DecisionScaleBar :signal="report.decisionSignal" />
+      </div>
     </div>
 
     <!-- 催化剂时间线 -->
@@ -52,6 +57,7 @@ import ScoreRing from './ScoreRing.vue'
 import TrendIndicator from './TrendIndicator.vue'
 import PriceZoneCard from './PriceZoneCard.vue'
 import RiskBadge from './RiskBadge.vue'
+import DecisionScaleBar from './DecisionScaleBar.vue'
 import CatalystTimeline from './CatalystTimeline.vue'
 import ActionChecklist from './ActionChecklist.vue'
 

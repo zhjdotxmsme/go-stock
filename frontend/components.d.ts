@@ -31,6 +31,7 @@ declare module 'vue' {
     DailyPickPanel: typeof import('./src/components/DailyPickPanel.vue')['default']
     DataManager: typeof import('./src/components/DataManager.vue')['default']
     DecisionDashboard: typeof import('./src/components/DecisionDashboard.vue')['default']
+    DecisionScaleBar: typeof import('./src/components/DecisionScaleBar.vue')['default']
     DistributionHist: typeof import('./src/components/charts/DistributionHist.vue')['default']
     EmbeddedUrl: typeof import('./src/components/EmbeddedUrl.vue')['default']
     EquityCurve: typeof import('./src/components/charts/EquityCurve.vue')['default']

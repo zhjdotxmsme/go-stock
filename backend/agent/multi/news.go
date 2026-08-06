@@ -22,7 +22,7 @@ func RunNewsAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, error)
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: GetRolePrompt("multi_news", NewsAnalystPrompt)},
+		{Role: schema.System, Content: GetRolePrompt("multi_news", NewsAnalystPrompt) + memoryInjection(ctx, ac, "news")},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的相关新闻和事件影响\n\n数据:\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 

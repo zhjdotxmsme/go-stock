@@ -72,6 +72,10 @@ type EngineConfig struct {
 	// DisagreementGuidanceOff 关闭 D6 分歧引导注入合成 Prompt（默认 false=开启）。
 	// 分类与事件透出不受此开关影响。
 	DisagreementGuidanceOff bool
+
+	// MemoryInjectionOff 关闭 T2 反思记忆检索注入分析师 Prompt（默认 false=开启）。
+	// 关闭时分析师 Prompt 与历史版本逐字节一致。
+	MemoryInjectionOff bool
 }
 
 // DefaultEngineConfig 返回默认配置（standard 模式，15s 阶段最小预算）。

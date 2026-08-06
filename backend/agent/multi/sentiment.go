@@ -22,7 +22,7 @@ func RunSentimentAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, e
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: GetRolePrompt("multi_sentiment", SentimentAnalystPrompt)},
+		{Role: schema.System, Content: GetRolePrompt("multi_sentiment", SentimentAnalystPrompt) + memoryInjection(ctx, ac, "sentiment")},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的市场情绪\n\n数据:\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 

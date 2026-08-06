@@ -273,6 +273,17 @@ func (h *AgentHandler) SetStockAICron(cronText, stockCode string) {
 	h.setCronEntry(stockCode, id)
 }
 
+// ReflectOnAnalysis A5 接线（方案 §8.1 T2）：对该股票最近一次多 Agent 分析执行
+// 4 步结构化反思并写入各分析师角色的记忆库（后续分析检索注入 Prompt）。
+// returnsPct 为分析后的实际收益率 %（由调用方结算得到）。返回各角色反思摘要。
+func (h *AgentHandler) ReflectOnAnalysis(stockCode string, returnsPct float64, aiConfigId int) string {
+	res, err := multi.ReflectOnLastAnalysis(h.currentCtx(), stockCode, returnsPct, aiConfigId)
+	if err != nil {
+		return "反思失败: " + err.Error()
+	}
+	return res
+}
+
 // addCronTask 创建单只关注股票的自动分析任务（从 app.go 复制为私有辅助函数）。
 func (h *AgentHandler) addCronTask(follow data.FollowedStock) func() {
 	return func() {

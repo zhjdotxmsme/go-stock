@@ -52,7 +52,7 @@ func RunTechnicalAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, e
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: GetRolePrompt("multi_technical", TechnicalAnalystPrompt)},
+		{Role: schema.System, Content: GetRolePrompt("multi_technical", TechnicalAnalystPrompt) + memoryInjection(ctx, ac, "technical")},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的技术面\n\nK线数据(最近60个交易日):\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 

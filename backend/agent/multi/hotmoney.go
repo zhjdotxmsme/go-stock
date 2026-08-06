@@ -65,7 +65,7 @@ func RunHotMoneyAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, er
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: GetRolePrompt("multi_hot_money", HotMoneyAnalystPrompt)},
+		{Role: schema.System, Content: GetRolePrompt("multi_hot_money", HotMoneyAnalystPrompt) + memoryInjection(ctx, ac, "hotmoney")},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的资金面\n\n数据:\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 

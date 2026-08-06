@@ -66,7 +66,7 @@ func RunPolicyAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, erro
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: GetRolePrompt("multi_policy", PolicyAnalystPrompt)},
+		{Role: schema.System, Content: GetRolePrompt("multi_policy", PolicyAnalystPrompt) + memoryInjection(ctx, ac, "policy")},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的政策面\n\n数据:\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 

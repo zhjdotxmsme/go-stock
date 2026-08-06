@@ -48,13 +48,14 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 		defer close(ch)
 
 		ac := &AgentContext{
-			StockCode:    stockCode,
-			StockName:    stockName,
-			Market:       market,
-			UserQuery:    userQuery,
-			StrategyCode: strategyCode,
-			AIConfigID:   e.aiConfigID,
-			StreamCh:     ch,
+			StockCode:          stockCode,
+			StockName:          stockName,
+			Market:             market,
+			UserQuery:          userQuery,
+			StrategyCode:       strategyCode,
+			AIConfigID:         e.aiConfigID,
+			StreamCh:           ch,
+			MemoryInjectionOff: e.config.normalize().MemoryInjectionOff,
 		}
 
 		// Skill usage tracking: record matched skills at start
@@ -142,10 +143,13 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 			"label": "分析完成",
 		})
 
-		// Phase 5: Save to SQLite
+		// Phase 5: D5 决策标尺（A4，纯确定性计算，不改动既有字段）
+		applyDecisionScale(ac)
+
+		// Phase 6: Save to SQLite
 		saveMultiAgentResult(ac)
 
-		// Phase 6: Emit final report
+		// Phase 7: Emit final report
 		emitFinalReport(ch, finalReport)
 	}()
 

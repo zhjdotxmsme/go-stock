@@ -113,6 +113,9 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 		}
 	}
 
+	// D5 决策标尺（A4）：在风控辩论（D4 可能已调整 OverallRating）之后、落库前计算
+	applyDecisionScale(ac)
+
 	saveMultiAgentResult(ac)
 	emitFinalReport(ch, ac.FinalReport)
 }

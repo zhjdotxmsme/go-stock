@@ -68,6 +68,12 @@ type FinalReport struct {
 	DecisionHint      string `json:"decisionHint,omitempty"`      // D6 决策路径提示
 	RiskJudgeDecision string `json:"riskJudgeDecision,omitempty"` // T1 风控裁判裁决 BUY/SELL/HOLD
 	GuardrailReason   string `json:"guardrailReason,omitempty"`   // D4 风控否决/降级理由
+
+	// A4 增强字段（D5 决策标尺，standard 与模式管线均填充；Score<=0 时不填，
+	// 零值经 omitempty 不出现在事件 JSON 中）
+	DecisionSignal string `json:"decisionSignal,omitempty"` // D5 信号 strong_buy/buy/watch/reduce/sell
+	DecisionAction string `json:"decisionAction,omitempty"` // D5 标准动作 buy/hold/sell（与最终动作一致）
+	DecisionLabel  string `json:"decisionLabel,omitempty"`  // D5 中文标签 强烈买入/买入/观望/减仓/卖出
 }
 
 // PolicyReport is the output of the policy analyst
@@ -116,4 +122,10 @@ type AgentContext struct {
 	// StreamCh is an optional channel for streaming token-level output to the frontend.
 	// When set, each node pushes streaming events as it processes.
 	StreamCh chan *schema.Message
+
+	// A5 增强状态（T2 反思记忆注入；由引擎从 EngineConfig 同步，分析师节点读取）
+	MemoryInjectionOff bool // 关闭反思记忆注入 Prompt
+	// MemoryRetrieve 记忆检索注入点（测试/自定义用）；nil = 默认 SQLite 记忆库。
+	// 返回注入用的经验文本列表（空 = 无记忆，不注入）。
+	MemoryRetrieve func(role, situation string) []string
 }

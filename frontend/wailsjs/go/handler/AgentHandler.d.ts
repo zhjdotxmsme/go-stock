@@ -14,6 +14,8 @@ export function NewChatStream(arg1:string,arg2:string,arg3:string,arg4:number,ar
 
 export function NewCommodityAnalysisStream(arg1:string,arg2:string,arg3:string,arg4:number):Promise<void>;
 
+export function ReflectOnAnalysis(arg1:string,arg2:number,arg3:number):Promise<string>;
+
 export function SetStockAICron(arg1:string,arg2:string):Promise<void>;
 
 export function SummaryStockNews(arg1:string,arg2:number,arg3:any,arg4:boolean,arg5:boolean,arg6:string,arg7:string):Promise<void>;

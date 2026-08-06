@@ -26,6 +26,10 @@ export function NewCommodityAnalysisStream(arg1, arg2, arg3, arg4) {
   return window['go']['handler']['AgentHandler']['NewCommodityAnalysisStream'](arg1, arg2, arg3, arg4);
 }
 
+export function ReflectOnAnalysis(arg1, arg2, arg3) {
+  return window['go']['handler']['AgentHandler']['ReflectOnAnalysis'](arg1, arg2, arg3);
+}
+
 export function SetStockAICron(arg1, arg2) {
   return window['go']['handler']['AgentHandler']['SetStockAICron'](arg1, arg2);
 }
