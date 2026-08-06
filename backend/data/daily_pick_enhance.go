@@ -6,15 +6,18 @@ import (
 	"reflect"
 
 	"go-stock/backend/agent/strategy/filter"
+	"go-stock/backend/agent/strategy/postanalysis"
+	"go-stock/backend/agent/strategy/ranking"
 	"go-stock/backend/agent/strategy/risk"
 	"go-stock/backend/agent/strategy/scoring"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 )
 
-// ===== 管线增强配置（方案 §8.1 A1：D7 硬过滤 + D1 九因子评分 + D3 风控叠加）=====
+// ===== 管线增强配置（方案 §8.1 A1：D7 硬过滤 + D1 九因子评分 + D3 风控叠加；
+// A2：D2 LLM 排序 + D10 后分析 + D9 种子旋转）=====
 
-// PickEnhanceConfig 选股管线增强配置。三个增强步骤均可独立开关（默认全开），
+// PickEnhanceConfig 选股管线增强配置。各增强步骤均可独立开关（除 D9 外默认全开），
 // 任一步骤出错只记日志并回落原逻辑，绝不让选股整体失败（失败降级）。
 // JSON 序列化，遵循仓库 models.StrategyConfig 的 JSON 配置惯例。
 type PickEnhanceConfig struct {
@@ -22,13 +25,39 @@ type PickEnhanceConfig struct {
 	EnableScoring bool `json:"enableScoring"` // D1 九因子评分 → ScreenScore/FinalScore/FactorScores
 	EnableRisk    bool `json:"enableRisk"`    // D3 风控叠加 → RiskScore/RiskLevel/RiskFlags
 
+	// EnableLLMRanking D2 LLM 二次排序（默认开）。无可用 AI 配置时静默跳过，
+	// 行为同旧版（按 Score 排序），不是错误。
+	EnableLLMRanking bool `json:"enableLlmRanking"`
+	// EnablePostAnalysis D10 后分析链（默认开）：本地评分卡常驻，
+	// 远程分析器仅当 RemoteAnalyzerURL 非空时启用。
+	EnablePostAnalysis bool `json:"enablePostAnalysis"`
+	// ApplyPostAnalysisDelta 后分析 delta 计入 FinalScore（默认开）：
+	// FinalScore = clamp(FinalScore + TotalDelta, 0, 100)。
+	ApplyPostAnalysisDelta bool `json:"applyPostAnalysisDelta"`
+	// EnableRotation D9 种子旋转（默认关）：改变输出成员资格，行为敏感，显式开启才生效。
+	// 种子来源 RotationSeed（默认 "daily_pick"），周期为 tradeDate。
+	EnableRotation bool   `json:"enableRotation"`
+	RotationSeed   string `json:"rotationSeed,omitempty"`
+
 	// RiskExcludeEnabled 风控排除开关：false（默认）= 高风险只标记 ExcludedByRisk=true
 	// 但保留在结果中（不改变现有输出数量）；true = 从结果中剔除高风险股票。
 	RiskExcludeEnabled bool `json:"riskExcludeEnabled"`
 
-	Filter      filter.HardFilterConfig `json:"filter"`
-	Scorer      scoring.ScorerConfig    `json:"scorer"`
-	RiskProfile risk.RiskProfile        `json:"riskProfile"`
+	// LLMRankMaxCandidates 送入 LLM 排序的候选上限（按 ScreenScore 取前 N，默认 30）。
+	// LLM 调用次数与候选数无关：每模型最多 1+MaxRetries 次。
+	LLMRankMaxCandidates int `json:"llmRankMaxCandidates"`
+
+	Filter      filter.HardFilterConfig       `json:"filter"`
+	Scorer      scoring.ScorerConfig          `json:"scorer"`
+	RiskProfile risk.RiskProfile              `json:"riskProfile"`
+	Ranker      ranking.RankerConfig          `json:"ranker"`
+	Scorecard   postanalysis.ScorecardConfig  `json:"scorecard"`
+	// RemoteAnalyzerURL 远程分析器地址（默认空 = 不启用远程分析）。
+	RemoteAnalyzerURL string `json:"remoteAnalyzerUrl,omitempty"`
+
+	// LLMCall / ModelChain LLM 调用注入（测试用）；nil/空时从设置的 AI 配置装配。
+	LLMCall    ranking.LLMCallFunc `json:"-"`
+	ModelChain []string            `json:"-"`
 }
 
 // DefaultPickEnhanceConfig 返回默认增强配置：
@@ -38,6 +67,9 @@ type PickEnhanceConfig struct {
 //   - 评分：显式权重只启用 K 线可装配的因子（momentum/activity/liquidity/stability），
 //     value/size/theme_heat/topic_alignment 因 PE/PB/市值/板块热度数据缺失不启用。
 //   - 风控：DefaultRiskProfile，InvalidPEPenalty=0（PE 数据缺失，避免每只票误扣 3 分）。
+//   - D2 排序：默认开启，无 AI 配置静默跳过；送入 LLM 的候选上限 30。
+//   - D10 后分析：本地评分卡默认启用，delta 计入 FinalScore；远程分析器默认关（URL 空）。
+//   - D9 旋转：默认关闭（改变输出成员资格）。
 func DefaultPickEnhanceConfig() PickEnhanceConfig {
 	fc := filter.DefaultHardFilterConfig()
 	fc.MinPE, fc.MaxPE = 0, 0
@@ -49,10 +81,15 @@ func DefaultPickEnhanceConfig() PickEnhanceConfig {
 	rp.InvalidPEPenalty = 0
 
 	return PickEnhanceConfig{
-		EnableFilter:  true,
-		EnableScoring: true,
-		EnableRisk:    true,
-		Filter:        fc,
+		EnableFilter:           true,
+		EnableScoring:          true,
+		EnableRisk:             true,
+		EnableLLMRanking:       true,
+		EnablePostAnalysis:     true,
+		ApplyPostAnalysisDelta: true,
+		EnableRotation:         false,
+		LLMRankMaxCandidates:   30,
+		Filter:                 fc,
 		Scorer: scoring.ScorerConfig{Weights: map[string]float64{
 			"momentum":  0.30,
 			"activity":  0.20,
@@ -60,6 +97,8 @@ func DefaultPickEnhanceConfig() PickEnhanceConfig {
 			"stability": 0.25,
 		}},
 		RiskProfile: rp,
+		Ranker:      ranking.DefaultRankerConfig(),
+		Scorecard:   postanalysis.DefaultScorecardConfig(),
 	}
 }
 
@@ -143,12 +182,13 @@ type stockTechData struct {
 	Volume []float64
 }
 
-// enhanceResults 对 stage-2 评分结果执行 D1 九因子评分与 D3 风控叠加，
-// 结果写入 D12 新字段（ScreenScore/FinalScore/FactorScores/RiskScore 等）。
+// enhanceResults 对 stage-2 评分结果执行 D1 九因子评分（含 D12 技术面派生字段装配），
+// 结果写入 ScreenScore/FinalScore/FactorScores 等新字段。
 // 旧字段（Score 等）完全不动。任何步骤失败只记日志跳过（失败降级）。
+// D3 风控按 DSA 流水线顺序移至排序之后，见 applyRiskToResults（daily_pick_rank.go）。
 func (e *DailyPickEngine) enhanceResults(results []scored) []scored {
 	cfg := e.enhanceCfg.normalize()
-	if !cfg.EnableScoring && !cfg.EnableRisk {
+	if !cfg.EnableScoring {
 		return results
 	}
 	defer func() {
@@ -165,7 +205,6 @@ func (e *DailyPickEngine) enhanceResults(results []scored) []scored {
 	amountRanks := scoring.PercentileRanks(amounts)
 
 	scorer := scoring.NewScorer(cfg.Scorer)
-	overlay := risk.NewRiskOverlay(cfg.RiskProfile)
 
 	for i := range results {
 		if results[i].err != nil {
@@ -182,18 +221,13 @@ func (e *DailyPickEngine) enhanceResults(results []scored) []scored {
 			pick.Industry = e.stockIndustryMap[pick.StockCode]
 		}
 
-		if cfg.EnableScoring {
-			e.applyNineFactorScore(pick, tech, amountRanks[i], scorer)
-		}
-		if cfg.EnableRisk {
-			applyRiskOverlay(pick, overlay)
-		}
+		e.applyNineFactorScore(pick, tech, amountRanks[i], scorer)
 	}
 	return results
 }
 
 // applyNineFactorScore 装配 FactorInput 并执行 D1 九因子评分。
-// FinalScore 初版与 ScreenScore 相同（D2 LLM 排序是 A2 任务）。
+// FinalScore 先置为 ScreenScore 作为排序前基线，D2 排序与 D10 后分析在其上叠加。
 func (e *DailyPickEngine) applyNineFactorScore(pick *models.DailyPick, tech *stockTechData, amountPct float64, scorer *scoring.Scorer) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -221,7 +255,7 @@ func (e *DailyPickEngine) applyNineFactorScore(pick *models.DailyPick, tech *sto
 
 	result := scorer.Score(input)
 	pick.ScreenScore = math.Round(result.Total*100) / 100
-	pick.FinalScore = pick.ScreenScore // D2 LLM 排序前，FinalScore=ScreenScore
+	pick.FinalScore = pick.ScreenScore // 排序前基线；D2/D10 在其上叠加
 
 	factorScores := make(map[string]float64, len(result.Factors))
 	for name, fr := range result.Factors {
@@ -251,6 +285,10 @@ func applyRiskOverlay(pick *models.DailyPick, overlay *risk.RiskOverlay) {
 		HasSignalScore: pick.SignalScore > 0,
 		MACDState:      risk.MACDState(pick.MacdStatus),
 		RSIState:       risk.RSIState(pick.RsiStatus),
+		// D2 排序先于风控执行（DSA 顺序），LLM 风险标记参与扣分
+		LLMRiskFlags:    parseJSONStringArray(pick.LlmRiskFlags),
+		LLMConfidence:   pick.LlmConfidence,
+		HasLLMConfidence: pick.LlmConfidence > 0,
 	}
 	result := overlay.Evaluate(input)
 

@@ -231,7 +231,8 @@ func TestEnhanceResultsRisk(t *testing.T) {
 	// 无风险场景：正常数据，PE=0 不得触发 invalid_pe
 	calm := makeScoredPick("600011.SH", makeTestTech(makeTestKLines(60)))
 
-	got := e.enhanceResults([]scored{chased, calm})
+	// DSA 顺序：D1 评分 → D3 风控（A2 起风控为排序后的独立阶段）
+	got := e.applyRiskToResults(e.enhanceResults([]scored{chased, calm}))
 
 	p0 := got[0].pick
 	if p0.RiskScore <= 0 {
@@ -277,7 +278,7 @@ func TestEnhanceResultsDegradation(t *testing.T) {
 	}}
 	ok := makeScoredPick("600022.SH", tech)
 
-	got := e.enhanceResults([]scored{failed, noTech, ok})
+	got := e.applyRiskToResults(e.enhanceResults([]scored{failed, noTech, ok}))
 
 	if got[0].pick.ScreenScore != 0 || got[0].pick.RiskLevel != "" {
 		t.Error("err != nil 的结果不应被增强")
@@ -315,11 +316,11 @@ func TestEnhanceResultsDisabled(t *testing.T) {
 		t.Error("增强全关时技术面派生字段应留零")
 	}
 
-	// 只开风控
+	// 只开风控（A2 起风控为独立阶段 applyRiskToResults）
 	cfg2 := DefaultPickEnhanceConfig()
 	cfg2.EnableScoring = false
 	e2 := NewDailyPickEngine().WithEnhanceConfig(cfg2)
-	got2 := e2.enhanceResults([]scored{makeScoredPick("600031.SH", makeTestTech(makeTestKLines(60)))})
+	got2 := e2.applyRiskToResults(e2.enhanceResults([]scored{makeScoredPick("600031.SH", makeTestTech(makeTestKLines(60)))}))
 	if got2[0].pick.ScreenScore != 0 {
 		t.Error("EnableScoring=false 时 ScreenScore 应留零")
 	}

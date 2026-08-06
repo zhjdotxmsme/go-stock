@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"go-stock/backend/agent/strategy/ranking"
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
@@ -36,6 +37,10 @@ type DailyPickEngine struct {
 	// enhanceCfg 管线增强配置（D7 硬过滤 / D1 九因子评分 / D3 风控叠加，方案 §8.1 A1）。
 	// 默认全开、失败降级；不影响 Score 等旧字段逻辑。
 	enhanceCfg PickEnhanceConfig
+
+	// modelChainFn LLM 模型链来源（默认 llmModelChain，从设置的 AI 配置装配）。
+	// 测试可注入以避免依赖真实数据库/网络。
+	modelChainFn func() ([]string, ranking.LLMCallFunc)
 
 	// progressHook, if set, is called as scoring progresses: (stage, done, total).
 	// Stages: "baseline" (stage-1 K-line scoring), "research" (stage-2 report
@@ -79,6 +84,13 @@ func (e *DailyPickEngine) WithStrategies(s []ScoringStrategy) *DailyPickEngine {
 // switching off individual enhancement steps or overriding their parameters.
 func (e *DailyPickEngine) WithEnhanceConfig(cfg PickEnhanceConfig) *DailyPickEngine {
 	e.enhanceCfg = cfg
+	return e
+}
+
+// WithModelChainFn overrides the LLM model chain source. Useful for testing
+// without a real AI-config database.
+func (e *DailyPickEngine) WithModelChainFn(fn func() ([]string, ranking.LLMCallFunc)) *DailyPickEngine {
+	e.modelChainFn = fn
 	return e
 }
 
@@ -149,9 +161,12 @@ func (e *DailyPickEngine) RunDailyPick(ctx context.Context, tradeDate string, to
 	e.prefetchResearchData(ctx, shortlist)
 	result := e.scoreCandidates(ctx, shortlist, tradeDate, "final")
 
-	// Step 2.5: D1 九因子评分 + D3 风控叠加（复用已获取的 K 线，无额外网络调用；
-	// 结果写入 D12 新字段，旧字段不动；失败降级只记日志）。
+	// 增强管线（DSA 顺序，失败降级只记日志，旧字段不动）：
+	// D1 九因子评分 → D2 LLM 排序 → D3 风控标记 → D10 后分析
 	result = e.enhanceResults(result)
+	ranked := e.applyLLMRanking(ctx, result)
+	result = e.applyRiskToResults(result)
+	result = e.applyPostAnalysis(ctx, result)
 
 	// Step 3: Filter successful scores and rank
 	var picks []models.DailyPick
@@ -170,13 +185,22 @@ func (e *DailyPickEngine) RunDailyPick(ctx context.Context, tradeDate string, to
 		}
 	}
 
-	sort.Slice(picks, func(i, j int) bool {
-		return picks[i].Score > picks[j].Score
-	})
+	if ranked {
+		// D2 排序生效：按 FinalScore 重排（LLM 失败/无配置时 ranked=false，保持旧逻辑）
+		sort.SliceStable(picks, func(i, j int) bool {
+			return picks[i].FinalScore > picks[j].FinalScore
+		})
+	} else {
+		sort.Slice(picks, func(i, j int) bool {
+			return picks[i].Score > picks[j].Score
+		})
+	}
 
 	if len(picks) > topN {
 		picks = picks[:topN]
 	}
+	// D9 种子旋转（默认关闭）：只换成员资格，不换相对排名
+	picks = e.applyRotation(picks, result, tradeDate)
 	for i := range picks {
 		picks[i].Rank = i + 1
 	}
@@ -911,6 +935,12 @@ func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, c
 	}
 	logger.SugaredLogger.Infof("daily_pick: %d candidates to score (AI config)", len(candidates))
 
+	// Step 1.5: D7 候选池硬过滤（与 RunDailyPick 一致，失败降级回落原始候选池）
+	candidates = e.applyHardFilter(candidates)
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("daily_pick: no candidate stocks left after hard filter for %s", tradeDate)
+	}
+
 	// Step 2: Pre-fetch data
 	e.prefetchMacroData()
 	e.prefetchIndustryRankings(ctx)
@@ -946,19 +976,31 @@ func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, c
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			p, err := e.scoreStockWithConfig(ctx, candidate, tradeDate, config, activeStrategies)
+			p, tech, err := e.scoreStockWithConfigTech(ctx, candidate, tradeDate, config, activeStrategies)
 			mu.Lock()
-			result = append(result, scored{pick: p, err: err})
+			result = append(result, scored{pick: p, err: err, tech: tech})
 			mu.Unlock()
 		}(c)
 	}
 	wg.Wait()
+
+	// 增强管线（DSA 顺序，与 RunDailyPick 一致；失败降级，旧字段不动）：
+	// D1 九因子评分 → D2 LLM 排序 → D3 风控标记 → D10 后分析
+	result = e.enhanceResults(result)
+	ranked := e.applyLLMRanking(ctx, result)
+	result = e.applyRiskToResults(result)
+	result = e.applyPostAnalysis(ctx, result)
 
 	// Step 5: Filter, sort, apply post-filters
 	var picks []models.DailyPick
 	for _, r := range result {
 		if r.err != nil {
 			logger.SugaredLogger.Debugf("daily_pick: skip %s: %v", r.pick.StockCode, r.err)
+			continue
+		}
+		if e.riskExcluded(r.pick) {
+			logger.SugaredLogger.Infof("daily_pick(AI): %s excluded by risk (level=%s score=%.1f)",
+				r.pick.StockCode, r.pick.RiskLevel, r.pick.RiskScore)
 			continue
 		}
 		if r.pick.Score > 0 {
@@ -971,13 +1013,21 @@ func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, c
 		picks = applyFilters(picks, config.Filters)
 	}
 
-	sort.Slice(picks, func(i, j int) bool {
-		return picks[i].Score > picks[j].Score
-	})
+	if ranked {
+		sort.SliceStable(picks, func(i, j int) bool {
+			return picks[i].FinalScore > picks[j].FinalScore
+		})
+	} else {
+		sort.Slice(picks, func(i, j int) bool {
+			return picks[i].Score > picks[j].Score
+		})
+	}
 
 	if len(picks) > topN {
 		picks = picks[:topN]
 	}
+	// D9 种子旋转（默认关闭）
+	picks = e.applyRotation(picks, result, tradeDate)
 	for i := range picks {
 		picks[i].Rank = i + 1
 	}
@@ -997,9 +1047,16 @@ func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, c
 // scoreStockWithConfig is like scoreStock but injects config parameter overrides and weights.
 // strategies is the filtered strategy list; config provides StrategyParams for Overrides injection.
 func (e *DailyPickEngine) scoreStockWithConfig(ctx context.Context, candidate stockCandidate, tradeDate string, config *models.StrategyConfig, strategies []ScoringStrategy) (models.DailyPick, error) {
-	pick, err := e.scoreStock(ctx, candidate, tradeDate, config.StrategyParams, strategies)
+	pick, _, err := e.scoreStockWithConfigTech(ctx, candidate, tradeDate, config, strategies)
+	return pick, err
+}
+
+// scoreStockWithConfigTech is scoreStockWithConfig plus the fetched K-line data
+// for reuse by the enhancement pipeline (D1/D3/D12 fields).
+func (e *DailyPickEngine) scoreStockWithConfigTech(ctx context.Context, candidate stockCandidate, tradeDate string, config *models.StrategyConfig, strategies []ScoringStrategy) (models.DailyPick, *stockTechData, error) {
+	pick, tech, err := e.scoreStockTech(ctx, candidate, tradeDate, config.StrategyParams, strategies)
 	if err != nil {
-		return pick, err
+		return pick, tech, err
 	}
 
 	// Apply strategy weights from config (overrides the normal competition/bonus logic)
@@ -1026,7 +1083,7 @@ func (e *DailyPickEngine) scoreStockWithConfig(ctx context.Context, candidate st
 		}
 	}
 
-	return pick, nil
+	return pick, tech, nil
 }
 
 // applyFilters applies post-scoring filter conditions to the picks list.
