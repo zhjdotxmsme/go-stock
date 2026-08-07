@@ -3,9 +3,8 @@ package handler
 import (
 	"context"
 
-	"github.com/duke-git/lancet/v2/convertor"
-
 	"go-stock/backend/data"
+	"go-stock/backend/internal/adapter/datasource"
 	"go-stock/backend/internal/adapter/repository/sqlite"
 	"go-stock/backend/internal/service/trading"
 )
@@ -23,20 +22,24 @@ func NewTradingRecordHandler(svc *trading.Service) *TradingRecordHandler {
 }
 
 // NewDefaultTradingRecordHandler wires the production dependencies
-// (sqlite repository + realtime price lookup) and returns the handler.
+// (sqlite repository + datasource router 实时行情) and returns the handler.
 // The wiring lives here because backend/internal packages cannot be
 // imported by the main package at the repository root.
 func NewDefaultTradingRecordHandler() *TradingRecordHandler {
+	router := datasource.NewDefaultRouter()
 	priceFn := func(stockCode string) (float64, error) {
-		stockDatas, err := data.NewStockDataApi().GetStockCodeRealTimeData(stockCode)
-		if err != nil || stockDatas == nil || len(*stockDatas) == 0 {
+		q, err := router.GetQuote(context.Background(), stockCode)
+		if err != nil || q == nil {
 			return 0, err
 		}
-		price, _ := convertor.ToFloat((*stockDatas)[0].Price)
-		if price == 0 {
-			price, _ = convertor.ToFloat((*stockDatas)[0].A1P)
+		if q.Price > 0 {
+			return q.Price, nil
 		}
-		return price, nil
+		// 停牌股现价为 0 时退化为卖一价（与原 data 直查行为一致）
+		if ask1, ok := q.Extra["ask1"].(float64); ok {
+			return ask1, nil
+		}
+		return 0, nil
 	}
 	return NewTradingRecordHandler(trading.NewService(sqlite.NewStockRepository(), priceFn))
 }
