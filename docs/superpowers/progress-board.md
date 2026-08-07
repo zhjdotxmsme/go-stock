@@ -11,7 +11,7 @@
 |------|--------|--------|------|
 | `app.go` 行数 | **184**（原 3,488） | < 200 | ✅ |
 | Wails 绑定 | 214 方法直连 11 个 handler | 直连 | ✅ |
-| Service/Port/Adapter 层 | 3 service 切片 + repository + datasource 适配器 | 全域迁移 | 🟡 模式确立，长尾迁移中 |
+| Service/Port/Adapter 层 | 7 service 切片 + sqlite repository（4 实体组）+ datasource Router | 全域迁移 | ✅ 主要域完成（trading/stockchange/fund/analysis/news/system/market） |
 | 前端超大组件 | 最大 1,516 行 | < 1,500 | ✅ |
 | 废弃功能清理 | 弹幕 + 提示词广场全清 | 完成 | ✅ |
 | Phase 6/7/8 功能 | 14 个包落地 + **已接入生产管线（A1-A5）** | 落地+接线 | ✅ |
@@ -67,7 +67,7 @@ backend/agent/
    - 浮动助手流式对话、AI 弹窗导出
    - MCP/Cron/Skill 管理页（修复过的 4 个调用）
    - ReflectOnAnalysis 调用一次（验证反思记忆闭环）
-2. 剩余 service 切片（news/system/analysis/market 读路径——外部数据耦合重，按既定结论走委托+映射，价值递减）
+2. 剩余 service 切片：✅ 已完成（analysis 40b4590 / news 40b4590 / system 4f58182）；SettingConfig 有意不 repo 化（全局副作用）
 3. `backend/data/` 上帝包物理拆分（长尾，适配器已包装主要数据源）
 4. ~~VIP 策略调整~~ ✅ 已移除（267af56）：`EffectiveSponsorVipLevel` 恒返回 (2,true)，全部功能免费；外媒新闻同步不再限 VIP2；赞助码仅用于展示
 5. specialist 模式 skills 挂点（占位待 SkillRouter）
