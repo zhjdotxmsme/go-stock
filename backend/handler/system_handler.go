@@ -288,13 +288,8 @@ func (h *SystemHandler) CheckUpdate(flag int) {
 		}
 	}
 
-	if _, vipLevel, ok := h.isVip(sponsorCode, "", releaseVersion); ok {
-		level, _ := convertor.ToInt(vipLevel)
-		h.vipLevel = level
-		if level >= 2 {
-			go h.syncNews()
-		}
-	}
+	// VIP 策略已移除：外媒新闻同步对全部用户开放（原为 VIP2+ 专属）。
+	go h.syncNews()
 
 	if releaseVersion.TagName != h.version {
 		tag := &models.Tag{}
