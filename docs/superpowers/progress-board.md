@@ -69,7 +69,7 @@ backend/agent/
    - ReflectOnAnalysis 调用一次（验证反思记忆闭环）
 2. 剩余 service 切片（news/system/analysis/market 读路径——外部数据耦合重，按既定结论走委托+映射，价值递减）
 3. `backend/data/` 上帝包物理拆分（长尾，适配器已包装主要数据源）
-4. VIP 策略调整（方案 §2.19：取消 K 线类 VIP 限制）❌
+4. ~~VIP 策略调整~~ ✅ 已移除（267af56）：`EffectiveSponsorVipLevel` 恒返回 (2,true)，全部功能免费；外媒新闻同步不再限 VIP2；赞助码仅用于展示
 5. specialist 模式 skills 挂点（占位待 SkillRouter）
 6. 预存在问题（历史遗留，非本轮引入）：`go vet ./backend/data` 测试文件报错、`TestCheckStockBaseInfo` 失败、`backend/models` 测试 import cycle、`backend/agent/tools` 测试需运行时 DB、GOOS=darwin/linux 交叉编译 yahoo_finance_api.go 失败
 
