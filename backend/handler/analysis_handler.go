@@ -12,19 +12,53 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"go-stock/backend/data"
+	"go-stock/backend/internal/adapter/repository/sqlite"
+	domanalysis "go-stock/backend/internal/domain/analysis"
+	analysissvc "go-stock/backend/internal/service/analysis"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 )
 
 // AnalysisHandler handles analysis-related Wails bindings.
+// DB 密集路径委托 analysis service（port/adapter 分层）;
+// 外部 API/计算/文件导出部分仍直连 data 层。
 type AnalysisHandler struct {
 	ctxFn func() context.Context
+	svc   *analysissvc.Service
 }
 
-// NewAnalysisHandler creates a new AnalysisHandler.
+// NewAnalysisHandler creates a new AnalysisHandler with the given service.
 // ctxFn should return the current App context (set after Wails startup).
-func NewAnalysisHandler(ctxFn func() context.Context) *AnalysisHandler {
-	return &AnalysisHandler{ctxFn: ctxFn}
+func NewAnalysisHandler(svc *analysissvc.Service, ctxFn func() context.Context) *AnalysisHandler {
+	return &AnalysisHandler{ctxFn: ctxFn, svc: svc}
+}
+
+// NewDefaultAnalysisHandler wires the production dependencies
+// (sqlite repository + 实时价补全) and returns the handler.
+// The wiring lives here because backend/internal packages cannot be
+// imported by the main package at the repository root.
+func NewDefaultAnalysisHandler(ctxFn func() context.Context) *AnalysisHandler {
+	// 推荐列表实时价补全：复刻原 data 层逻辑（tushare 代码转换 + 腾讯实时快照）。
+	enrichFn := func(items []domanalysis.AiRecommendStocks) {
+		stockCodes := make([]string, 0, len(items))
+		for _, item := range items {
+			stockCodes = append(stockCodes, data.ConvertTushareCodeToStockCode(item.StockCode))
+		}
+		stockData, _ := data.NewStockDataApi().GetStockCodeRealTimeData(stockCodes...)
+		if stockData == nil {
+			return
+		}
+		for _, info := range *stockData {
+			for idx, item := range items {
+				if data.ConvertTushareCodeToStockCode(item.StockCode) == data.ConvertTushareCodeToStockCode(info.Code) {
+					items[idx].StockCurrentPrice = info.Price
+					items[idx].StockPrePrice = info.PreClose
+					items[idx].StockCurrentPriceTime = info.Date + " " + info.Time
+				}
+			}
+		}
+	}
+	return NewAnalysisHandler(analysissvc.NewService(sqlite.NewAnalysisRepository(), enrichFn), ctxFn)
 }
 
 func (h *AnalysisHandler) currentCtx() context.Context {
@@ -60,23 +94,31 @@ func (h *AnalysisHandler) AIConfiguredStockPick(query string, topN int) ([]model
 }
 
 func (h *AnalysisHandler) GetCustomStrategyList(query models.CustomStrategyQuery) *models.CustomStrategyPageData {
-	page, err := data.NewCustomStrategyApi().GetCustomStrategyList(&query)
+	page, err := h.svc.GetCustomStrategyList(context.Background(), *sqlite.CustomStrategyQueryToDomain(query))
 	if err != nil {
 		return &models.CustomStrategyPageData{}
 	}
-	return page
+	return sqlite.CustomStrategyPageDataFromDomain(page)
 }
 
 func (h *AnalysisHandler) GetAllCustomStrategies() *[]models.CustomStrategy {
-	return data.NewCustomStrategyApi().GetAllCustomStrategies()
+	list, err := h.svc.GetAllCustomStrategies(context.Background())
+	if err != nil {
+		return &[]models.CustomStrategy{}
+	}
+	out := make([]models.CustomStrategy, 0, len(list))
+	for i := range list {
+		out = append(out, *sqlite.CustomStrategyFromDomain(&list[i]))
+	}
+	return &out
 }
 
 func (h *AnalysisHandler) SaveCustomStrategy(strategy models.CustomStrategy) string {
-	return data.NewCustomStrategyApi().SaveCustomStrategy(strategy)
+	return h.svc.SaveCustomStrategy(context.Background(), *sqlite.CustomStrategyToDomain(&strategy))
 }
 
 func (h *AnalysisHandler) DeleteCustomStrategy(id uint) string {
-	return data.NewCustomStrategyApi().DeleteCustomStrategy(id)
+	return h.svc.DeleteCustomStrategy(context.Background(), id)
 }
 
 func (h *AnalysisHandler) GetAllStocks(page int, pageSize int, name string, technicalIndicators models.TechnicalIndicators) *models.AllStocksResp {
@@ -96,71 +138,69 @@ func (h *AnalysisHandler) AnalyzeSentimentWithFreqWeight(text string) map[string
 }
 
 func (h *AnalysisHandler) GetAIResponseResultList(query models.AIResponseResultQuery) *models.AIResponseResultPageData {
-	page, err := data.NewAIResponseResultService().GetAIResponseResultList(query)
+	page, err := h.svc.GetAIResponseResultList(context.Background(), *sqlite.AIResponseResultQueryToDomain(query))
 	if err != nil {
 		return &models.AIResponseResultPageData{}
 	}
-	return page
+	return sqlite.AIResponseResultPageDataFromDomain(page)
 }
 
 func (h *AnalysisHandler) DeleteAIResponseResult(id uint) string {
-	err := data.NewAIResponseResultService().DeleteAIResponseResult(id)
-	if err != nil {
-		return "删除失败"
-	}
-	return "删除成功"
+	return h.svc.DeleteAIResponseResult(context.Background(), id)
 }
 
 func (h *AnalysisHandler) BatchDeleteAIResponseResult(ids []uint) string {
-	err := data.NewAIResponseResultService().BatchDeleteAIResponseResult(ids)
-	if err != nil {
-		return "删除失败"
-	}
-	return "删除成功"
+	return h.svc.BatchDeleteAIResponseResult(context.Background(), ids)
 }
 
 func (h *AnalysisHandler) SaveAIResponseResult(stockCode, stockName, result, chatId, question string, aiConfigId int) {
-	data.NewDeepSeekOpenAi(h.currentCtx(), aiConfigId).SaveAIResponseResult(stockCode, stockName, result, chatId, question)
+	// ModelName 仍从 AI 配置解析（外部配置耦合留 handler），落库走 service
+	modelName := data.NewDeepSeekOpenAi(h.currentCtx(), aiConfigId).GetModel()
+	if err := h.svc.SaveAIResponseResult(context.Background(), stockCode, stockName, result, chatId, question, modelName); err != nil {
+		logger.SugaredLogger.Errorf("failed to save ai response result: %v", err)
+	}
 }
 
 func (h *AnalysisHandler) GetAIResponseResult(stock string) *models.AIResponseResult {
-	return data.NewDeepSeekOpenAi(h.currentCtx(), 0).GetAIResponseResult(stock)
+	item, err := h.svc.GetAIResponseResult(context.Background(), stock)
+	if err != nil || item == nil {
+		// 原实现记录不存在时返回空结构体指针，保持契约
+		return &models.AIResponseResult{}
+	}
+	return sqlite.AIResponseResultFromDomain(item)
 }
 
 func (h *AnalysisHandler) GetAiRecommendStocksList(query models.AiRecommendStocksQuery) *models.AiRecommendStocksPageData {
-	page, err := data.NewAiRecommendStocksService().GetAiRecommendStocksList(&query)
+	page, err := h.svc.GetAiRecommendStocksList(context.Background(), *sqlite.AiRecommendStocksQueryToDomain(query))
 	if err != nil {
 		return &models.AiRecommendStocksPageData{}
 	}
-	return page
+	return sqlite.AiRecommendStocksPageDataFromDomain(page)
 }
 
 func (h *AnalysisHandler) DeleteAiRecommendStocks(id uint) string {
-	err := data.NewAiRecommendStocksService().DeleteAiRecommendStocks(id)
-	if err != nil {
-		return "删除失败"
-	}
-	return "删除成功"
+	return h.svc.DeleteAiRecommendStocks(context.Background(), id)
 }
 
 func (h *AnalysisHandler) UpdateAiRecommendStocksAlert(id uint, enableAlert bool) string {
-	err := data.NewAiRecommendStocksService().UpdateAiRecommendStocksAlert(id, enableAlert)
-	if err != nil {
-		return "更新预警状态失败"
-	}
-	return "更新预警状态成功"
+	return h.svc.UpdateAiRecommendStocksAlert(context.Background(), id, enableAlert)
 }
 
 func (h *AnalysisHandler) GetAiRecommendStats() *data.AiRecommendStats {
-	stats, err := data.NewAiRecommendStocksService().GetAiRecommendStats()
+	stats, err := h.svc.GetAiRecommendStats(context.Background())
 	if err != nil {
 		return &data.AiRecommendStats{}
 	}
-	return stats
+	return sqlite.AiRecommendStatsFromDomain(stats)
 }
 
 func (h *AnalysisHandler) GetPromptTemplates(name, promptType string) *[]models.PromptTemplate {
-	return data.NewPromptTemplateApi().GetPromptTemplates(name, promptType)
+	list, err := h.svc.GetPromptTemplates(context.Background(), name, promptType)
+	if err != nil {
+		return &[]models.PromptTemplate{}
+	}
+	out := sqlite.PromptTemplateListFromDomain(list)
+	return &out
 }
 
 func (h *AnalysisHandler) AddPrompt(prompt models.Prompt) string {
@@ -170,43 +210,43 @@ func (h *AnalysisHandler) AddPrompt(prompt models.Prompt) string {
 		Name:    prompt.Name,
 		Type:    prompt.Type,
 	}
-	return data.NewPromptTemplateApi().AddPrompt(promptTemplate)
+	return h.svc.SavePromptTemplate(context.Background(), *sqlite.PromptTemplateToDomain(&promptTemplate))
 }
 
 func (h *AnalysisHandler) DelPrompt(id uint) string {
-	return data.NewPromptTemplateApi().DelPrompt(id)
+	return h.svc.DeletePromptTemplate(context.Background(), id)
 }
 
 func (h *AnalysisHandler) GetPromptTemplateList(query models.PromptTemplateQuery) *models.PromptTemplatePageData {
-	page, err := data.NewPromptTemplateApi().GetPromptTemplateList(&query)
+	page, err := h.svc.GetPromptTemplateList(context.Background(), *sqlite.PromptTemplateQueryToDomain(query))
 	if err != nil {
 		return &models.PromptTemplatePageData{}
 	}
-	return page
+	return sqlite.PromptTemplatePageDataFromDomain(page)
 }
 
 func (h *AnalysisHandler) AddPromptTemplate(template models.PromptTemplate) string {
-	return data.NewPromptTemplateApi().AddPrompt(template)
+	return h.svc.SavePromptTemplate(context.Background(), *sqlite.PromptTemplateToDomain(&template))
 }
 
 func (h *AnalysisHandler) UpdatePromptTemplate(template models.PromptTemplate) string {
-	return data.NewPromptTemplateApi().AddPrompt(template)
+	return h.svc.SavePromptTemplate(context.Background(), *sqlite.PromptTemplateToDomain(&template))
 }
 
 func (h *AnalysisHandler) DeletePromptTemplate(id uint) string {
-	return data.NewPromptTemplateApi().DelPrompt(id)
+	return h.svc.DeletePromptTemplate(context.Background(), id)
 }
 
 func (h *AnalysisHandler) GetMultiAgentPrompts() []models.PromptTemplate {
-	return data.GetAllMultiAgentPrompts()
+	list, err := h.svc.GetMultiAgentPrompts(context.Background())
+	if err != nil {
+		return []models.PromptTemplate{}
+	}
+	return sqlite.PromptTemplateListFromDomain(list)
 }
 
 func (h *AnalysisHandler) UpdateMultiAgentPrompt(roleKey, name, content string) string {
-	err := data.UpsertPromptByRoleKey(roleKey, name, content, "multi_agent")
-	if err != nil {
-		return "更新失败: " + err.Error()
-	}
-	return "更新成功"
+	return h.svc.UpdateMultiAgentPrompt(context.Background(), roleKey, name, content)
 }
 
 func (h *AnalysisHandler) ShareAnalysis(stockCode, stockName string) string {
