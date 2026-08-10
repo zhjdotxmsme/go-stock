@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -35,11 +36,19 @@ type SQLiteMemory struct {
 	fts  bool
 }
 
+// migrateOnce 每个 db 句柄只执行一次 AutoMigrate，避免多角色并发建表冲突。
+var migrateOnce sync.Map // key: *gorm.DB → *sync.Once
+
 // NewSQLiteMemory 构造指定角色的 SQLite 记忆库（自动建表）。
 // db 由调用方注入（生产为业务库，测试可用 SQLite 内存库）；不依赖 db.Dao 全局。
 func NewSQLiteMemory(db *gorm.DB, agentRole string) (*SQLiteMemory, error) {
-	if err := db.AutoMigrate(&memoryRow{}); err != nil {
-		return nil, fmt.Errorf("记忆表迁移失败: %w", err)
+	once, _ := migrateOnce.LoadOrStore(db, &sync.Once{})
+	var migErr error
+	once.(*sync.Once).Do(func() {
+		migErr = db.AutoMigrate(&memoryRow{})
+	})
+	if migErr != nil {
+		return nil, fmt.Errorf("记忆表迁移失败: %w", migErr)
 	}
 	m := &SQLiteMemory{db: db, role: agentRole}
 	m.fts = m.probeFTS5()
