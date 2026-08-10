@@ -32,7 +32,9 @@ const (
 )
 
 // RiskInput 风控检查输入（纯数据，参照 D1 scoring.FactorInput 模式）。
-// 零值结构不触发任何检查（SignalScore/KLineQuality 零值视为"无数据"，不做弱信号/低质量判定）。
+// 零值结构中，PE<=0 视为亏损股会触发 invalid_pe（这是预期行为）；
+// SignalScore / LLMConfidence / KLineQuality 等可选字段零值视为"无数据"，
+// 由 HasSignalScore / HasLLMConfidence / HasKLineQuality 分别守卫，不触发对应检查。
 type RiskInput struct {
 	Code          string
 	ChangePercent float64 // 当日涨跌幅 %
