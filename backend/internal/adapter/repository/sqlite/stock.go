@@ -227,7 +227,7 @@ func (r *StockRepository) GetTradingRecordList(ctx context.Context, query stock.
 
 func (r *StockRepository) GetTradingRecordById(ctx context.Context, id uint) (*stock.TradingRecord, error) {
 	var record data.TradingRecord
-	err := db.Dao.Model(&data.TradingRecord{}).Where("id = ?", id).First(&record).Error
+	err := db.Dao.WithContext(ctx).Model(&data.TradingRecord{}).Where("id = ?", id).First(&record).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -248,7 +248,7 @@ func (r *StockRepository) DeleteTradingRecord(ctx context.Context, id uint) erro
 
 func (r *StockRepository) ListAllTradingRecords(ctx context.Context) ([]stock.TradingRecord, error) {
 	var records []data.TradingRecord
-	err := db.Dao.Model(&data.TradingRecord{}).Order("trading_time ASC, id ASC").Find(&records).Error
+	err := db.Dao.WithContext(ctx).Model(&data.TradingRecord{}).Order("trading_time ASC, id ASC").Find(&records).Error
 	if err != nil {
 		logger.SugaredLogger.Errorf("获取全部交易日志失败: %s", err.Error())
 		return nil, err
@@ -261,7 +261,7 @@ func (r *StockRepository) ListAllTradingRecords(ctx context.Context) ([]stock.Tr
 }
 
 func (r *StockRepository) CountBuyTradingRecords(ctx context.Context, stockCode string, since time.Time) (int64, error) {
-	q := db.Dao.Model(&data.TradingRecord{}).
+	q := db.Dao.WithContext(ctx).Model(&data.TradingRecord{}).
 		Where("direction = ? AND trading_time > ?", "买入", since)
 	if stockCode != "" {
 		q = q.Where("stock_code = ?", stockCode)
@@ -447,7 +447,7 @@ func (r *StockRepository) SaveStockChangesToHistory(ctx context.Context, changes
 	for i := range changes {
 		histories = append(histories, StockChangeHistoryFromDomain(&changes[i]))
 	}
-	return db.Dao.Clauses(clause.OnConflict{
+	return db.Dao.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "change_date"}, {Name: "stock_code"}, {Name: "change_time"}},
 		DoNothing: true,
 	}).CreateInBatches(histories, 100).Error
@@ -461,7 +461,7 @@ func (r *StockRepository) SaveStockChangesToHistoryWithDedup(ctx context.Context
 	for i := range changes {
 		histories = append(histories, StockChangeHistoryFromDomain(&changes[i]))
 	}
-	result := db.Dao.Clauses(clause.OnConflict{
+	result := db.Dao.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "change_date"}, {Name: "stock_code"}, {Name: "change_time"}, {Name: "change_type"}, {Name: "price"}, {Name: "change_rate"}, {Name: "amount"}, {Name: "volume"}},
 		DoNothing: true,
 	}).CreateInBatches(histories, 100)
@@ -472,7 +472,7 @@ func (r *StockRepository) SaveStockChangesToHistoryWithDedup(ctx context.Context
 }
 
 func (r *StockRepository) GetStockChangeHistory(ctx context.Context, query stock.StockChangeHistoryQuery) (stock.StockChangeHistoryPageData, error) {
-	dbQuery := db.Dao.Model(&models.StockChangeHistory{})
+	dbQuery := db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{})
 
 	if query.StockCode != "" {
 		dbQuery = dbQuery.Where("stock_code LIKE ?", "%"+query.StockCode+"%")
@@ -560,7 +560,7 @@ func (r *StockRepository) GetStockChangeHistory(ctx context.Context, query stock
 }
 
 func (r *StockRepository) DeleteStockChangeHistoryBefore(ctx context.Context, cutoffDate string) error {
-	return db.Dao.Where("change_date < ?", cutoffDate).Delete(&models.StockChangeHistory{}).Error
+	return db.Dao.WithContext(ctx).Where("change_date < ?", cutoffDate).Delete(&models.StockChangeHistory{}).Error
 }
 
 // ---------------------------------------------------------------------------
@@ -581,7 +581,7 @@ func (r *StockRepository) GetDailyChangeStats(ctx context.Context, startDate str
 	}
 
 	var rawStats []rawDailyStats
-	err := db.Dao.Model(&models.StockChangeHistory{}).
+	err := db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("change_date, count(*) as total_count, sum(case when change_type in (4, 8201, 8202, 8193, 64, 8207, 8209, 8211, 8213, 8215) then 1 else 0 end) as up_count, sum(case when change_type in (8, 8203, 8204, 8194, 128, 8208, 8210, 8212, 8214, 8216) then 1 else 0 end) as down_count").
 		Where("change_date >= ?", startDate).
 		Group("change_date").
@@ -597,7 +597,7 @@ func (r *StockRepository) GetDailyChangeStats(ctx context.Context, startDate str
 		LimitDown  int64
 	}
 	var limitData []limitStats
-	err = db.Dao.Model(&models.StockChangeHistory{}).
+	err = db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("change_date, sum(case when change_type = 4 then 1 else 0 end) as limit_up, sum(case when change_type = 8 then 1 else 0 end) as limit_down").
 		Where("change_date >= ? AND change_type IN (4, 8)", startDate).
 		Group("change_date").
@@ -629,7 +629,7 @@ func (r *StockRepository) GetDailyChangeStats(ctx context.Context, startDate str
 
 func (r *StockRepository) GetChangeTypeDailyStats(ctx context.Context, startDate string) ([]stock.ChangeTypeDailyStats, error) {
 	var result []stock.ChangeTypeDailyStats
-	err := db.Dao.Model(&models.StockChangeHistory{}).
+	err := db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("change_date, type_name, count(*) as count").
 		Where("change_date >= ?", startDate).
 		Group("change_date, type_name").
@@ -648,7 +648,7 @@ func (r *StockRepository) GetChangeRank(ctx context.Context, startDate string, t
 	}
 
 	var stockRows []rankRow
-	err := db.Dao.Model(&models.StockChangeHistory{}).
+	err := db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("stock_name as name, stock_code as code, count(*) as total_cnt, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_cnt, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_cnt").
 		Where("change_date >= ?", startDate).
 		Group("stock_code, stock_name").
@@ -665,7 +665,7 @@ func (r *StockRepository) GetChangeRank(ctx context.Context, startDate string, t
 	}
 
 	var industryRows []rankRow
-	err = db.Dao.Model(&models.StockChangeHistory{}).
+	err = db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("industry as name, '' as code, count(*) as total_cnt, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_cnt, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_cnt").
 		Where("change_date >= ? AND industry != '' AND industry IS NOT NULL", startDate).
 		Group("industry").
@@ -688,7 +688,7 @@ func (r *StockRepository) GetChangeRank(ctx context.Context, startDate string, t
 		DownCnt int
 	}
 	var conceptRows []conceptRow
-	err = db.Dao.Model(&models.StockChangeHistory{}).
+	err = db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("concept, count(*) as cnt, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_cnt, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_cnt").
 		Where("change_date >= ? AND concept != '' AND concept IS NOT NULL", startDate).
 		Group("concept").
@@ -734,7 +734,7 @@ func (r *StockRepository) GetChangeRank(ctx context.Context, startDate string, t
 
 func (r *StockRepository) GetDailyDimensionStats(ctx context.Context, dimension, name, startDate string) ([]stock.DailyDimensionStats, error) {
 	var result []stock.DailyDimensionStats
-	query := db.Dao.Model(&models.StockChangeHistory{}).
+	query := db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("change_date, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_count, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_count, count(*) as total_count").
 		Where("change_date >= ?", startDate).
 		Group("change_date").
@@ -759,7 +759,7 @@ func (r *StockRepository) GetDailyDimensionStats(ctx context.Context, dimension,
 
 func (r *StockRepository) GetTypeStatsByDate(ctx context.Context, date string) ([]stock.TypeCountStats, error) {
 	var result []stock.TypeCountStats
-	err := db.Dao.Model(&models.StockChangeHistory{}).
+	err := db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("type_name, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_count, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_count, count(*) as total_count").
 		Where("change_date = ?", date).
 		Group("type_name").
