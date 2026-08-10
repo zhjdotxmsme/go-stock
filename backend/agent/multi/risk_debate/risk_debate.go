@@ -70,6 +70,9 @@ func NewEngine(maxRounds int, debateModel, judgeModel string, debateCall, judgeC
 // 后续轮次必须直接回应其他两方最新回复）；达到轮次上限后强制进入裁判。
 // 某方发言调用失败时提前结束辩论（DebateDegraded=true），以已有发言进入裁决。
 func (e *Engine) Run(ctx context.Context, dc DebateContext) (*RiskDebateResult, error) {
+	if e.DebateCall == nil {
+		return nil, fmt.Errorf("risk_debate: DebateCall is nil")
+	}
 	state := NewState(e.MaxRounds)
 	degraded := false
 

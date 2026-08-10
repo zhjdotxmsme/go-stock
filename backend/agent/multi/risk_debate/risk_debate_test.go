@@ -150,6 +150,15 @@ func TestDebateDegraded(t *testing.T) {
 	}
 }
 
+// TestRunNilDebateCall DebateCall 为 nil 时 Run 返回错误而非 panic。
+func TestRunNilDebateCall(t *testing.T) {
+	e := NewEngine(3, "quick", "deep", nil, nil)
+	_, err := e.Run(context.Background(), DebateContext{})
+	if err == nil {
+		t.Error("expected error when DebateCall is nil")
+	}
+}
+
 // TestJudgeCallFailure 裁判调用失败返回错误。
 func TestJudgeCallFailure(t *testing.T) {
 	debateCall := func(ctx context.Context, model, prompt string) (string, error) { return "观点", nil }
