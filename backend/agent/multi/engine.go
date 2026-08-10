@@ -49,7 +49,7 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 		defer func() {
 			if r := recover(); r != nil {
 				logger.SugaredLogger.Errorf("multi-agent engine panic recovered: %v", r)
-				emitEvent(ch, "agent:phase", map[string]string{
+				emitEvent(ctx, ch, "agent:phase", map[string]string{
 					"phase": "error", "status": "error",
 					"label": "分析引擎异常，已恢复",
 				})
@@ -90,13 +90,13 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 		}
 
 		// Phase 1: Orchestrator
-		emitEvent(ch, "agent:phase", map[string]string{
+		emitEvent(ctx, ch, "agent:phase", map[string]string{
 			"phase": "orchestrator", "status": "start",
 			"label": "正在初始化分析参数...",
 		})
 
 		// Phase 2: Run 4 analysts in parallel
-		emitEvent(ch, "agent:phase", map[string]string{
+		emitEvent(ctx, ch, "agent:phase", map[string]string{
 			"phase": "analysts", "status": "start",
 			"label": "各维度分析师并行分析中...",
 		})
@@ -104,14 +104,14 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 		reports := e.runParallelAnalysts(ctx, ac)
 		ac.Reports = reports
 
-		emitEvent(ch, "agent:phase", map[string]string{
+		emitEvent(ctx, ch, "agent:phase", map[string]string{
 			"phase": "analysts", "status": "end",
 			"label": "分析师分析完成",
 		})
 
 		// Check cancellation
 		if ctx.Err() != nil {
-			emitEvent(ch, "agent:phase", map[string]string{
+			emitEvent(ctx, ch, "agent:phase", map[string]string{
 				"phase": "cancelled", "status": "error",
 				"label": "分析已取消",
 			})
@@ -119,7 +119,7 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 		}
 
 		// Phase 3: Researcher debate
-		emitEvent(ch, "agent:phase", map[string]string{
+		emitEvent(ctx, ch, "agent:phase", map[string]string{
 			"phase": "debate", "status": "start",
 			"label": "多空研究员辩论中...",
 		})
@@ -130,13 +130,13 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 		}
 		ac.Debate = debateResult
 
-		emitEvent(ch, "agent:phase", map[string]string{
+		emitEvent(ctx, ch, "agent:phase", map[string]string{
 			"phase": "debate", "status": "end",
 			"label": "辩论完成",
 		})
 
 		// Phase 4: Synthesis
-		emitEvent(ch, "agent:phase", map[string]string{
+		emitEvent(ctx, ch, "agent:phase", map[string]string{
 			"phase": "synthesis", "status": "start",
 			"label": "正在生成最终报告...",
 		})
@@ -147,7 +147,7 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 		}
 		ac.FinalReport = finalReport
 
-		emitEvent(ch, "agent:phase", map[string]string{
+		emitEvent(ctx, ch, "agent:phase", map[string]string{
 			"phase": "synthesis", "status": "end",
 			"label": "分析完成",
 		})
@@ -159,7 +159,7 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 		saveMultiAgentResult(ac)
 
 		// Phase 7: Emit final report
-		emitFinalReport(ch, finalReport)
+		emitFinalReport(ctx, ch, finalReport)
 	}()
 
 	return ch
@@ -236,7 +236,9 @@ func (e *MultiAgentEngine) runParallelAnalysts(ctx context.Context, ac *AgentCon
 }
 
 // emitEvent sends a structured progress event to the channel.
-func emitEvent(ch chan<- *schema.Message, eventType string, data map[string]string) {
+// Uses ctx select so a non-reading consumer (closed window / cancelled ctx)
+// does not block the engine goroutine forever.
+func emitEvent(ctx context.Context, ch chan<- *schema.Message, eventType string, data map[string]string) {
 	payload := make(map[string]interface{}, len(data)+1)
 	payload["type"] = eventType
 	for k, v := range data {
@@ -247,14 +249,16 @@ func emitEvent(ch chan<- *schema.Message, eventType string, data map[string]stri
 		logger.SugaredLogger.Errorf("emitEvent marshal error: %v", err)
 		return
 	}
-	ch <- &schema.Message{
-		Role:    schema.Assistant,
-		Content: string(raw),
+	select {
+	case ch <- &schema.Message{Role: schema.Assistant, Content: string(raw)}:
+	case <-ctx.Done():
 	}
 }
 
 // emitFinalReport sends the final analysis report to the channel.
-func emitFinalReport(ch chan<- *schema.Message, report *FinalReport) {
+// Uses ctx select so a non-reading consumer (closed window / cancelled ctx)
+// does not block the engine goroutine forever.
+func emitFinalReport(ctx context.Context, ch chan<- *schema.Message, report *FinalReport) {
 	payload := map[string]interface{}{
 		"type":   "agent:final",
 		"report": report,
@@ -264,9 +268,9 @@ func emitFinalReport(ch chan<- *schema.Message, report *FinalReport) {
 		logger.SugaredLogger.Errorf("emitFinalReport marshal error: %v", err)
 		return
 	}
-	ch <- &schema.Message{
-		Role:    schema.Assistant,
-		Content: string(raw),
+	select {
+	case ch <- &schema.Message{Role: schema.Assistant, Content: string(raw)}:
+	case <-ctx.Done():
 	}
 }
 
@@ -314,7 +318,7 @@ func isSimpleQuery(q string) bool {
 
 // runSimpleQuery handles simple queries with a quick direct response.
 func (e *MultiAgentEngine) runSimpleQuery(ctx context.Context, ac *AgentContext, ch chan<- *schema.Message) {
-	emitEvent(ch, "agent:phase", map[string]string{
+	emitEvent(ctx, ch, "agent:phase", map[string]string{
 		"phase": "quick", "status": "start",
 		"label": "快速查询中...",
 	})
@@ -332,7 +336,7 @@ func (e *MultiAgentEngine) runSimpleQuery(ctx context.Context, ac *AgentContext,
 	answer += fmt.Sprintf("- 查询时间：%s\n", time.Now().Format("2006-01-02 15:04:05"))
 	answer += "\n> 💡 如需深度分析，请输入包含「分析」关键词的问题。"
 
-	emitEvent(ch, "agent:phase", map[string]string{
+	emitEvent(ctx, ch, "agent:phase", map[string]string{
 		"phase": "quick", "status": "end",
 		"label": "查询完成",
 	})
@@ -342,7 +346,7 @@ func (e *MultiAgentEngine) runSimpleQuery(ctx context.Context, ac *AgentContext,
 		Conclusion:       answer,
 		InvestmentThesis: "",
 	}
-	emitFinalReport(ch, report)
+	emitFinalReport(ctx, ch, report)
 }
 
 // saveMultiAgentResult persists the multi-agent analysis results to SQLite.

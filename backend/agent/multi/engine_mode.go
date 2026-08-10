@@ -32,7 +32,7 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 	for _, stage := range planStages(cfg) {
 		// 预算控制：剩余 < StageMinBudget 时跳过非必需阶段，而非启动注定超时的阶段
 		if !stage.required && !budget.canStart() {
-			emitEvent(ch, "agent:phase", map[string]string{
+			emitEvent(ctx, ch, "agent:phase", map[string]string{
 				"phase": stage.id, "status": "skipped",
 				"label": stage.label + "（剩余预算不足，已跳过）",
 			})
@@ -48,7 +48,7 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 			stageCtx, cancel = context.WithTimeout(ctx, cfg.StageTimeout)
 		}
 
-		emitEvent(ch, "agent:phase", map[string]string{
+		emitEvent(ctx, ch, "agent:phase", map[string]string{
 			"phase": stage.id, "status": "start", "label": stage.label,
 		})
 
@@ -61,7 +61,7 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 				ac.Reports = e.runParallelAnalysts(stageCtx, ac)
 			}
 			// D6 分歧分类（A3）：分类结果透出事件，引导文本注入合成 Prompt
-			e.classifyDisagreement(ac, ch, !cfg.DisagreementGuidanceOff)
+			e.classifyDisagreement(ctx, ac, ch, !cfg.DisagreementGuidanceOff)
 		case stageDebate:
 			debateResult, err := RunDebate(stageCtx, ac, 2)
 			if err != nil {
@@ -80,7 +80,7 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 			}
 		case stageSkills:
 			if len(cfg.SkillAgents) == 0 {
-				emitEvent(ch, "agent:phase", map[string]string{
+				emitEvent(ctx, ch, "agent:phase", map[string]string{
 					"phase": stage.id, "status": "skipped",
 					"label": "技能 Agent 未配置，已跳过",
 				})
@@ -107,7 +107,7 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 		cancel()
 
 		if !skipEndEvent {
-			emitEvent(ch, "agent:phase", map[string]string{
+			emitEvent(ctx, ch, "agent:phase", map[string]string{
 				"phase": stage.id, "status": "end", "label": stage.label + "完成",
 			})
 		}
@@ -117,7 +117,7 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 	applyDecisionScale(ac)
 
 	saveMultiAgentResult(ac)
-	emitFinalReport(ch, ac.FinalReport)
+	emitFinalReport(ctx, ch, ac.FinalReport)
 }
 
 // runAnalystsSubset 并行执行选定的分析师子集（并发模式与 runParallelAnalysts 一致）。
