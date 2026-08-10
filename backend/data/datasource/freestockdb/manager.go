@@ -22,7 +22,7 @@ type Manager struct {
 	cfg    Config
 	client *Client
 
-	mu            sync.Mutex // 保护 cmd/checkedAt/ok
+	mu            sync.RWMutex // 保护 cmd/checkedAt/ok
 	cmd           *exec.Cmd  // 仅当由本进程拉起且健康检查通过时非空
 	checkedAt     time.Time
 	ok            bool
@@ -115,14 +115,23 @@ func (m *Manager) Available(ctx context.Context) bool {
 	if !m.cfg.Enabled {
 		return false
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	// 快路径：读锁读缓存，命中直接返回（不阻塞于网络 I/O）。
+	m.mu.RLock()
 	if time.Since(m.checkedAt) < m.availableTTL {
-		return m.ok
+		ok := m.ok
+		m.mu.RUnlock()
+		return ok
 	}
-	m.ok = m.client.Ping(ctx)
+	m.mu.RUnlock()
+	// 缓存过期：锁外做 Ping（网络 I/O 不持锁）。
+	ok := m.client.Ping(ctx)
+	// 写锁更新缓存。并发多 goroutine 同时过期时会各自 Ping（thundering herd），
+	// 但 30s TTL 内最多一次风暴，且结果一致，可接受。
+	m.mu.Lock()
+	m.ok = ok
 	m.checkedAt = time.Now()
-	return m.ok
+	m.mu.Unlock()
+	return ok
 }
 
 func (m *Manager) setOK(ok bool) {
