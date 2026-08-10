@@ -67,7 +67,12 @@ func (p *Provider) triggerLazyLoad() {
 		return
 	}
 	go func() {
-		defer p.loading.Store(false)
+		defer func() {
+			if r := recover(); r != nil {
+				logger.SugaredLogger.Errorf("freestockdb lazy load panic: %v", r)
+			}
+			p.loading.Store(false)
+		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 		p.preload(ctx)
@@ -186,6 +191,11 @@ func Setup(router *datasource.Router, cfg Config) *Manager {
 	router.RegisterKLineProvider(p)
 	router.RegisterSectorProvider(p)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.SugaredLogger.Errorf("freestockdb setup panic: %v", r)
+			}
+		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
 		if err := m.Start(ctx); err != nil {
