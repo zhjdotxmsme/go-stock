@@ -17,6 +17,7 @@ type mockProvider struct {
 	available bool
 	quote     *portds.QuoteData
 	kline     *portds.KLineData
+	sector    *portds.SectorData
 	err       error
 	calls     *[]string // 共享调用记录
 }
@@ -36,6 +37,10 @@ func (m *mockProvider) GetQuote(ctx context.Context, code string) (*portds.Quote
 func (m *mockProvider) GetKLine(ctx context.Context, code, period string, count int) (*portds.KLineData, error) {
 	m.record()
 	return m.kline, m.err
+}
+func (m *mockProvider) GetSectorData(ctx context.Context, code string) (*portds.SectorData, error) {
+	m.record()
+	return m.sector, m.err
 }
 
 func okKLine() *portds.KLineData {
@@ -161,12 +166,112 @@ func TestRouterQuoteFallback(t *testing.T) {
 	}
 }
 
+func TestRouterSectorFallback(t *testing.T) {
+	t.Run("按优先级尝试且首成功不fallback", func(t *testing.T) {
+		var calls []string
+		r := NewRouter()
+		r.Register(
+			&mockProvider{name: "s1", priority: 10, available: true,
+				sector: &portds.SectorData{Code: "sh600519", Sector: "白酒"}, calls: &calls},
+			&mockProvider{name: "s2", priority: 20, available: true,
+				sector: &portds.SectorData{Code: "sh600519", Sector: "消费"}, calls: &calls},
+		)
+		sd, err := r.GetSectorData(context.Background(), "600519")
+		if err != nil || sd == nil {
+			t.Fatalf("err=%v sd=%v", err, sd)
+		}
+		if sd.Sector != "白酒" {
+			t.Errorf("sector=%q, want 白酒", sd.Sector)
+		}
+		if len(calls) != 1 || calls[0] != "s1" {
+			t.Errorf("calls=%v, want [s1]", calls)
+		}
+	})
+
+	t.Run("失败/无数据后按优先级fallback", func(t *testing.T) {
+		var calls []string
+		r := NewRouter()
+		r.Register(
+			&mockProvider{name: "s1", priority: 10, available: true, err: errors.New("boom"), calls: &calls},
+			&mockProvider{name: "s2", priority: 20, available: true, calls: &calls}, // nil=无数据
+			&mockProvider{name: "s3", priority: 30, available: false,
+				sector: &portds.SectorData{Sector: "x"}, calls: &calls}, // 不可用跳过
+			&mockProvider{name: "s4", priority: 40, available: true,
+				sector: &portds.SectorData{Code: "sh600519", Sector: "白酒"}, calls: &calls},
+		)
+		sd, err := r.GetSectorData(context.Background(), "600519.SH")
+		if err != nil || sd == nil {
+			t.Fatalf("err=%v sd=%v", err, sd)
+		}
+		if sd.Sector != "白酒" {
+			t.Errorf("sector=%q, want 白酒", sd.Sector)
+		}
+		want := []string{"s1", "s2", "s4"}
+		if len(calls) != len(want) {
+			t.Fatalf("calls=%v, want %v", calls, want)
+		}
+		for i := range want {
+			if calls[i] != want[i] {
+				t.Errorf("calls=%v, want %v", calls, want)
+			}
+		}
+	})
+
+	t.Run("代码归一化", func(t *testing.T) {
+		var gotCode string
+		mp := &mockProvider{name: "s1", priority: 10, available: true,
+			sector: &portds.SectorData{Code: "sh600519", Sector: "白酒"}}
+		r := NewRouter()
+		r.Register(&sectorCodeCapturer{mockProvider: mp, dst: &gotCode})
+		if _, err := r.GetSectorData(context.Background(), "600519.SH"); err != nil {
+			t.Fatal(err)
+		}
+		if gotCode != "sh600519" {
+			t.Errorf("code: got %q, want sh600519", gotCode)
+		}
+	})
+}
+
+// sectorCodeCapturer 捕获下游收到的归一化代码。
+type sectorCodeCapturer struct {
+	*mockProvider
+	dst *string
+}
+
+func (c *sectorCodeCapturer) GetSectorData(ctx context.Context, code string) (*portds.SectorData, error) {
+	*c.dst = code
+	return c.mockProvider.GetSectorData(ctx, code)
+}
+
+func TestRouterSectorAllFail(t *testing.T) {
+	r := NewRouter()
+	r.Register(
+		&mockProvider{name: "s1", priority: 10, available: true, err: errors.New("boom")},
+		&mockProvider{name: "s2", priority: 20, available: true}, // nil=无数据
+		&mockProvider{name: "s3", priority: 30, available: false,
+			sector: &portds.SectorData{Sector: "x"}}, // 不可用
+	)
+	_, err := r.GetSectorData(context.Background(), "sh600519")
+	if err == nil {
+		t.Fatal("应返回错误")
+	}
+	msg := err.Error()
+	for _, s := range []string{"s1", "s2", "s3", "boom", "无数据", "unavailable"} {
+		if !strings.Contains(msg, s) {
+			t.Errorf("聚合错误应包含 %q: %s", s, msg)
+		}
+	}
+}
+
 func TestRouterEmptyChain(t *testing.T) {
 	r := NewRouter()
 	if _, err := r.GetQuote(context.Background(), "sh600519"); err == nil {
 		t.Error("无 provider 时应返回错误")
 	}
 	if _, err := r.GetKLine(context.Background(), "sh600519", "day", 10); err == nil {
+		t.Error("无 provider 时应返回错误")
+	}
+	if _, err := r.GetSectorData(context.Background(), "sh600519"); err == nil {
 		t.Error("无 provider 时应返回错误")
 	}
 	if _, err := r.GetQuote(context.Background(), "  "); err == nil {
