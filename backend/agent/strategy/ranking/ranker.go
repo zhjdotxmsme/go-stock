@@ -127,7 +127,7 @@ func LoadRankerConfigJSON(data []byte) (RankerConfig, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return cfg, fmt.Errorf("解析重排序配置失败: %w", err)
 	}
-	return cfg, nil
+	return cfg.normalize(), nil
 }
 
 // Ranker LLM 重排序器。
@@ -137,7 +137,24 @@ type Ranker struct {
 
 // NewRanker 按配置构造重排序器。
 func NewRanker(cfg RankerConfig) *Ranker {
-	return &Ranker{Config: cfg}
+	return &Ranker{Config: cfg.normalize()}
+}
+
+// normalize 收敛非法配置：rank_weight 夹到 [0,1]（越界会导致混合分失去意义）。
+func (cfg RankerConfig) normalize() RankerConfig {
+	if cfg.RankWeight < 0 {
+		cfg.RankWeight = 0
+	}
+	if cfg.RankWeight > 1 {
+		cfg.RankWeight = 1
+	}
+	if cfg.CoverageThreshold < 0 {
+		cfg.CoverageThreshold = 0
+	}
+	if cfg.CoverageThreshold > 1 {
+		cfg.CoverageThreshold = 1
+	}
+	return cfg
 }
 
 // llmWireStock LLM 输出的单只股票 JSON 结构（llm_score 用指针以区分"0 分"与"未给出"）。
