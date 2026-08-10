@@ -46,6 +46,15 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 
 	go func() {
 		defer close(ch)
+		defer func() {
+			if r := recover(); r != nil {
+				logger.SugaredLogger.Errorf("multi-agent engine panic recovered: %v", r)
+				emitEvent(ch, "agent:phase", map[string]string{
+					"phase": "error", "status": "error",
+					"label": "分析引擎异常，已恢复",
+				})
+			}
+		}()
 
 		ac := &AgentContext{
 			StockCode:          stockCode,
