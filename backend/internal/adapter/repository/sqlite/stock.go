@@ -23,18 +23,12 @@ import (
 )
 
 // StockRepository implements repository.StockRepository.
-//
-// The TradingRecord and StockChangeHistory groups are implemented; the
-// remaining groups are placeholders that fail loudly until their own
-// vertical slices are migrated (see TODOs below).
 type StockRepository struct{}
 
 // NewStockRepository creates a new StockRepository.
 func NewStockRepository() *StockRepository {
 	return &StockRepository{}
 }
-
-var errNotImplemented = fmt.Errorf("not implemented")
 
 // ---------------------------------------------------------------------------
 // data <-> domain mapping (explicit, no reflection)
@@ -152,6 +146,49 @@ func TradingRecordPageDataFromDomain(p *stock.TradingRecordPageData) *data.Tradi
 	}
 }
 
+// FollowedStockToDomain maps legacy data.FollowedStock to domain model.
+func FollowedStockToDomain(f *data.FollowedStock) stock.FollowedStock {
+	if f == nil {
+		return stock.FollowedStock{}
+	}
+	return stock.FollowedStock{
+		StockCode:          f.StockCode,
+		Name:               f.Name,
+		Volume:             f.Volume,
+		CostPrice:          f.CostPrice,
+		Price:              f.Price,
+		PriceChange:        f.PriceChange,
+		ChangePercent:      f.ChangePercent,
+		AlarmChangePercent: f.AlarmChangePercent,
+		AlarmPrice:         f.AlarmPrice,
+		Time:               f.Time,
+		Sort:               f.Sort,
+		Cron:               f.Cron,
+		IsDel:              f.IsDel,
+		AiConfigId:         f.AiConfigId,
+		EntryPrice:         f.EntryPrice,
+		TakeProfitPrice:    f.TakeProfitPrice,
+		StopLossPrice:      f.StopLossPrice,
+	}
+}
+
+// GroupToDomain maps legacy data.Group to domain model.
+func GroupToDomain(g *data.Group) stock.Group {
+	if g == nil {
+		return stock.Group{}
+	}
+	return stock.Group{Model: g.Model, Name: g.Name, Sort: g.Sort}
+}
+
+// resultErr converts a legacy string result into an error, treating any
+// result containing "成功" as success.
+func resultErr(result string) error {
+	if strings.Contains(result, "成功") {
+		return nil
+	}
+	return fmt.Errorf("%s", result)
+}
+
 // ---------------------------------------------------------------------------
 // Trading records
 //
@@ -238,71 +275,93 @@ func (r *StockRepository) CountBuyTradingRecords(ctx context.Context, stockCode 
 }
 
 // ---------------------------------------------------------------------------
-// Followed stocks (TODO: migrate in the followed-stock vertical slice)
+// Followed stocks
 // ---------------------------------------------------------------------------
 
 func (r *StockRepository) AddFollow(ctx context.Context, stockCode, stockName string) error {
-	// TODO: implement when migrating the followed-stock slice
-	return errNotImplemented
+	return resultErr((data.StockDataApi{}).Follow(stockCode))
 }
 
 func (r *StockRepository) RemoveFollow(ctx context.Context, stockCode string) error {
-	// TODO: implement when migrating the followed-stock slice
-	return errNotImplemented
+	return resultErr((data.StockDataApi{}).UnFollow(stockCode))
 }
 
 func (r *StockRepository) GetFollowList(ctx context.Context, groupID int) ([]stock.FollowedStock, error) {
-	// TODO: implement when migrating the followed-stock slice
-	return nil, errNotImplemented
+	list := (data.StockDataApi{}).GetFollowList(groupID)
+	if list == nil {
+		return nil, nil
+	}
+	result := make([]stock.FollowedStock, 0, len(*list))
+	for i := range *list {
+		result = append(result, FollowedStockToDomain(&(*list)[i]))
+	}
+	return result, nil
 }
 
 func (r *StockRepository) SetCostPriceAndVolume(ctx context.Context, stockCode string, price float64, volume int64) error {
-	// TODO: implement when migrating the followed-stock slice
-	return errNotImplemented
+	return resultErr((data.StockDataApi{}).SetCostPriceAndVolume(price, volume, stockCode))
 }
 
 func (r *StockRepository) SetTradingPrice(ctx context.Context, stockCode string, entryPrice, takeProfitPrice, stopLossPrice, costPrice float64) error {
-	// TODO: implement when migrating the followed-stock slice
-	return errNotImplemented
+	return resultErr((data.StockDataApi{}).SetTradingPrice(entryPrice, takeProfitPrice, stopLossPrice, costPrice, stockCode))
 }
 
 func (r *StockRepository) SetAlarmChangePercent(ctx context.Context, stockCode string, changePercent, alarmPrice float64) error {
-	// TODO: implement when migrating the followed-stock slice
-	return errNotImplemented
+	return resultErr((data.StockDataApi{}).SetAlarmChangePercent(changePercent, alarmPrice, stockCode))
 }
 
 func (r *StockRepository) SetStockSort(ctx context.Context, stockCode string, sort int64) error {
-	// TODO: implement when migrating the followed-stock slice
-	return errNotImplemented
+	(data.StockDataApi{}).SetStockSort(sort, stockCode)
+	return nil
 }
 
 // ---------------------------------------------------------------------------
-// Groups (TODO: migrate in the group vertical slice)
+// Groups
 // ---------------------------------------------------------------------------
 
 func (r *StockRepository) AddGroup(ctx context.Context, name string) (*stock.Group, error) {
-	// TODO: implement when migrating the group slice
-	return nil, errNotImplemented
+	api := data.NewStockGroupApi(db.Dao)
+	maxSort := 0
+	for _, g := range api.GetGroupList() {
+		if g.Sort > maxSort {
+			maxSort = g.Sort
+		}
+	}
+	group := data.Group{Name: name, Sort: maxSort + 1}
+	if !api.AddGroup(group) {
+		return nil, fmt.Errorf("添加分组失败")
+	}
+	return &stock.Group{Name: name, Sort: group.Sort}, nil
 }
 
 func (r *StockRepository) RemoveGroup(ctx context.Context, groupID int) error {
-	// TODO: implement when migrating the group slice
-	return errNotImplemented
+	if !data.NewStockGroupApi(db.Dao).RemoveGroup(groupID) {
+		return fmt.Errorf("删除分组失败")
+	}
+	return nil
 }
 
 func (r *StockRepository) GetGroupList(ctx context.Context) ([]stock.Group, error) {
-	// TODO: implement when migrating the group slice
-	return nil, errNotImplemented
+	list := data.NewStockGroupApi(db.Dao).GetGroupList()
+	result := make([]stock.Group, 0, len(list))
+	for i := range list {
+		result = append(result, GroupToDomain(&list[i]))
+	}
+	return result, nil
 }
 
 func (r *StockRepository) AddStockToGroup(ctx context.Context, groupID int, stockCode string) error {
-	// TODO: implement when migrating the group slice
-	return errNotImplemented
+	if !data.NewStockGroupApi(db.Dao).AddStockGroup(groupID, stockCode) {
+		return fmt.Errorf("添加股票到分组失败")
+	}
+	return nil
 }
 
 func (r *StockRepository) RemoveStockFromGroup(ctx context.Context, groupID int, stockCode, stockName string) error {
-	// TODO: implement when migrating the group slice
-	return errNotImplemented
+	if !data.NewStockGroupApi(db.Dao).RemoveStockGroup(stockCode, stockName, groupID) {
+		return fmt.Errorf("从分组移除股票失败")
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
