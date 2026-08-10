@@ -86,3 +86,32 @@ func TestFundDecimals(t *testing.T) {
 		t.Errorf("fund should use 3 decimals: %v", out[0].Close)
 	}
 }
+
+func TestAdjustBarsMismatchedArrays(t *testing.T) {
+	fs := NewFactorStore()
+	fs.setFactors("600000",
+		[]string{"20250101", "20250601", "20251201"},
+		[]float64{1.5, 1.3}) // 故意短一个
+	bars := []Bar{
+		{Date: 20251231, Close: 100, PreClose: 99},
+	}
+	// 不应 panic，且因长度不匹配跳过复权（返回原数据）
+	result := fs.AdjustBars("600000", bars, FQQFQ)
+	if len(result) != len(bars) {
+		t.Fatalf("expected %d bars, got %d", len(bars), len(result))
+	}
+	if result[0].Close != bars[0].Close {
+		t.Errorf("expected unadjusted close %v, got %v", bars[0].Close, result[0].Close)
+	}
+}
+
+func TestFactorLEMismatchedArrays(t *testing.T) {
+	fs := NewFactorStore()
+	fs.setFactors("600000",
+		[]string{"20250101", "20250601", "20251201"},
+		[]float64{1.5, 1.3})
+	// 不应 panic，返回 false
+	if _, ok := fs.factorLE("600000", "20251201"); ok {
+		t.Error("expected ok=false for mismatched arrays")
+	}
+}

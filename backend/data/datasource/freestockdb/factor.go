@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"go-stock/backend/logger"
 )
 
 // FQ 复权类型。
@@ -97,6 +99,15 @@ func (f *FactorStore) Load(ctx context.Context, c *Client) error {
 			dates[code], cums[code] = sd, sc
 		}
 	}
+	// 一致性校验：平行数组长度不等说明服务端数据损坏，丢弃该 code。
+	for code := range dates {
+		if len(dates[code]) != len(cums[code]) {
+			logger.SugaredLogger.Warnf("freestockdb: skip factor entry %s: dates %d != cums %d",
+				code, len(dates[code]), len(cums[code]))
+			delete(dates, code)
+			delete(cums, code)
+		}
+	}
 	f.mu.Lock()
 	f.dates, f.cums = dates, cums
 	f.mu.Unlock()
@@ -143,6 +154,10 @@ func (f *FactorStore) factorLE(code, ymd string) (float64, bool) {
 	if !ok {
 		return 0, false
 	}
+	cums := f.cums[code]
+	if len(dates) != len(cums) {
+		return 0, false
+	}
 	idx := sort.Search(len(dates), func(i int) bool { return dates[i] > ymd }) - 1
 	if idx < 0 {
 		return 0, false
@@ -168,6 +183,11 @@ func (f *FactorStore) AdjustBars(code string, bars []Bar, fq FQ) []Bar {
 	cums := f.cums[code]
 	f.mu.RUnlock()
 	if !ok || len(dates) == 0 {
+		return bars
+	}
+	if len(dates) != len(cums) {
+		logger.SugaredLogger.Warnf("freestockdb: factor dates/cums length mismatch for %s (%d vs %d), skip fq",
+			code, len(dates), len(cums))
 		return bars
 	}
 	decimals := 2
