@@ -35,19 +35,19 @@ func SnapshotRules(cfg *HardFilterConfig) []Rule {
 	// 2-9. 数值范围规则
 	rules = append(rules,
 		Rule{Name: "amount_range", Desc: "成交额范围", Reject: func(in *FilterInput) string {
-			return rangeReject("成交额", in.Amount, cfg.MinAmount, cfg.MaxAmount, "%.0f")
+			return rangeReject("成交额", in.Amount, cfg.MinAmount, cfg.MaxAmount)
 		}},
 		Rule{Name: "price_range", Desc: "价格范围", Reject: func(in *FilterInput) string {
-			return rangeReject("价格", in.Price, cfg.MinPrice, cfg.MaxPrice, "%.2f")
+			return rangeReject("价格", in.Price, cfg.MinPrice, cfg.MaxPrice)
 		}},
 		Rule{Name: "mv_range", Desc: "总市值范围", Reject: func(in *FilterInput) string {
-			return rangeReject("总市值", in.TotalMV, cfg.MinTotalMV, cfg.MaxTotalMV, "%.0f")
+			return rangeReject("总市值", in.TotalMV, cfg.MinTotalMV, cfg.MaxTotalMV)
 		}},
 		Rule{Name: "pe_range", Desc: "PE范围", Reject: func(in *FilterInput) string {
-			return rangeReject("PE", in.PE, cfg.MinPE, cfg.MaxPE, "%.1f")
+			return rangeReject("PE", in.PE, cfg.MinPE, cfg.MaxPE)
 		}},
 		Rule{Name: "pb_range", Desc: "PB范围", Reject: func(in *FilterInput) string {
-			return rangeReject("PB", in.PB, cfg.MinPB, cfg.MaxPB, "%.1f")
+			return rangeReject("PB", in.PB, cfg.MinPB, cfg.MaxPB)
 		}},
 		Rule{Name: "volume_ratio_min", Desc: "量比下限", Reject: func(in *FilterInput) string {
 			if cfg.MinVolumeRatio > 0 && in.VolumeRatio < cfg.MinVolumeRatio {
