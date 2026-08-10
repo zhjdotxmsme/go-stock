@@ -67,6 +67,11 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 			MemoryInjectionOff: e.config.normalize().MemoryInjectionOff,
 		}
 
+		// 测试专用 panic 注入：验证 recover 护栏（生产 TestPanicHook 为 nil，无影响）。
+		if hook := e.config.normalize().TestPanicHook; hook != nil {
+			hook()
+		}
+
 		// Skill usage tracking: record matched skills at start
 		matchedIDs := skill_analysis.GetMatchedSkillIDs(userQuery)
 		if len(matchedIDs) > 0 {
