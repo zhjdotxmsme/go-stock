@@ -520,6 +520,16 @@ func (r *StockRepository) GetStockChangeHistory(ctx context.Context, query stock
 		dbQuery = dbQuery.Where("concept LIKE ?", "%"+query.Concept+"%")
 	}
 
+	if query.Page <= 0 {
+		query.Page = 1
+	}
+	if query.PageSize <= 0 {
+		query.PageSize = 20
+	}
+	if query.PageSize > 500 {
+		query.PageSize = 500
+	}
+
 	var total int64
 	if err := dbQuery.Count(&total).Error; err != nil {
 		return stock.StockChangeHistoryPageData{}, err
