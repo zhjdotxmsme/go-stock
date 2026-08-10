@@ -380,13 +380,20 @@ func saveMultiAgentResult(ac *AgentContext) {
 		combined.WriteString(fmt.Sprintf("## 最终评级: %s\n%s\n", ac.FinalReport.OverallRating, ac.FinalReport.Conclusion))
 	}
 
-	db.Dao.Create(&models.AIResponseResult{
+	if db.Dao == nil {
+		logger.SugaredLogger.Warn("save multi-agent result skipped: db.Dao is nil")
+		return
+	}
+	if err := db.Dao.Create(&models.AIResponseResult{
 		StockCode: ac.StockCode,
 		StockName: ac.StockName,
 		ModelName: "multi-agent-7",
 		Content:   combined.String(),
 		Question:  ac.UserQuery,
-	})
+	}).Error; err != nil {
+		logger.SugaredLogger.Errorf("save multi-agent result failed for %s: %v", ac.StockCode, err)
+		return
+	}
 
 	logger.SugaredLogger.Infof("saved multi-agent result for %s(%s) to SQLite", ac.StockName, ac.StockCode)
 }
