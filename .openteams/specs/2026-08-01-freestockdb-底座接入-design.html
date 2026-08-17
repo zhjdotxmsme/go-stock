@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>free-stockdb 本地数据底座接入 · 设计文档</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #171e2e; --panel2: #1d2638; --line: #2a3650;
+    --text: #e6ecf5; --dim: #9aa8bf; --accent: #4f8cff; --green: #3ecf8e;
+    --orange: #f5a623; --red: #ef5b6b; --mono: "JetBrains Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif; line-height: 1.7; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+  header.hero { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 32px; }
+  header.hero h1 { font-size: 28px; margin: 0 0 8px; }
+  header.hero .meta { color: var(--dim); font-size: 14px; }
+  .badge { display: inline-block; background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 999px; padding: 2px 12px; font-size: 12px; color: var(--dim); margin-right: 6px; }
+  h2 { font-size: 20px; margin: 40px 0 14px; padding-left: 12px; border-left: 4px solid var(--accent); }
+  h3 { font-size: 16px; margin: 24px 0 8px; color: #cdd8ea; }
+  p { margin: 8px 0; }
+  code { font-family: var(--mono); background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 4px; padding: 1px 6px; font-size: 13px; color: #a9d1ff; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px 20px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.6; }
+  pre code { background: none; border: none; padding: 0; color: #c9d6ea; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--panel2); color: #cdd8ea; font-weight: 600; }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+  ul, ol { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px 20px; margin: 12px 0; }
+  .warn { border-left: 4px solid var(--orange); }
+  .warn::before { content: "⚠ 风险"; display: block; color: var(--orange); font-weight: 700; margin-bottom: 6px; }
+  .ok { border-left: 4px solid var(--green); }
+  .ok::before { content: "✓ 决策"; display: block; color: var(--green); font-weight: 700; margin-bottom: 6px; }
+  .flow { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px 22px; font-family: var(--mono); font-size: 13px; line-height: 1.8;
+    white-space: pre; overflow-x: auto; color: #c9d6ea; }
+  .tag-new { color: var(--green); font-weight: 600; }
+  .tag-mod { color: var(--orange); font-weight: 600; }
+  .tag-keep { color: var(--dim); font-weight: 600; }
+  .dim { color: var(--dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>free-stockdb 本地数据底座接入 · 设计文档</h1>
+  <div class="meta">
+    <span class="badge">日期 2026-08-01</span>
+    <span class="badge">项目 go-stock</span>
+    <span class="badge">状态 已评审待实施</span>
+  </div>
+</header>
+
+<h2>1. 背景与目标</h2>
+<p><a href="https://github.com/hello245m/free-stockdb">free-stockdb</a> 是一个 A 股本地量化数据引擎：数据落盘在本地 LevelDB，通过 <code>127.0.0.1:7899</code> 的 HTTP K-V 接口提供日K、分钟K、复权因子、板块等数据。本设计将其接入 go-stock 现有的数据源统一路由层（<code>backend/data/datasource</code>），作为<strong>最高优先级数据源</strong>，覆盖走 Router 的全部功能（回测、每日选股、Agent 工具、指标计算）。</p>
+
+<div class="card ok">
+<ul>
+  <li><strong>范围</strong>：统一路由层最高优先级源（前端 K 线图等直连路径本期不动）</li>
+  <li><strong>能力</strong>：K线 + 报价 + 板块 + 指标计算，四种全接</li>
+  <li><strong>生命周期</strong>：设置页配置 stockdb.exe 路径，go-stock 启动时自动拉起并管理</li>
+  <li><strong>指标</strong>：Go 全量移植 39 指标 + 金叉信号 + 5 种指数加权</li>
+</ul>
+</div>
+
+<div class="card warn">
+free-stockdb 的 HTTP 服务本质是 K-V 存储；README 宣称的「39 指标、复权、周月K聚合」全部在其 <strong>Python 客户端层</strong>（<code>zhibiao.py</code> + 二进制 <code>zb_core</code> 模块、<code>stock_sdk.py</code>）实现。因此 Go 侧需自行移植语义层。其中 XSII / DFMA / KTN / TAQ 等非标指标无公开源码定义，只能按同名经典公式实现，<strong>数值不保证与 zb_core 逐位一致</strong>。
+</div>
+
+<h2>2. 协议要点（来自上游源码的事实）</h2>
+<table>
+  <tr><th>项</th><th>协议</th></tr>
+  <tr><td>请求形式</td><td><code>GET http://127.0.0.1:7899/?cmd=get&amp;t=&lt;键表达式&gt;</code>，返回 JSON</td></tr>
+  <tr><td>键结构</td><td><code>表名:代码:日期</code>。表名：<code>日k</code>（日期 YYYYMMDD）、<code>分钟k</code>（YYYYMMDDHHMMSS）、<code>复权</code>、<code>板块</code>；另有 <code>股票代码</code>、<code>退市*</code> 等全局键</td></tr>
+  <tr><td>键表达式</td><td>点查 <code>日k:600633:20260625</code>；范围 <code>日k:600633:20260620&gt;20260626</code>（升序）/ <code>&lt;</code>（降序）；通配 <code>日k:600633:202606*</code>；<code>N</code> 表示最新</td></tr>
+  <tr><td>日K 字段</td><td><code>date, open, high, low, close, pre_close, volume, amount, pct_chg, amplitude, turnover, vol_ratio, pe_ttm, pb, total_mv, float_mv, total_share, float_share, is_st, code, name</code></td></tr>
+  <tr><td>分钟K 字段</td><td><code>date(14位), open, high, low, close, volume, amount, code</code></td></tr>
+  <tr><td>复权因子</td><td><code>复权:code:date → cum</code> 累计因子；qfq 折算 <code>ratio = 最新cum / 当期cum</code>，hfq <code>ratio = 1 / 当期cum</code>，对 OHLC/pre_close 做除法（客户端计算）</td></tr>
+  <tr><td>板块</td><td><code>板块*</code> 全量拉取，记录含 <code>code, name, source, type, group, category, symbols[]</code>；category：0=概念，1/2/3=申万一/二/三级</td></tr>
+</table>
+
+<h2>3. 总体架构</h2>
+<p>新增两个包：<code>freestockdb</code>（协议翻译 + 语义层 + 进程管理，内聚一处）和 <code>indicator</code>（纯计算，与数据源无关）。Router、SQLite 缓存、降级链路零改动。</p>
+
+<div class="flow">backend/data/datasource/freestockdb/
+├── client.go       <span class="dim"># HTTP K-V 客户端：GET /?cmd=get&t=&lt;键表达式&gt;</span>
+│                   <span class="dim">#   点查 / 范围(a&gt;b / a&lt;b) / 通配(*)，JSON 解析、超时重试</span>
+├── kline.go        <span class="dim"># get_data 语义层（移植 stock_sdk.py）：</span>
+│                   <span class="dim">#   日K/分钟K 查询、复权因子缓存(复权*:cum)、qfq/hfq 折算、</span>
+│                   <span class="dim">#   周/月K 聚合、5/15/30/60m 聚合</span>
+├── board.go        <span class="dim"># 板块语义层（移植 zhibiao.py BoardIndex）：</span>
+│                   <span class="dim">#   拉取「板块*」→ 内存构建 code/name/category/股票 四向索引</span>
+├── provider.go     <span class="dim"># 实现 KLineProvider / QuoteProvider / SectorProvider</span>
+│                   <span class="dim">#   priority=5（高于 TDX 的 10），Available() 探测 7899</span>
+├── manager.go      <span class="dim"># 进程管理：拉起 stockdb.exe、健康检查、退出回收</span>
+└── *_test.go
+
+backend/data/indicator/
+├── indicator.go    <span class="dim"># 统一入口 BatchGet(names, params, klines) → 与 zb.get 同构输出</span>
+├── trend.go        <span class="dim"># MA EMA SMA WMA DMA EXPMA TRIX DMI DFMA BBI</span>
+├── oscillate.go    <span class="dim"># MACD KDJ RSI WR CCI PSY BIAS ROC MTM DPO</span>
+├── channel.go      <span class="dim"># BOLL KTN TAQ</span>
+├── volprice.go     <span class="dim"># OBV VR EMV MFI CR MASS</span>
+├── synth.go        <span class="dim"># ATR ASI BRAR XSII STD SUM HHV LLV REF</span>
+├── cross.go        <span class="dim"># 金叉/死叉信号（1=金叉 -1=死叉 0=无）</span>
+└── zhishu.go       <span class="dim"># 5 种指数：等权/流通市值/成交额/成交量/总市值加权</span></div>
+
+<h3>挂载点</h3>
+<table>
+  <tr><th>位置</th><th>改动</th><th>类型</th></tr>
+  <tr><td><code>main.go:72-83</code></td><td>注册 freestockdb provider（priority 5）；启动时 <code>manager.Start()</code></td><td class="tag-mod">修改</td></tr>
+  <tr><td><code>backend/models</code> AppConfig</td><td>新增 <code>FreeStockDB{ Enabled, ExePath, Addr, AutoStart }</code> 配置段</td><td class="tag-mod">修改</td></tr>
+  <tr><td><code>backend/data/tool_indicator.go</code></td><td><code>GetTechnicalIndicators</code> 改走 <code>indicator</code> 包统一计算，K线数据经 Router（free-stockdb 可用时自然来自它）；现有手算函数迁入 indicator 包</td><td class="tag-mod">修改</td></tr>
+  <tr><td>前端设置页</td><td>新增 free-stockdb 配置区块（启用开关、exe 路径、地址、自动拉起）</td><td class="tag-mod">修改</td></tr>
+  <tr><td>Router / KLineStore / 缓存</td><td>不改。命中后异步写 SQLite（router.go:150）与失败降级链路保持原样</td><td class="tag-keep">不动</td></tr>
+</table>
+
+<h2>4. 数据流</h2>
+<div class="flow">回测 / 选股 / Agent 工具
+  → Router.GetKLine
+    → freestockdb.Provider          <span class="dim">(Available? 探测 7899；否则降级 TDX → 东财)</span>
+      → kline.go: GetData(code, start, end, freq, fq)
+        → client.Get("日k:600633:20260620&gt;20260626")   <span class="dim">HTTP → 127.0.0.1:7899</span>
+        → 复权折算   <span class="dim">(qfq/hfq 时；因子来自预载的 复权*:cum 内存缓存)</span>
+        → 周期聚合   <span class="dim">(1w/1M/5m/15m/30m/60m 时)</span>
+    ← 命中后 Router 异步写 SQLite 缓存  <span class="dim">(现有逻辑不变)</span></div>
+
+<h2>5. 语义移植规则（严格对照 stock_sdk.py）</h2>
+
+<h3>5.1 键表达式构造</h3>
+<ul>
+  <li>单日：<code>日k:code:YYYYMMDD</code>；范围：<code>a&gt;b</code> 升序 / <code>a&lt;b</code> 降序；通配：<code>202606*</code></li>
+  <li>分钟K查询给 8 位日期时自动补全 14 位：<code>start+000000</code>、<code>end+235959</code></li>
+  <li><code>N</code> 表示最新记录；start/end 均缺省时用 <code>*</code></li>
+</ul>
+
+<h3>5.2 复权折算</h3>
+<ul>
+  <li>启动时一次性拉 <code>复权*</code> 的 <code>cum</code> 因子到内存：每只股票两个平行数组（日期串、cum 值），LevelDB 返回天然有序无需排序</li>
+  <li>折算时对每条记录二分查找 <code>&lt;= 记录日期(取前8位)</code> 的最大除权日因子 <code>f_current</code></li>
+  <li>qfq：<code>ratio = f_latest / f_current</code>；hfq：<code>ratio = 1 / f_current</code></li>
+  <li>对 <code>open/high/low/close/pre_close</code> 除以 ratio；股票（非 1/5 开头）保留 2 位小数，基金（1/5 开头）保留 3 位</li>
+  <li><code>|ratio - 1| &lt; 1e-6</code> 时跳过；无因子记录的股票视为不复权直接透传</li>
+</ul>
+
+<h3>5.3 周期聚合</h3>
+<ul>
+  <li><strong>周/月K</strong>：日K按 ISO 周 / 年月分组；open 取首、high/low 取极值、close 取末、volume/amount 求和；pre_close 取上一周期 close；pct_chg / amplitude 重算；turnover 求和、vol_ratio 求均值；pe/pb/市值/股本/is_st 取周期末截面；停牌缺记录的分组跳过</li>
+  <li><strong>分钟聚合</strong>：1m → 5/15/30/60m，按交易时段对齐（9:30–11:30 / 13:00–15:00），elapsed 映射算法照搬 <code>_merge_minutes_to_period</code>：9:30–11:30 映射 elapsed 0–120，13:00–15:00 映射 121–240；按对齐结束时刻分组，日期键 = <code>ymd*1000000 + HHMM00</code></li>
+</ul>
+
+<h3>5.4 板块索引</h3>
+<ul>
+  <li>启动时拉 <code>板块*</code> 全量，构建 <code>BoardIndex</code>：by_code / by_stock / by_name（<code>类别_名称</code> 键）/ by_category 四向索引</li>
+  <li>提供 <code>bk.get</code> 等价查询：股票→板块、板块→成分股、板块名模糊匹配（子串）、按 category 取全集、fields 投影</li>
+  <li>股票代码统一取 <code>.</code> 前 6 位；索引随进程重启或定时（每小时）刷新</li>
+</ul>
+
+<h3>5.5 报价</h3>
+<ul>
+  <li>free-stockdb 无独立实时报价接口：QuoteProvider 用 <code>日k:code:N</code>（最新一根日K，含 pre_close / pct_chg / 市值 / PE 等字段）实现</li>
+  <li>日内分钟级实时报价仍由现有东财/腾讯链路承担（QuoteProvider 降级链不变）</li>
+</ul>
+
+<h3>5.6 指标引擎（indicator 包）</h3>
+<ul>
+  <li>输入为 K线数组（与数据源无关），输出与 <code>zb.get</code> 同构：<code>[{date, ma5, k, d, j, dif, dea, macd, ...}]</code>，单股返回 list、多股返回 <code>{code: list}</code></li>
+  <li>参数对齐 zb.get：单指标 <code>n=5</code> 或 <code>"5,10,20"</code>；多指标 <code>n=["5,10,20", null, "12,26,9"]</code> 与 name 一一对齐，缺省用各指标默认参数（macd 12,26,9；kdj 9,3,3；boll 20,2；bias 6,12,24；xsii 102,7 等）</li>
+  <li>金叉：<code>cross=true</code> 只返回信号（1 金叉 / -1 死叉 / 0 无），<code>cross=with_value</code> 同时返回指标值与信号；多指标时所有单项均为 1 则综合 cross 为 true</li>
+  <li>指数 zhishu：method 1 等权 / 2 流通市值 / 3 成交额 / 4 成交量 / 5 总市值，base=1000；分钟级数据无市值字段时 method 只允许 1/3/4</li>
+  <li>39 指标清单：趋势 MA EMA SMA WMA DMA EXPMA TRIX DMI DFMA BBI；震荡 MACD KDJ RSI WR CCI PSY BIAS ROC MTM DPO；通道 BOLL KTN TAQ；量价 OBV VR EMV MFI CR MASS；综合 ATR ASI BRAR XSII STD SUM HHV LLV REF</li>
+</ul>
+
+<h2>6. 错误处理</h2>
+<table>
+  <tr><th>场景</th><th>行为</th></tr>
+  <tr><td>manager 拉起失败 / 健康检查超时</td><td>5s 间隔轮询 7899 最多 10 次；失败记日志、provider 标记不可用，Router 自然降级，<strong>不阻断启动</strong></td></tr>
+  <tr><td>运行中 free-stockdb 挂掉</td><td>client 请求失败 → provider 返回 error → Router 降级下一源；<code>Available()</code> 结果缓存 30s，避免每请求探测</td></tr>
+  <tr><td>单股无数据</td><td>返回 error，由 Router 降级到下一源（与现有 TDX/东财 chain 契约一致）</td></tr>
+  <tr><td>复权因子缺失（新股）</td><td>视为不复权，透传原始数据</td></tr>
+  <tr><td>指标名非法 / 参数不齐</td><td>返回明确 error，与 zb.get 报错行为一致</td></tr>
+  <tr><td>进程退出</td><td>go-stock 退出时回收 stockdb 子进程（仅当由 manager 拉起）；用户自行启动的实例不动</td></tr>
+</table>
+
+<h2>7. 测试策略</h2>
+<ul>
+  <li><strong>client.go</strong>：<code>httptest.Server</code> mock K-V 响应，覆盖点查 / 范围 / 通配 / 错误响应</li>
+  <li><strong>复权与聚合 · 黄金数据对拍</strong>：用 Python SDK（stock_sdk.py）对固定股票 + 固定区间生成 qfq / hfq / 1w / 1M / 30m 的 JSON 基准存入 <code>testdata/</code>，Go 单测逐字段比对（浮点容差 1e-3）</li>
+  <li><strong>指标</strong>：MA/MACD/KDJ/RSI/BOLL 与现有 tool_indicator.go 手算结果对拍；全 39 指标固定输入做 golden file 快照测试防回归；XSII/DFMA/KTN/TAQ 文档注明「按经典定义实现」</li>
+  <li><strong>provider</strong>：接口契约测试，含 Available=false 时 Router 降级路径</li>
+  <li><strong>前端设置页</strong>：手动验证</li>
+</ul>
+
+<h2>8. 明确不做（YAGNI）</h2>
+<ul>
+  <li>不接入 tick 级数据</li>
+  <li>不使用 free-stockdb 的 rd 正则 / 类SQL 查询器</li>
+  <li>不做港股、美股</li>
+  <li>不动前端 K 线图的直连数据路径（本期只覆盖 Router 统一层：回测、选股、Agent 工具、指标）</li>
+  <li>不内嵌 free-stockdb 发行包到 go-stock 安装包</li>
+</ul>
+
+<h2>9. 实施顺序建议</h2>
+<ol>
+  <li><code>client.go</code> + 单测（HTTP 协议打通）</li>
+  <li><code>kline.go</code> 日K查询 + 复权折算 + 黄金数据对拍</li>
+  <li>周/月K、分钟聚合 + 对拍</li>
+  <li><code>provider.go</code> 三接口 + Router 注册 + 降级验证</li>
+  <li><code>board.go</code> 板块索引 + SectorProvider 接通</li>
+  <li><code>manager.go</code> 进程管理 + AppConfig 配置段 + 前端设置区块</li>
+  <li><code>indicator</code> 包：先迁现有 10 指标对齐对拍，再补齐其余 29 个 + cross + zhishu</li>
+  <li><code>tool_indicator.go</code> 切换到 indicator 包</li>
+</ol>
+
+</div>
+</body>
+</html>

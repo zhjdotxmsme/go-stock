@@ -25,7 +25,7 @@ import (
 //   - 本阶段没有风控角色报告，Classify 内部的风控强制转 hold 规则自然不触发。
 //
 // 分类结果写入 AgentContext 并透出 SSE 事件；引导文本注入合成 Prompt（可开关）。
-func (e *MultiAgentEngine) classifyDisagreement(ac *AgentContext, ch chan *schema.Message, guidanceEnabled bool) {
+func (e *MultiAgentEngine) classifyDisagreement(ctx context.Context, ac *AgentContext, ch chan *schema.Message, guidanceEnabled bool) {
 	opinions := make([]disagreement.AgentOpinion, 0, len(ac.Reports))
 	for _, r := range ac.Reports {
 		if r.Error != "" {
@@ -44,7 +44,7 @@ func (e *MultiAgentEngine) classifyDisagreement(ac *AgentContext, ch chan *schem
 	}
 
 	logger.SugaredLogger.Infof("disagreement classification: class=%s hint=%s", cls, hint)
-	emitEvent(ch, "agent:phase", map[string]string{
+	emitEvent(ctx, ch, "agent:phase", map[string]string{
 		"phase": "disagreement", "status": "end",
 		"label": fmt.Sprintf("分析师分歧分类：%s", hint),
 		"class": string(cls), "hint": hint,
@@ -106,7 +106,7 @@ func (e *MultiAgentEngine) defaultRiskDebateHook() RiskDebateHook {
 		for _, sp := range result.Speeches {
 			emitDebate(ac, sp.Round, "risk_"+string(sp.Role), sp.Content)
 		}
-		emitACEvent(ac, "agent:phase", map[string]string{
+		emitACEvent(ctx, ac, "agent:phase", map[string]string{
 			"phase": "risk_judge", "status": "end",
 			"label":    fmt.Sprintf("风控裁判裁决：%s", result.Decision),
 			"decision": result.Decision,
@@ -114,7 +114,7 @@ func (e *MultiAgentEngine) defaultRiskDebateHook() RiskDebateHook {
 		})
 
 		// D4 风控否决/降级（裁决与合成信号不一致时按状态机调整）
-		applyGuardrailOverride(ac, result)
+		applyGuardrailOverride(ctx, ac, result)
 		return nil
 	}
 }
@@ -125,7 +125,7 @@ func (e *MultiAgentEngine) defaultRiskDebateHook() RiskDebateHook {
 // 裁判否决（Veto: buy→hold）/ 裁判 SELL 或报告高风险（downgrade）。
 // 调整理由写入 FinalReport.GuardrailReason 并透出 SSE 事件。
 // 裁决解析失败时不否决（降级原则：宁可不动，不可误动）。
-func applyGuardrailOverride(ac *AgentContext, res *risk_debate.RiskDebateResult) {
+func applyGuardrailOverride(ctx context.Context, ac *AgentContext, res *risk_debate.RiskDebateResult) {
 	if ac.FinalReport == nil {
 		return
 	}
@@ -149,7 +149,7 @@ func applyGuardrailOverride(ac *AgentContext, res *risk_debate.RiskDebateResult)
 	ac.FinalReport.OverallRating = mapActionToRating(out.FinalAction)
 	ac.FinalReport.GuardrailReason = out.Reason
 	logger.SugaredLogger.Infof("guardrail override: %s → %s (%s)", original, out.FinalAction, out.Reason)
-	emitACEvent(ac, "agent:phase", map[string]string{
+	emitACEvent(ctx, ac, "agent:phase", map[string]string{
 		"phase": "risk_override", "status": "end",
 		"label":    "风控调整：" + out.Reason,
 		"original": original,
@@ -161,11 +161,11 @@ func applyGuardrailOverride(ac *AgentContext, res *risk_debate.RiskDebateResult)
 // ===== 装配辅助 =====
 
 // emitACEvent 向 AgentContext 事件通道发事件（通道为 nil 时静默跳过，避免死锁）。
-func emitACEvent(ac *AgentContext, eventType string, data map[string]string) {
+func emitACEvent(ctx context.Context, ac *AgentContext, eventType string, data map[string]string) {
 	if ac == nil || ac.StreamCh == nil {
 		return
 	}
-	emitEvent(ac.StreamCh, eventType, data)
+	emitEvent(ctx, ac.StreamCh, eventType, data)
 }
 
 // mapRatingToDecision FinalReport.OverallRating → risk_debate 裁决词汇 BUY/SELL/HOLD。

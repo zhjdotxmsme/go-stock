@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,24 @@ func TestClientGetPointQuery(t *testing.T) {
 	}
 	if v["close"].(float64) != 10.62 {
 		t.Errorf("close = %v, want 10.62", v["close"])
+	}
+}
+
+func TestGetResponseTooLarge(t *testing.T) {
+	big := make([]byte, maxBodySize+1024)
+	for i := range big {
+		big[i] = 'x'
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(big)
+	}))
+	defer srv.Close()
+	addr := strings.TrimPrefix(srv.URL, "http://")
+	c := NewClient(addr)
+	if _, err := c.Get(context.Background(), "日k:600000:*"); err == nil {
+		t.Fatal("expected error for oversized response")
+	} else if !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("expected truncation error, got: %v", err)
 	}
 }
 

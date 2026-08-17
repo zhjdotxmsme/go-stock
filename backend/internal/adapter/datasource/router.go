@@ -30,8 +30,9 @@ var errConfigUnavailable = errors.New("datasource config unavailable (db not ini
 // （数值小=优先级高）依次尝试，任一成功即返回；全部失败返回聚合错误。
 // Register 应在启动装配期完成，运行期并发只读。
 type Router struct {
-	quoteProviders []portds.QuoteProvider
-	klineProviders []portds.KLineProvider
+	quoteProviders  []portds.QuoteProvider
+	klineProviders  []portds.KLineProvider
+	sectorProviders []portds.SectorProvider
 }
 
 // NewRouter 创建空路由器。
@@ -49,12 +50,18 @@ func (r *Router) Register(providers ...portds.DataSourceProvider) {
 		if kp, ok := p.(portds.KLineProvider); ok {
 			r.klineProviders = append(r.klineProviders, kp)
 		}
+		if sp, ok := p.(portds.SectorProvider); ok {
+			r.sectorProviders = append(r.sectorProviders, sp)
+		}
 	}
 	sort.SliceStable(r.quoteProviders, func(i, j int) bool {
 		return r.quoteProviders[i].Priority() < r.quoteProviders[j].Priority()
 	})
 	sort.SliceStable(r.klineProviders, func(i, j int) bool {
 		return r.klineProviders[i].Priority() < r.klineProviders[j].Priority()
+	})
+	sort.SliceStable(r.sectorProviders, func(i, j int) bool {
+		return r.sectorProviders[i].Priority() < r.sectorProviders[j].Priority()
 	})
 }
 
@@ -63,6 +70,9 @@ func (r *Router) QuoteProviders() []portds.QuoteProvider { return r.quoteProvide
 
 // KLineProviders 返回已排序的 K 线调用链（装配校验/测试用）。
 func (r *Router) KLineProviders() []portds.KLineProvider { return r.klineProviders }
+
+// SectorProviders 返回已排序的板块调用链（装配校验/测试用）。
+func (r *Router) SectorProviders() []portds.SectorProvider { return r.sectorProviders }
 
 // GetQuote 按优先级依次尝试实时行情数据源；代码先归一化为内部标准格式。
 // 返回错误或 nil（无数据）触发 fallback；Price=0 不视为失败
@@ -119,6 +129,34 @@ func (r *Router) GetKLine(ctx context.Context, code, period string, count int) (
 		return kd, nil
 	}
 	return nil, fmt.Errorf("所有K线数据源均失败(%s %s): %s", code, period, strings.Join(errs, "; "))
+}
+
+// GetSectorData 按优先级依次尝试板块数据源；代码先归一化为内部标准格式。
+// 返回错误或 nil（无数据）触发 fallback；全部失败返回聚合错误。
+func (r *Router) GetSectorData(ctx context.Context, code string) (*portds.SectorData, error) {
+	code = stockcode.Normalize(code)
+	if code == "" {
+		return nil, fmt.Errorf("股票代码为空")
+	}
+
+	var errs []string
+	for _, p := range r.sectorProviders {
+		if !p.Available(ctx) {
+			errs = append(errs, p.Name()+": unavailable")
+			continue
+		}
+		sd, err := p.GetSectorData(ctx, code)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", p.Name(), err))
+			continue
+		}
+		if sd == nil {
+			errs = append(errs, p.Name()+": 无数据")
+			continue
+		}
+		return sd, nil
+	}
+	return nil, fmt.Errorf("所有板块数据源均失败(%s): %s", code, strings.Join(errs, "; "))
 }
 
 // normalizePeriod 将自然语言周期映射为东方财富 klt 数值码

@@ -8,11 +8,9 @@ import (
 	"go-stock/backend/logger"
 	"net"
 	"net/http"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -21,8 +19,8 @@ import (
 // yahooHTTPClient 是 Yahoo 专用的 HTTP 客户端。
 var yahooHTTPClient *resty.Client
 var yahooClientOnce sync.Once
-var yahooRateLimited bool          // 记录 Yahoo HTTP 上次是否被限流，跳过重试
-var yahooRateLimitReset time.Time  // 限流标记重置时间
+var yahooRateLimited bool         // 记录 Yahoo HTTP 上次是否被限流，跳过重试
+var yahooRateLimitReset time.Time // 限流标记重置时间
 
 func isYahooRateLimited() bool {
 	if !yahooRateLimited {
@@ -68,7 +66,7 @@ func getYahooClient() *resty.Client {
 type YahooFinanceApi struct{}
 
 // yahooFetch 使用专用 HTTP 客户端请求 Yahoo API，支持子域名轮询与超时重试。
-// 如果 HTTP 方式均被限流，降级到 PowerShell（WinHTTP，不受 TLS 指纹限流影响）。
+// 如果 HTTP 方式均被限流，Windows 下降级到 PowerShell（WinHTTP，不受 TLS 指纹限流影响）。
 func (y *YahooFinanceApi) yahooFetch(url string) ([]byte, error) {
 	// 如果之前 HTTP 已被限流过，直接跳过 HTTP 尝试
 	if !isYahooRateLimited() {
@@ -81,26 +79,13 @@ func (y *YahooFinanceApi) yahooFetch(url string) ([]byte, error) {
 		}
 		markYahooRateLimited() // 所有 HTTP 子域名均失败，标记限流
 	}
-	// HTTP 方式失败（通常是被限流），降级到 PowerShell WinHTTP
+	// HTTP 方式失败（通常是被限流），降级到 PowerShell WinHTTP（仅 Windows 可用）
 	body, err := y.yahooFetchViaPowerShell(url)
 	if err == nil {
 		logger.SugaredLogger.Infof("Yahoo PowerShell fallback succeeded for %s", url)
 		return body, nil
 	}
 	return nil, fmt.Errorf("yahoo all subdomains (and PowerShell fallback) failed")
-}
-
-// yahooFetchViaPowerShell 通过 PowerShell 的 Invoke-WebRequest（WinHTTP）发起请求，
-// 绕过 Go TLS 指纹被 Yahoo 限流的问题。
-func (y *YahooFinanceApi) yahooFetchViaPowerShell(url string) ([]byte, error) {
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
-		`try { $r = Invoke-WebRequest -Uri '`+url+`' -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop; Write-Output $r.Content } catch { exit 1 }`)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("yahoo powershell fallback: %w", err)
-	}
-	return out, nil
 }
 
 // yahooDoRequest 执行一次 Yahoo API 请求

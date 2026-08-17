@@ -364,3 +364,22 @@ func TestRankConfigJSON(t *testing.T) {
 		t.Error("非法 JSON 应返回错误")
 	}
 }
+
+// TestRankerConfigClamp 越界配置应被收敛到合法区间。
+func TestRankerConfigClamp(t *testing.T) {
+	cfg, err := LoadRankerConfigJSON([]byte(`{"rankWeight": 1.5, "coverageThreshold": -0.2}`))
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	almostEqual(t, "rankWeight 上限收敛", cfg.RankWeight, 1.0)
+	almostEqual(t, "coverageThreshold 下限收敛", cfg.CoverageThreshold, 0.0)
+
+	cfg, err = LoadRankerConfigJSON([]byte(`{"rankWeight": -0.3}`))
+	if err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	almostEqual(t, "rankWeight 下限收敛", cfg.RankWeight, 0.0)
+
+	r := NewRanker(RankerConfig{RankWeight: 2.0})
+	almostEqual(t, "NewRanker 收敛 rankWeight", r.Config.RankWeight, 1.0)
+}

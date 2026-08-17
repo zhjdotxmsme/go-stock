@@ -23,18 +23,12 @@ import (
 )
 
 // StockRepository implements repository.StockRepository.
-//
-// The TradingRecord and StockChangeHistory groups are implemented; the
-// remaining groups are placeholders that fail loudly until their own
-// vertical slices are migrated (see TODOs below).
 type StockRepository struct{}
 
 // NewStockRepository creates a new StockRepository.
 func NewStockRepository() *StockRepository {
 	return &StockRepository{}
 }
-
-var errNotImplemented = fmt.Errorf("not implemented")
 
 // ---------------------------------------------------------------------------
 // data <-> domain mapping (explicit, no reflection)
@@ -152,6 +146,49 @@ func TradingRecordPageDataFromDomain(p *stock.TradingRecordPageData) *data.Tradi
 	}
 }
 
+// FollowedStockToDomain maps legacy data.FollowedStock to domain model.
+func FollowedStockToDomain(f *data.FollowedStock) stock.FollowedStock {
+	if f == nil {
+		return stock.FollowedStock{}
+	}
+	return stock.FollowedStock{
+		StockCode:          f.StockCode,
+		Name:               f.Name,
+		Volume:             f.Volume,
+		CostPrice:          f.CostPrice,
+		Price:              f.Price,
+		PriceChange:        f.PriceChange,
+		ChangePercent:      f.ChangePercent,
+		AlarmChangePercent: f.AlarmChangePercent,
+		AlarmPrice:         f.AlarmPrice,
+		Time:               f.Time,
+		Sort:               f.Sort,
+		Cron:               f.Cron,
+		IsDel:              f.IsDel,
+		AiConfigId:         f.AiConfigId,
+		EntryPrice:         f.EntryPrice,
+		TakeProfitPrice:    f.TakeProfitPrice,
+		StopLossPrice:      f.StopLossPrice,
+	}
+}
+
+// GroupToDomain maps legacy data.Group to domain model.
+func GroupToDomain(g *data.Group) stock.Group {
+	if g == nil {
+		return stock.Group{}
+	}
+	return stock.Group{Model: g.Model, Name: g.Name, Sort: g.Sort}
+}
+
+// resultErr converts a legacy string result into an error, treating any
+// result containing "成功" as success.
+func resultErr(result string) error {
+	if strings.Contains(result, "成功") {
+		return nil
+	}
+	return fmt.Errorf("%s", result)
+}
+
 // ---------------------------------------------------------------------------
 // Trading records
 //
@@ -190,7 +227,7 @@ func (r *StockRepository) GetTradingRecordList(ctx context.Context, query stock.
 
 func (r *StockRepository) GetTradingRecordById(ctx context.Context, id uint) (*stock.TradingRecord, error) {
 	var record data.TradingRecord
-	err := db.Dao.Model(&data.TradingRecord{}).Where("id = ?", id).First(&record).Error
+	err := db.Dao.WithContext(ctx).Model(&data.TradingRecord{}).Where("id = ?", id).First(&record).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -211,7 +248,7 @@ func (r *StockRepository) DeleteTradingRecord(ctx context.Context, id uint) erro
 
 func (r *StockRepository) ListAllTradingRecords(ctx context.Context) ([]stock.TradingRecord, error) {
 	var records []data.TradingRecord
-	err := db.Dao.Model(&data.TradingRecord{}).Order("trading_time ASC, id ASC").Find(&records).Error
+	err := db.Dao.WithContext(ctx).Model(&data.TradingRecord{}).Order("trading_time ASC, id ASC").Find(&records).Error
 	if err != nil {
 		logger.SugaredLogger.Errorf("获取全部交易日志失败: %s", err.Error())
 		return nil, err
@@ -224,7 +261,7 @@ func (r *StockRepository) ListAllTradingRecords(ctx context.Context) ([]stock.Tr
 }
 
 func (r *StockRepository) CountBuyTradingRecords(ctx context.Context, stockCode string, since time.Time) (int64, error) {
-	q := db.Dao.Model(&data.TradingRecord{}).
+	q := db.Dao.WithContext(ctx).Model(&data.TradingRecord{}).
 		Where("direction = ? AND trading_time > ?", "买入", since)
 	if stockCode != "" {
 		q = q.Where("stock_code = ?", stockCode)
@@ -238,71 +275,93 @@ func (r *StockRepository) CountBuyTradingRecords(ctx context.Context, stockCode 
 }
 
 // ---------------------------------------------------------------------------
-// Followed stocks (TODO: migrate in the followed-stock vertical slice)
+// Followed stocks
 // ---------------------------------------------------------------------------
 
 func (r *StockRepository) AddFollow(ctx context.Context, stockCode, stockName string) error {
-	// TODO: implement when migrating the followed-stock slice
-	return errNotImplemented
+	return resultErr((data.StockDataApi{}).Follow(stockCode))
 }
 
 func (r *StockRepository) RemoveFollow(ctx context.Context, stockCode string) error {
-	// TODO: implement when migrating the followed-stock slice
-	return errNotImplemented
+	return resultErr((data.StockDataApi{}).UnFollow(stockCode))
 }
 
 func (r *StockRepository) GetFollowList(ctx context.Context, groupID int) ([]stock.FollowedStock, error) {
-	// TODO: implement when migrating the followed-stock slice
-	return nil, errNotImplemented
+	list := (data.StockDataApi{}).GetFollowList(groupID)
+	if list == nil {
+		return nil, nil
+	}
+	result := make([]stock.FollowedStock, 0, len(*list))
+	for i := range *list {
+		result = append(result, FollowedStockToDomain(&(*list)[i]))
+	}
+	return result, nil
 }
 
 func (r *StockRepository) SetCostPriceAndVolume(ctx context.Context, stockCode string, price float64, volume int64) error {
-	// TODO: implement when migrating the followed-stock slice
-	return errNotImplemented
+	return resultErr((data.StockDataApi{}).SetCostPriceAndVolume(price, volume, stockCode))
 }
 
 func (r *StockRepository) SetTradingPrice(ctx context.Context, stockCode string, entryPrice, takeProfitPrice, stopLossPrice, costPrice float64) error {
-	// TODO: implement when migrating the followed-stock slice
-	return errNotImplemented
+	return resultErr((data.StockDataApi{}).SetTradingPrice(entryPrice, takeProfitPrice, stopLossPrice, costPrice, stockCode))
 }
 
 func (r *StockRepository) SetAlarmChangePercent(ctx context.Context, stockCode string, changePercent, alarmPrice float64) error {
-	// TODO: implement when migrating the followed-stock slice
-	return errNotImplemented
+	return resultErr((data.StockDataApi{}).SetAlarmChangePercent(changePercent, alarmPrice, stockCode))
 }
 
 func (r *StockRepository) SetStockSort(ctx context.Context, stockCode string, sort int64) error {
-	// TODO: implement when migrating the followed-stock slice
-	return errNotImplemented
+	(data.StockDataApi{}).SetStockSort(sort, stockCode)
+	return nil
 }
 
 // ---------------------------------------------------------------------------
-// Groups (TODO: migrate in the group vertical slice)
+// Groups
 // ---------------------------------------------------------------------------
 
 func (r *StockRepository) AddGroup(ctx context.Context, name string) (*stock.Group, error) {
-	// TODO: implement when migrating the group slice
-	return nil, errNotImplemented
+	api := data.NewStockGroupApi(db.Dao)
+	maxSort := 0
+	for _, g := range api.GetGroupList() {
+		if g.Sort > maxSort {
+			maxSort = g.Sort
+		}
+	}
+	group := data.Group{Name: name, Sort: maxSort + 1}
+	if !api.AddGroup(group) {
+		return nil, fmt.Errorf("添加分组失败")
+	}
+	return &stock.Group{Name: name, Sort: group.Sort}, nil
 }
 
 func (r *StockRepository) RemoveGroup(ctx context.Context, groupID int) error {
-	// TODO: implement when migrating the group slice
-	return errNotImplemented
+	if !data.NewStockGroupApi(db.Dao).RemoveGroup(groupID) {
+		return fmt.Errorf("删除分组失败")
+	}
+	return nil
 }
 
 func (r *StockRepository) GetGroupList(ctx context.Context) ([]stock.Group, error) {
-	// TODO: implement when migrating the group slice
-	return nil, errNotImplemented
+	list := data.NewStockGroupApi(db.Dao).GetGroupList()
+	result := make([]stock.Group, 0, len(list))
+	for i := range list {
+		result = append(result, GroupToDomain(&list[i]))
+	}
+	return result, nil
 }
 
 func (r *StockRepository) AddStockToGroup(ctx context.Context, groupID int, stockCode string) error {
-	// TODO: implement when migrating the group slice
-	return errNotImplemented
+	if !data.NewStockGroupApi(db.Dao).AddStockGroup(groupID, stockCode) {
+		return fmt.Errorf("添加股票到分组失败")
+	}
+	return nil
 }
 
 func (r *StockRepository) RemoveStockFromGroup(ctx context.Context, groupID int, stockCode, stockName string) error {
-	// TODO: implement when migrating the group slice
-	return errNotImplemented
+	if !data.NewStockGroupApi(db.Dao).RemoveStockGroup(stockCode, stockName, groupID) {
+		return fmt.Errorf("从分组移除股票失败")
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -388,7 +447,7 @@ func (r *StockRepository) SaveStockChangesToHistory(ctx context.Context, changes
 	for i := range changes {
 		histories = append(histories, StockChangeHistoryFromDomain(&changes[i]))
 	}
-	return db.Dao.Clauses(clause.OnConflict{
+	return db.Dao.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "change_date"}, {Name: "stock_code"}, {Name: "change_time"}},
 		DoNothing: true,
 	}).CreateInBatches(histories, 100).Error
@@ -402,7 +461,7 @@ func (r *StockRepository) SaveStockChangesToHistoryWithDedup(ctx context.Context
 	for i := range changes {
 		histories = append(histories, StockChangeHistoryFromDomain(&changes[i]))
 	}
-	result := db.Dao.Clauses(clause.OnConflict{
+	result := db.Dao.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "change_date"}, {Name: "stock_code"}, {Name: "change_time"}, {Name: "change_type"}, {Name: "price"}, {Name: "change_rate"}, {Name: "amount"}, {Name: "volume"}},
 		DoNothing: true,
 	}).CreateInBatches(histories, 100)
@@ -413,7 +472,7 @@ func (r *StockRepository) SaveStockChangesToHistoryWithDedup(ctx context.Context
 }
 
 func (r *StockRepository) GetStockChangeHistory(ctx context.Context, query stock.StockChangeHistoryQuery) (stock.StockChangeHistoryPageData, error) {
-	dbQuery := db.Dao.Model(&models.StockChangeHistory{})
+	dbQuery := db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{})
 
 	if query.StockCode != "" {
 		dbQuery = dbQuery.Where("stock_code LIKE ?", "%"+query.StockCode+"%")
@@ -461,6 +520,16 @@ func (r *StockRepository) GetStockChangeHistory(ctx context.Context, query stock
 		dbQuery = dbQuery.Where("concept LIKE ?", "%"+query.Concept+"%")
 	}
 
+	if query.Page <= 0 {
+		query.Page = 1
+	}
+	if query.PageSize <= 0 {
+		query.PageSize = 20
+	}
+	if query.PageSize > 500 {
+		query.PageSize = 500
+	}
+
 	var total int64
 	if err := dbQuery.Count(&total).Error; err != nil {
 		return stock.StockChangeHistoryPageData{}, err
@@ -491,7 +560,7 @@ func (r *StockRepository) GetStockChangeHistory(ctx context.Context, query stock
 }
 
 func (r *StockRepository) DeleteStockChangeHistoryBefore(ctx context.Context, cutoffDate string) error {
-	return db.Dao.Where("change_date < ?", cutoffDate).Delete(&models.StockChangeHistory{}).Error
+	return db.Dao.WithContext(ctx).Where("change_date < ?", cutoffDate).Delete(&models.StockChangeHistory{}).Error
 }
 
 // ---------------------------------------------------------------------------
@@ -512,7 +581,7 @@ func (r *StockRepository) GetDailyChangeStats(ctx context.Context, startDate str
 	}
 
 	var rawStats []rawDailyStats
-	err := db.Dao.Model(&models.StockChangeHistory{}).
+	err := db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("change_date, count(*) as total_count, sum(case when change_type in (4, 8201, 8202, 8193, 64, 8207, 8209, 8211, 8213, 8215) then 1 else 0 end) as up_count, sum(case when change_type in (8, 8203, 8204, 8194, 128, 8208, 8210, 8212, 8214, 8216) then 1 else 0 end) as down_count").
 		Where("change_date >= ?", startDate).
 		Group("change_date").
@@ -528,7 +597,7 @@ func (r *StockRepository) GetDailyChangeStats(ctx context.Context, startDate str
 		LimitDown  int64
 	}
 	var limitData []limitStats
-	err = db.Dao.Model(&models.StockChangeHistory{}).
+	err = db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("change_date, sum(case when change_type = 4 then 1 else 0 end) as limit_up, sum(case when change_type = 8 then 1 else 0 end) as limit_down").
 		Where("change_date >= ? AND change_type IN (4, 8)", startDate).
 		Group("change_date").
@@ -560,7 +629,7 @@ func (r *StockRepository) GetDailyChangeStats(ctx context.Context, startDate str
 
 func (r *StockRepository) GetChangeTypeDailyStats(ctx context.Context, startDate string) ([]stock.ChangeTypeDailyStats, error) {
 	var result []stock.ChangeTypeDailyStats
-	err := db.Dao.Model(&models.StockChangeHistory{}).
+	err := db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("change_date, type_name, count(*) as count").
 		Where("change_date >= ?", startDate).
 		Group("change_date, type_name").
@@ -579,7 +648,7 @@ func (r *StockRepository) GetChangeRank(ctx context.Context, startDate string, t
 	}
 
 	var stockRows []rankRow
-	err := db.Dao.Model(&models.StockChangeHistory{}).
+	err := db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("stock_name as name, stock_code as code, count(*) as total_cnt, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_cnt, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_cnt").
 		Where("change_date >= ?", startDate).
 		Group("stock_code, stock_name").
@@ -596,7 +665,7 @@ func (r *StockRepository) GetChangeRank(ctx context.Context, startDate string, t
 	}
 
 	var industryRows []rankRow
-	err = db.Dao.Model(&models.StockChangeHistory{}).
+	err = db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("industry as name, '' as code, count(*) as total_cnt, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_cnt, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_cnt").
 		Where("change_date >= ? AND industry != '' AND industry IS NOT NULL", startDate).
 		Group("industry").
@@ -619,7 +688,7 @@ func (r *StockRepository) GetChangeRank(ctx context.Context, startDate string, t
 		DownCnt int
 	}
 	var conceptRows []conceptRow
-	err = db.Dao.Model(&models.StockChangeHistory{}).
+	err = db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("concept, count(*) as cnt, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_cnt, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_cnt").
 		Where("change_date >= ? AND concept != '' AND concept IS NOT NULL", startDate).
 		Group("concept").
@@ -665,7 +734,7 @@ func (r *StockRepository) GetChangeRank(ctx context.Context, startDate string, t
 
 func (r *StockRepository) GetDailyDimensionStats(ctx context.Context, dimension, name, startDate string) ([]stock.DailyDimensionStats, error) {
 	var result []stock.DailyDimensionStats
-	query := db.Dao.Model(&models.StockChangeHistory{}).
+	query := db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("change_date, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_count, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_count, count(*) as total_count").
 		Where("change_date >= ?", startDate).
 		Group("change_date").
@@ -690,7 +759,7 @@ func (r *StockRepository) GetDailyDimensionStats(ctx context.Context, dimension,
 
 func (r *StockRepository) GetTypeStatsByDate(ctx context.Context, date string) ([]stock.TypeCountStats, error) {
 	var result []stock.TypeCountStats
-	err := db.Dao.Model(&models.StockChangeHistory{}).
+	err := db.Dao.WithContext(ctx).Model(&models.StockChangeHistory{}).
 		Select("type_name, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_count, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_count, count(*) as total_count").
 		Where("change_date = ?", date).
 		Group("type_name").

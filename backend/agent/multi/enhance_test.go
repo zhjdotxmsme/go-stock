@@ -36,7 +36,7 @@ func TestClassifyDisagreement(t *testing.T) {
 		StreamCh: ch,
 	}
 
-	e.classifyDisagreement(ac, ch, true)
+	e.classifyDisagreement(context.Background(), ac, ch, true)
 	if ac.DisagreementClass != "mixed_directional" {
 		t.Errorf("class: got %q, want mixed_directional", ac.DisagreementClass)
 	}
@@ -54,7 +54,7 @@ func TestClassifyDisagreement(t *testing.T) {
 
 	// 引导关闭：分类/事件照常，引导文本为空
 	ac2 := &AgentContext{Reports: ac.Reports, StreamCh: ch}
-	e.classifyDisagreement(ac2, ch, false)
+	e.classifyDisagreement(context.Background(), ac2, ch, false)
 	if ac2.SynthesisGuidance != "" {
 		t.Error("DisagreementGuidanceOff 时不应注入引导文本")
 	}
@@ -186,7 +186,7 @@ func TestApplyGuardrailOverrideLevels(t *testing.T) {
 	// 但 veto 优先级更高——VetoedTrader=false 时走 downgrade_two
 	ac := &AgentContext{FinalReport: &FinalReport{OverallRating: "buy", RiskLevel: "high"}}
 	res := &risk_debate.RiskDebateResult{Decision: "SELL", VetoedTrader: false}
-	applyGuardrailOverride(ac, res)
+	applyGuardrailOverride(context.Background(), ac, res)
 	if ac.FinalReport.OverallRating != "sell" {
 		t.Errorf("downgrade_two: got %q, want sell", ac.FinalReport.OverallRating)
 	}
@@ -197,7 +197,7 @@ func TestApplyGuardrailOverrideLevels(t *testing.T) {
 	// 裁判 HOLD、Trader SELL：VetoedTrader=true 但动作是 sell，veto 只针对 buy → 不动
 	ac2 := &AgentContext{FinalReport: &FinalReport{OverallRating: "sell", RiskLevel: "low"}}
 	res2 := &risk_debate.RiskDebateResult{Decision: "HOLD", VetoedTrader: true}
-	applyGuardrailOverride(ac2, res2)
+	applyGuardrailOverride(context.Background(), ac2, res2)
 	if ac2.FinalReport.OverallRating != "sell" {
 		t.Errorf("sell 信号不应被否决改动: got %q", ac2.FinalReport.OverallRating)
 	}

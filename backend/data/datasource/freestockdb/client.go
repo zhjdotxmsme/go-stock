@@ -13,6 +13,9 @@ import (
 	"time"
 )
 
+// maxBodySize 是 Get 响应体最大字节数，超过视为截断错误。
+const maxBodySize = 64 << 20
+
 // Client 是 free-stockdb HTTP K-V 服务的客户端。
 type Client struct {
 	addr string
@@ -40,9 +43,12 @@ func (c *Client) Get(ctx context.Context, expr string) (json.RawMessage, error) 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("stockdb: HTTP %d for %q", resp.StatusCode, expr)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodySize+1))
 	if err != nil {
 		return nil, err
+	}
+	if int64(len(body)) > maxBodySize {
+		return nil, fmt.Errorf("stockdb: response exceeds %d bytes for %q", maxBodySize, expr)
 	}
 	return json.RawMessage(body), nil
 }

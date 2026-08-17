@@ -94,14 +94,13 @@ func (p *Pipeline) Apply(candidates []FilterInput) FilterReport {
 }
 
 // 边界判定辅助：value < min（min>0 时）或 value > max（max>0 时）返回淘汰原因。
-func rangeReject(name string, value, min, max float64, format string) string {
+func rangeReject(name string, value, min, max float64) string {
 	if min > 0 && value < min {
 		return fmt.Sprintf("%s %.2f 低于下限 %.2f", name, value, min)
 	}
 	if max > 0 && value > max {
 		return fmt.Sprintf("%s %.2f 高于上限 %.2f", name, value, max)
 	}
-	_ = format
 	return ""
 }
 

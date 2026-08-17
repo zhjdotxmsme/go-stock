@@ -76,6 +76,10 @@ type EngineConfig struct {
 	// MemoryInjectionOff 关闭 T2 反思记忆检索注入分析师 Prompt（默认 false=开启）。
 	// 关闭时分析师 Prompt 与历史版本逐字节一致。
 	MemoryInjectionOff bool
+
+	// TestPanicHook 测试专用注入点：非 nil 时在 Run goroutine 内先执行；
+	// panic 用于验证 recover 护栏。生产代码必须为 nil。
+	TestPanicHook func()
 }
 
 // DefaultEngineConfig 返回默认配置（standard 模式，15s 阶段最小预算）。
