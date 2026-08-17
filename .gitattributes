@@ -1,0 +1,28 @@
+# 统一行尾：仓库内全部文本文件以 LF 存储（含 CRLF 工作树归一化）
+* text=auto eol=lf
+
+# 二进制文件显式排除，防止被 text 规则转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.bmp binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.docx binary
+*.xlsx binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.exe binary
+*.dll binary
+*.syso binary
+*.db binary
+*.db-wal binary
+*.db-shm binary
