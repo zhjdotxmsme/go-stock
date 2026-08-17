@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as echarts from 'echarts'
-import { useTheme } from '../../hooks/useTheme'
 
 interface DataPoint {
   date: string
