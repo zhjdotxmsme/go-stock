@@ -16,6 +16,7 @@ const (
 	DataTypeNews        DataType = "news"
 	DataTypeFundamental DataType = "fundamental"
 	DataTypeSector      DataType = "sector"
+	DataTypeSnapshot    DataType = "snapshot"
 )
 
 // DataSourceProvider is the interface every data source must implement.
@@ -119,4 +120,25 @@ type SectorData struct {
 	Sector     string  `json:"sector"`
 	Rank       int     `json:"rank"`
 	FlowAmount float64 `json:"flowAmount"`
+}
+
+// SnapshotData is a rich real-time quote snapshot (level-1 market fields).
+// Values are numeric; providers parse from their upstream representations.
+type SnapshotData struct {
+	Code     string    `json:"code"`
+	Name     string    `json:"name"`
+	Price    float64   `json:"price"`
+	Open     float64   `json:"open"`
+	PreClose float64   `json:"preClose"`
+	High     float64   `json:"high"`
+	Low      float64   `json:"low"`
+	A1P      float64   `json:"a1p"` // 卖一报价：停牌/无成交时作为价格回退
+	B1P      float64   `json:"b1p"` // 买一报价：价格回退链在 PreClose 之前
+	Time     time.Time `json:"time"`
+}
+
+// SnapshotProvider provides rich real-time snapshots.
+type SnapshotProvider interface {
+	DataSourceProvider
+	GetSnapshot(ctx context.Context, code string) (*SnapshotData, error)
 }

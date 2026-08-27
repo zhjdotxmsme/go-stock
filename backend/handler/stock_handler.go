@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"go-stock/backend/data"
+	"go-stock/backend/data/datasource"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
 	"strings"
@@ -371,33 +373,43 @@ func (h *StockHandler) GetTdxSymbolBelongBoard(stockCode string) *[]data.MACBelo
 	return api.GetMACSymbolBelongBoard(stockCode)
 }
 
-// GetStockRealTimePrice 获取股票实时价格（当前价为 0 时依次回退卖一/买一/昨收）
+// GetStockRealTimePrice 获取股票实时价格（当前价为 0 时依次回退卖一/买一/昨收）。
+// 数据经 datasource Router 快照链（腾讯全字段 → 东财价格兜底），带缓存与降级。
 func (h *StockHandler) GetStockRealTimePrice(stockCode string) map[string]any {
-	stockDatas, err := data.NewStockDataApi().GetStockCodeRealTimeData(stockCode)
-	if err != nil || stockDatas == nil || len(*stockDatas) == 0 {
+	snap, err := datasource.GetRouter().GetSnapshot(context.Background(), stockCode)
+	if err != nil || snap == nil {
 		return map[string]any{
 			"code":    -1,
 			"message": "获取股票价格失败",
 			"price":   0,
 		}
 	}
-	stock := (*stockDatas)[0]
-	price, _ := convertor.ToFloat(stock.Price)
-	if price == 0 {
-		price, _ = convertor.ToFloat(stock.A1P)
-	}
-	if price == 0 {
-		price, _ = convertor.ToFloat(stock.B1P)
-	}
-	if price == 0 {
-		price, _ = convertor.ToFloat(stock.PreClose)
-	}
+	price, name := resolveSnapshotPrice(snap)
 	return map[string]any{
 		"code":    0,
 		"message": "success",
 		"price":   price,
-		"name":    stock.Name,
+		"name":    name,
 	}
+}
+
+// resolveSnapshotPrice 复刻原 StockInfo 快照的价格回退链：
+// 当前价 → 卖一 → 买一 → 昨收，返回 (price, name)。
+func resolveSnapshotPrice(snap *datasource.SnapshotData) (float64, string) {
+	if snap == nil {
+		return 0, ""
+	}
+	price := snap.Price
+	if price == 0 {
+		price = snap.A1P
+	}
+	if price == 0 {
+		price = snap.B1P
+	}
+	if price == 0 {
+		price = snap.PreClose
+	}
+	return price, snap.Name
 }
 
 // GetAllStockInfoList 获取股票基本信息列表（分页）

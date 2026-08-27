@@ -24,6 +24,7 @@ type Router struct {
 	newsProviders        []NewsProvider
 	fundamentalProviders []FundamentalProvider
 	sectorProviders      []SectorProvider
+	snapshotProviders    []SnapshotProvider
 	cache                *CacheLayer
 	flights              singleflight.Group
 }
@@ -39,6 +40,7 @@ var providerTimeouts = map[DataType]time.Duration{
 	DataTypeNews:        10 * time.Second,
 	DataTypeFundamental: 12 * time.Second,
 	DataTypeSector:      10 * time.Second,
+	DataTypeSnapshot:    8 * time.Second,
 }
 
 var (
@@ -140,6 +142,15 @@ func callWithProviderTimeout[T any](ctx context.Context, dt DataType, fn func(ct
 	}
 }
 
+// RegisterSnapshotProvider registers a rich-snapshot data source provider.
+func (r *Router) RegisterSnapshotProvider(p SnapshotProvider) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.snapshotProviders = append(r.snapshotProviders, p)
+	r.sortProviders()
+}
+
+// sortSnapshotProviders is handled by sortProviders; add the slice there too.
 // GetQuote gets quote data with automatic fallback through all registered providers.
 func (r *Router) GetQuote(ctx context.Context, code string) (*QuoteData, error) {
 	code = stockcode.Normalize(code)
@@ -405,4 +416,53 @@ func (r *Router) sortProviders() {
 	sort.SliceStable(r.newsProviders, func(i, j int) bool { return r.newsProviders[i].Priority() < r.newsProviders[j].Priority() })
 	sort.SliceStable(r.fundamentalProviders, func(i, j int) bool { return r.fundamentalProviders[i].Priority() < r.fundamentalProviders[j].Priority() })
 	sort.SliceStable(r.sectorProviders, func(i, j int) bool { return r.sectorProviders[i].Priority() < r.sectorProviders[j].Priority() })
+	sort.SliceStable(r.snapshotProviders, func(i, j int) bool { return r.snapshotProviders[i].Priority() < r.snapshotProviders[j].Priority() })
+}
+
+// GetSnapshot gets a rich real-time snapshot with automatic fallback.
+// Short cache TTL: snapshots back "real-time price" style reads, so they
+// must stay fresher than plain quotes.
+func (r *Router) GetSnapshot(ctx context.Context, code string) (*SnapshotData, error) {
+	code = stockcode.Normalize(code)
+	key := CacheKey(DataTypeSnapshot, code)
+
+	v, err, _ := r.flights.Do(key, func() (interface{}, error) {
+		return r.getSnapshotInner(ctx, code, key)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*SnapshotData), nil
+}
+
+func (r *Router) getSnapshotInner(ctx context.Context, code, key string) (interface{}, error) {
+	r.mu.RLock()
+	providers := r.snapshotProviders
+	r.mu.RUnlock()
+
+	if r.cache != nil {
+		d := &SnapshotData{}
+		if r.cache.GetInto(ctx, key, d) {
+			return d, nil
+		}
+	}
+
+	for _, p := range providers {
+		if !p.Available(ctx) {
+			logger.SugaredLogger.Debugf("datasource: %s unavailable, skipping", p.Name())
+			continue
+		}
+		data, err := callWithProviderTimeout(ctx, DataTypeSnapshot, func(c context.Context) (*SnapshotData, error) {
+			return p.GetSnapshot(c, code)
+		})
+		if err == nil {
+			logger.SugaredLogger.Infof("datasource: snapshot %s from %s", code, p.Name())
+			if r.cache != nil {
+				_ = r.cache.Set(ctx, key, string(DataTypeSnapshot), data, 15*time.Second)
+			}
+			return data, nil
+		}
+		skipLog("snapshot", code, p.Name(), err)
+	}
+	return nil, fmt.Errorf("GetSnapshot(%s): %w", code, ErrAllSourcesFailed)
 }

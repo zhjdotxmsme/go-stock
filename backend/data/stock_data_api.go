@@ -407,6 +407,9 @@ func (receiver StockDataApi) GetStockCodeRealTimeData(StockCodes ...string) (*[]
 			}
 			stockInfos = append(stockInfos, *stockData)
 			go func() {
+				if db.Dao == nil {
+					return // DB-less context (tests, early startup): skip the snapshot cache side effect
+				}
 				var count int64
 				db.Dao.Model(&StockInfo{}).Where("code = ?", stockData.Code).Count(&count)
 				if count == 0 {

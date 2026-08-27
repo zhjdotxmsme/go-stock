@@ -90,6 +90,7 @@ func initDataSources() {
 	fallback.RegisterNewsChain(router)
 	fallback.RegisterFundamentalChain(router)
 	fallback.RegisterSectorChain(router)
+	fallback.RegisterSnapshotChain(router)
 	fallback.RegisterFreeDataSources(router)
 
 	log.SugaredLogger.Info("data source router initialized with fallback chains")

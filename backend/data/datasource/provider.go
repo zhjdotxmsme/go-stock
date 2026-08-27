@@ -20,8 +20,10 @@ type (
 	NewsProvider        = datasource.NewsProvider
 	FundamentalProvider = datasource.FundamentalProvider
 	SectorProvider      = datasource.SectorProvider
+	SnapshotProvider    = datasource.SnapshotProvider
 
 	QuoteData       = datasource.QuoteData
+	SnapshotData    = datasource.SnapshotData
 	KLineData       = datasource.KLineData
 	KLineBar        = datasource.KLineBar
 	NewsItem        = datasource.NewsItem
@@ -36,6 +38,7 @@ const (
 	DataTypeNews        = datasource.DataTypeNews
 	DataTypeFundamental = datasource.DataTypeFundamental
 	DataTypeSector      = datasource.DataTypeSector
+	DataTypeSnapshot    = datasource.DataTypeSnapshot
 )
 
 // NormalizePeriod maps common named periods to numeric codes used by data sources.
