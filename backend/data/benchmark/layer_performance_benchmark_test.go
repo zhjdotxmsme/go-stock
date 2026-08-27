@@ -3,6 +3,7 @@ package benchmark
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )

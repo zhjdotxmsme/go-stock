@@ -58,7 +58,8 @@ func (s *DailyPickService) RunDailyPick(tradeDate string, topN int) ([]models.Da
 //	{stage:"busy",     message:string}       // another run is in progress
 //
 // The picks are persisted to the database as they complete.
-func (s *DailyPickService) RunDailyPickAsync(ctx context.Context, tradeDate string, topN int) {
+func (s *DailyPickService) RunDailyPickAsync(tradeDate string, topN int) {
+	ctx := context.Background()
 	if !s.asyncRunning.CompareAndSwap(false, true) {
 		runtime.EventsEmit(ctx, DailyPickProgressEvent, map[string]any{
 			"stage":   "busy",

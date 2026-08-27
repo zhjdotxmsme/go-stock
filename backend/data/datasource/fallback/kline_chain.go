@@ -18,12 +18,12 @@ func (p *TDXKLineProvider) Priority() int                     { return 10 }
 func (p *TDXKLineProvider) Available(ctx context.Context) bool { return true }
 
 func (p *TDXKLineProvider) GetKLine(ctx context.Context, code string, period string, count int) (*datasource.KLineData, error) {
-		tdx := data.NewTdxKLineApi()
-		if tdx == nil {
-			return nil, fmt.Errorf("tdx kline api not available")
-		}
-		period = datasource.NormalizePeriod(period)
-		kLines := tdx.GetKLineData(code, period, count)
+	tdx := data.NewTdxKLineApi()
+	if tdx == nil {
+		return nil, fmt.Errorf("tdx kline api not available")
+	}
+	period = datasource.NormalizePeriod(period)
+	kLines := tdx.GetKLineData(code, period, count)
 	if kLines == nil || len(*kLines) == 0 {
 		return nil, fmt.Errorf("tdx kline: empty result for %s", code)
 	}
@@ -43,9 +43,9 @@ func (p *EastMoneyKLineProvider) GetKLine(ctx context.Context, code string, peri
 	if em == nil {
 		return nil, fmt.Errorf("eastmoney kline api not available")
 	}
-		period = datasource.NormalizePeriod(period)
-		adjustFlag := "1" // 前复权
-		kLines := em.GetKLineData(code, period, adjustFlag, count)
+	period = datasource.NormalizePeriod(period)
+	adjustFlag := "1" // 前复权
+	kLines := em.GetKLineData(code, period, adjustFlag, count)
 	if kLines == nil || len(*kLines) == 0 {
 		// Try without adjust
 		kLines = em.GetKLineData(code, period, "", count)
@@ -61,9 +61,10 @@ func (p *EastMoneyKLineProvider) GetKLine(ctx context.Context, code string, peri
 func RegisterKLineChain(router *datasource.Router) {
 	router.RegisterKLineProvider(&TDXKLineProvider{})
 	router.RegisterKLineProvider(&EastMoneyKLineProvider{})
+	router.RegisterKLineProvider(NewYahooKLineProvider()) // Yahoo Finance: global stocks, indices
 }
 
-// convertKLineData converts legacy data.KLineData (string fields) to datasource.KLineData (float64 fields).
+// ConvertKLineData converts legacy data.KLineData (string fields) to datasource.KLineData (float64 fields).
 func ConvertKLineData(code, period string, src []data.KLineData) *datasource.KLineData {
 	dst := &datasource.KLineData{
 		Code:   code,

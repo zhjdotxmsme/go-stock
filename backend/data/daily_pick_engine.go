@@ -883,6 +883,12 @@ func (e *DailyPickEngine) prefetchResearchData(ctx context.Context, candidates [
 
 			doneCh := make(chan int, 1)
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logger.SugaredLogger.Warnf("daily_pick: research report panic for %s: %v", code, r)
+						doneCh <- 0
+					}
+				}()
 				reports := NewMarketNewsApi().StockResearchReport(code, 30)
 				if reports != nil {
 					doneCh <- len(reports)

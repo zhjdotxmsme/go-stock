@@ -86,18 +86,26 @@ func (h *MarketHandler) GetUplimitHot(date string, limit int) map[string]any {
 
 func (h *MarketHandler) IsTradingTime() bool {
 	loc, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
+	if err != nil || loc == nil {
 		loc = shanghaiTimezone
 	}
-	return isTradingTime(time.Now().In(loc))
+	now := time.Now()
+	if loc != nil {
+		now = now.In(loc)
+	}
+	return isTradingTime(now)
 }
 
 func (h *MarketHandler) IsHKTradingTime() bool {
 	loc, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
+	if err != nil || loc == nil {
 		loc = shanghaiTimezone
 	}
-	return isHKTradingTime(time.Now().In(loc))
+	now := time.Now()
+	if loc != nil {
+		now = now.In(loc)
+	}
+	return isHKTradingTime(now)
 }
 
 func (h *MarketHandler) IsUSTradingTime() bool {
@@ -111,7 +119,7 @@ func (h *MarketHandler) IsTradingDay(date string) bool {
 		return false
 	}
 	loc, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
+	if err != nil || loc == nil {
 		loc = shanghaiTimezone
 	}
 	t, err := time.ParseInLocation("2006-01-02", date, loc)
@@ -123,10 +131,13 @@ func (h *MarketHandler) IsTradingDay(date string) bool {
 
 func (h *MarketHandler) GetLatestTradingDay() string {
 	loc, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
+	if err != nil || loc == nil {
 		loc = shanghaiTimezone
 	}
-	now := time.Now().In(loc)
+	now := time.Now()
+	if loc != nil {
+		now = now.In(loc)
+	}
 	if isTradingDay(now) {
 		hour, minute, _ := now.Clock()
 		if hour < 15 || (hour == 15 && minute == 0) {

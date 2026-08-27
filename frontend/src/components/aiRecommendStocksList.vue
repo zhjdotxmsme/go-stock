@@ -7,11 +7,8 @@ import sparkLine from "./stockSparkLine.vue"
 import {format} from "date-fns";
 
 const notify = useNotification()
-const vipLevel=ref("");
-const vipStartTime=ref("");
-const vipEndTime=ref("");
-const expired=ref(false)
-const isValidVip=ref(false) // 是否是会员
+const vipLevel=ref("2");
+const isValidVip=ref(true) // 是否会员：VIP功能已免费开放
 
 // ── L1 Overview Stats ──
 const statsRef = ref(null) // AiRecommendStats
@@ -21,23 +18,6 @@ onBeforeMount(()=> {
     if (result.darkTheme) {
       editorDataRef.darkTheme = true
     }
-  })
-
-  systemApi.getSponsorInfo().then(({data: res}) => {
-   // console.log(res)
-    vipLevel.value = res.vipLevel;
-    vipStartTime.value = res.vipStartTime;
-    vipEndTime.value = res.vipEndTime;
-    //判断时间是否到期
-    if (res.vipLevel) {
-      if (res.vipEndTime < format(new Date(), 'yyyy-MM-dd HH:mm:ss')) {
-        //notify.warning({content: 'VIP已到期'})
-        expired.value = true;
-      }
-    }else{
-      //notify.success({content: '未开通VIP'})
-    }
-    isValidVip.value = !(vipLevel.value === "" || Number(vipLevel.value) <= 0);
   })
 })
 onMounted(() => {

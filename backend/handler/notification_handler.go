@@ -252,7 +252,7 @@ func checkHKHolidayAPI(date string) (isHoliday bool, apiOk bool) {
 func isUSTradingTime(date time.Time) bool {
 	est, err := time.LoadLocation("America/New_York")
 	var estTime time.Time
-	if err != nil {
+	if err != nil || est == nil {
 		estTime = date.Add(time.Hour * -12)
 	} else {
 		estTime = date.In(est)

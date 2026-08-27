@@ -22,20 +22,6 @@ export type SessionMessage = {
   time?: string;
 };
 
-export type VipStatus = {
-  ok: boolean;
-  vipLevel: number;
-  active: boolean;
-  message?: string;
-};
-
-/** 与桌面端一致：当前 data 配置下是否为 VIP2+ 且赞助在有效期内 */
-export async function getVipStatus(): Promise<VipStatus> {
-  const res = await fetch("/api/vip-status");
-  if (!res.ok) throw new Error(await res.text());
-  return await res.json();
-}
-
 export async function getAiConfigs(): Promise<AiConfig[]> {
   const res = await fetch("/api/ai-configs");
   if (!res.ok) throw new Error(await res.text());

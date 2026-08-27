@@ -72,5 +72,6 @@ func (p *SinaQuoteProvider) GetQuote(ctx context.Context, code string) (*datasou
 func RegisterQuoteChain(router *datasource.Router) {
 	router.RegisterQuoteProvider(&TDXQuoteProvider{})
 	router.RegisterQuoteProvider(&EastMoneyQuoteProvider{})
+	router.RegisterQuoteProvider(NewYahooQuoteProvider()) // Yahoo Finance: global stocks, indices, commodities
 	router.RegisterQuoteProvider(&SinaQuoteProvider{})
 }

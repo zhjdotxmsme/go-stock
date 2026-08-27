@@ -208,15 +208,7 @@ export async function deletePromptTemplate(id: number): Promise<any> {
   return callApi(AnalysisHandler.DeletePromptTemplate, id)
 }
 
-// ========== 赞助/用户 ==========
-
-/**
- * 获取赞助信息
- * Go: GetSponsorInfo() map[string]any
- */
-export async function getSponsorInfo(): Promise<any> {
-  return callApi(SystemHandler.GetSponsorInfo)
-}
+// ========== 用户手册 ==========
 
 /**
  * 获取用户手册
@@ -224,14 +216,6 @@ export async function getSponsorInfo(): Promise<any> {
  */
 export async function getUserManual(): Promise<any> {
   return callApi(SystemHandler.GetUserManual)
-}
-
-/**
- * 检查赞助码
- * Go: CheckSponsorCode(code string) map[string]any
- */
-export async function checkSponsorCode(code: string): Promise<any> {
-  return callApi(SystemHandler.CheckSponsorCode, code)
 }
 
 // ========== 配置管理 ==========
@@ -687,10 +671,8 @@ export default {
 
 
 
-  // 赞助/用户
-  getSponsorInfo,
+  // 用户手册
   getUserManual,
-  checkSponsorCode,
 
   // 配置管理
   exportConfig,

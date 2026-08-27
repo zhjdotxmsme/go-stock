@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"go-stock/backend/data"
-	"go-stock/backend/data/models"
 )
 
 func TestStockApiIntegration_GetStockCodeRealTimeDataWithFallback(t *testing.T) {
@@ -226,7 +225,7 @@ func TestStockApiIntegration_MixedDataFetching(t *testing.T) {
 	t.Logf("Successfully fetched %d sentiment records", len(sentimentData))
 
 	// 3. Get capital flow data
-	capitalFlowData, err := integration.GetStockCapitalFlow(ctx, "sh600000", "2024-01-15")
+	_, err = integration.GetStockCapitalFlow(ctx, "sh600000", "2024-01-15")
 	if err != nil {
 		t.Fatalf("GetStockCapitalFlow() failed: %v", err)
 	}

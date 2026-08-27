@@ -69,7 +69,15 @@ func (f *FredApi) GetObservations(seriesID string, limit int) ([]FredObservation
 		url = fmt.Sprintf("%s&limit=%d", url, limit)
 	}
 
-	resp, err := f.client.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fred request create: %w", err)
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/csv,application/json")
+	req.Header.Set("Referer", "https://fred.stlouisfed.org/")
+
+	resp, err := f.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fred observations request: %w", err)
 	}
@@ -190,9 +198,9 @@ func (f *FredApi) GetBreakEvenInflation10Y() (float64, error) {
 	return f.GetLatestValue("T10YIE")
 }
 
-// GetBreakEvenInflation30Y fetches 30-Year Breakeven Inflation Rate
+// GetBreakEvenInflation30Y fetches 30-Year Breakeven Inflation Rate (monthly)
 func (f *FredApi) GetBreakEvenInflation30Y() (float64, error) {
-	return f.GetLatestValue("T30YIE")
+	return f.GetLatestValue("T30YIEM")
 }
 
 // GetVIX fetches the latest CBOE Volatility Index (VIX)

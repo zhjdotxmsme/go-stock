@@ -64,10 +64,13 @@ func checkHolidayAPI(date string) (isHoliday bool, apiOk bool) {
 
 func preCacheTradingDays() {
 	loc, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
+	if err != nil || loc == nil {
 		loc = ShanghaiTimezone
 	}
-	now := time.Now().In(loc)
+	now := time.Now()
+	if loc != nil {
+		now = now.In(loc)
+	}
 	go func() {
 		for i := -7; i <= 7; i++ {
 			d := now.AddDate(0, 0, i)
@@ -190,7 +193,7 @@ func checkHKHolidayAPI(date string) (isHoliday bool, apiOk bool) {
 func IsUSTradingTime(date time.Time) bool {
 	est, err := time.LoadLocation("America/New_York")
 	var estTime time.Time
-	if err != nil {
+	if err != nil || est == nil {
 		estTime = date.Add(time.Hour * -12)
 	} else {
 		estTime = date.In(est)

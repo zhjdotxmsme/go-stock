@@ -2559,7 +2559,9 @@ func (receiver StockDataApi) GetStockRZRQInfo(stockCode string) models.StockRZRQ
 
 // AddTradingRecord 添加交易日志
 func (receiver StockDataApi) AddTradingRecord(record TradingRecord) (uint, error) {
-	record.TradingTime = record.TradingTime.In(time.Local)
+	if record.TradingTime.Location() != nil {
+		record.TradingTime = record.TradingTime.In(time.Local)
+	}
 
 	// 检查频繁交易
 	if record.Direction == "买入" {
@@ -2651,7 +2653,9 @@ func (receiver StockDataApi) resolveTradingRecordClosePrice(apiCode string, trad
 	if strings.TrimSpace(apiCode) == "" {
 		return fallback
 	}
-	tradingTime = tradingTime.In(time.Local)
+	if tradingTime.Location() != nil {
+		tradingTime = tradingTime.In(time.Local)
+	}
 	now := time.Now()
 	tradingDateStr := tradingTime.Format("2006-01-02")
 	todayStr := now.Format("2006-01-02")
@@ -2792,7 +2796,12 @@ func (receiver StockDataApi) GetTradingRecordList(query TradingRecordListQuery) 
 	for _, r := range allGlobal {
 		_, need := needProfitByID[r.ID]
 		apiCode := normalizeTradingRecordAPI(r.StockCode)
-		tradingDateStr := r.TradingTime.In(time.Local).Format("2006-01-02")
+		var tradingDateStr string
+		if r.TradingTime.Location() != nil {
+			tradingDateStr = r.TradingTime.In(time.Local).Format("2006-01-02")
+		} else {
+			tradingDateStr = r.TradingTime.Format("2006-01-02")
+		}
 
 		if r.Direction == "买入" {
 			if need {
@@ -3005,7 +3014,9 @@ func (receiver StockDataApi) UpdateTradingRecord(record TradingRecord) error {
 	// 自动计算金额（价格 * 数量）
 	record.Amount = record.Price * float64(record.Volume)
 
-	record.TradingTime = record.TradingTime.In(time.Local)
+	if record.TradingTime.Location() != nil {
+		record.TradingTime = record.TradingTime.In(time.Local)
+	}
 
 	receiver.fillTradingRecordCloseSnapshot(&record)
 

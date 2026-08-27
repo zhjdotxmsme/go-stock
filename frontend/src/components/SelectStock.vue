@@ -108,7 +108,6 @@ const traceInfo = ref('')
 const tableScrollX = ref(2800)
 const leftTab = ref('hot')
 const showSaveModal = ref(false)
-const vipLevel = ref(0)
 const darkTheme = ref(false)
 const klineModalShow = ref(false)
 const klineStockCode = ref('')
@@ -293,14 +292,6 @@ async function Search() {
   })
 }
 
-function refreshEffectiveVip() {
-  return stockApi.getEffectiveSponsorVip().then(({data: res}) => {
-    if (res) {
-      vipLevel.value = res.vipLevel || 0
-    }
-  }).catch(() => {})
-}
-
 function toEastMoneyCode(stockCode, marketShortName) {
   const m = (marketShortName || '').toUpperCase()
   if (m === 'SH' || m === 'SZ' || m === 'BJ') return stockCode + '.' + m
@@ -321,21 +312,10 @@ function showStockKline(row) {
     message.warning('当前代码暂不支持K线图')
     return
   }
-  refreshEffectiveVip().then(() => {
-    klineStockCode.value = em
-    klineStockName.value = stockName || ''
-    if (vipLevel.value < 2) {
-      message.warning('K线图仅限 VIP2 及以上用户使用，您当前权限不足，将在 10 秒后自动关闭')
-      klineModalShow.value = true
-      if (klineAutoCloseTimer) clearTimeout(klineAutoCloseTimer)
-      klineAutoCloseTimer = setTimeout(() => {
-        klineModalShow.value = false
-      }, 10000)
-      return
-    }
-    klineModalShow.value = true
-    if (klineAutoCloseTimer) clearTimeout(klineAutoCloseTimer)
-  })
+  klineStockCode.value = em
+  klineStockName.value = stockName || ''
+  klineModalShow.value = true
+  if (klineAutoCloseTimer) clearTimeout(klineAutoCloseTimer)
 }
 
 function handleFollow(row) {

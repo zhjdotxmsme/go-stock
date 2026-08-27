@@ -21,6 +21,13 @@ type CommodityEngine struct {
 }
 
 func NewCommodityEngine(aiConfigID int) *CommodityEngine {
+	if aiConfigID <= 0 {
+		// Auto-select first available AI config as default
+		cfg := data.GetSettingConfig()
+		if cfg != nil && len(cfg.AiConfigs) > 0 {
+			aiConfigID = int(cfg.AiConfigs[0].ID)
+		}
+	}
 	return &CommodityEngine{aiConfigID: aiConfigID}
 }
 

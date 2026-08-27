@@ -179,7 +179,6 @@ func TestCacheDoesNotCauseDataStaleness(t *testing.T) {
 	t.Log("Testing that cache does not cause data staleness...")
 
 	originalApi := &data.StockDataApi{}
-	ctx := context.Background()
 
 	// First request (cache miss)
 	firstResult, err := originalApi.GetStockCodeRealTimeData("sh600000")
@@ -258,8 +257,6 @@ func TestLayerFallbackMechanismWorks(t *testing.T) {
 // TestMultipleLayerTypesCoexistPeacefully
 func TestMultipleLayerTypesCoexistPeacefully(t *testing.T) {
 	t.Log("Testing that multiple layer types can coexist peacefully...")
-
-	ctx := context.Background()
 
 	// Create multiple layers simultaneously
 	marketConfig := &types.DataSourceConfig{

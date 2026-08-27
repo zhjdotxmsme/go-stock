@@ -66,8 +66,8 @@ func (c *CommodityApi) GetQuoteIntl(code string) (*datasource.QuoteData, error) 
 		return nil, fmt.Errorf("%s 无国际参考代码", asset.Code)
 	}
 
-	yahoo := &YahooFinanceApi{}
-	quote, err := yahoo.GetQuote(asset.Code)
+		yahoo := NewYahooFinanceApi()
+	quote, err := yahoo.GetQuoteNoCtx(asset.Code)
 	if err != nil {
 		return nil, fmt.Errorf("国际参考行情获取失败: %w", err)
 	}
@@ -88,8 +88,8 @@ func (c *CommodityApi) getSpotQuote(asset *models.CommodityAsset) (*datasource.Q
 	}
 
 	// 其他现货: Yahoo 优先
-	yahoo := &YahooFinanceApi{}
-	quote, err := yahoo.GetQuote(asset.Code)
+		yahoo := NewYahooFinanceApi()
+	quote, err := yahoo.GetQuoteNoCtx(asset.Code)
 	if err == nil {
 		quote.Name = asset.Name
 		return quote, nil
@@ -148,8 +148,8 @@ func (c *CommodityApi) getFuturesQuote(asset *models.CommodityAsset) (*datasourc
 }
 
 func (c *CommodityApi) getFuturesQuoteFromYahoo(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
-	yahoo := &YahooFinanceApi{}
-	quote, err := yahoo.GetQuote(asset.Code)
+		yahoo := NewYahooFinanceApi()
+	quote, err := yahoo.GetQuoteNoCtx(asset.Code)
 	if err != nil {
 		return nil, err
 	}
@@ -389,13 +389,14 @@ func (c *CommodityApi) GetKLineIntl(code string, period string, count int) ([]da
 		return nil, fmt.Errorf("%s 无国际参考代码", asset.Code)
 	}
 
-	yahoo := &YahooFinanceApi{}
-	return yahoo.GetKLine(asset.Code, period, count)
+		yahoo := NewYahooFinanceApi()
+	return yahoo.GetKLineNoCtx(asset.Code, period, count)
 }
 
 func (c *CommodityApi) getSpotKLine(asset *models.CommodityAsset, period string, count int) ([]datasource.KLineBar, error) {
-	yahoo := &YahooFinanceApi{}
-	bars, err := yahoo.GetKLine(asset.Code, period, count)
+		yahoo := NewYahooFinanceApi()
+	// YahooFinanceApi 内部有 Code→Yahoo符号映射表(yahooCommoditySymbols)，传 Code 即可
+	bars, err := yahoo.GetKLineNoCtx(asset.Code, period, count)
 	if err == nil {
 		return bars, nil
 	}
@@ -469,8 +470,9 @@ func (c *CommodityApi) getFuturesKLine(asset *models.CommodityAsset, period stri
 }
 
 func (c *CommodityApi) getFuturesKLineFromYahoo(asset *models.CommodityAsset, period string, count int) ([]datasource.KLineBar, error) {
-	yahoo := &YahooFinanceApi{}
-	return yahoo.GetKLine(asset.Code, period, count)
+		yahoo := NewYahooFinanceApi()
+	// YahooFinanceApi 内部有 Code→Yahoo符号映射表，直接传 Code
+	return yahoo.GetKLineNoCtx(asset.Code, period, count)
 }
 
 func (c *CommodityApi) getFuturesKLineFromSina(asset *models.CommodityAsset, period string, count int) ([]datasource.KLineBar, error) {
@@ -730,14 +732,14 @@ func (c *CommodityApi) GetMacroIndicatorsEnhanced() (*MacroSnapshotEnhanced, err
 	}
 
 	// 2. Yahoo Finance: TLT + TIP ETF 实时价格
-	yahoo := &YahooFinanceApi{}
-	if tltQuote, err := yahoo.GetQuote("TLT"); err == nil {
+		yahoo := NewYahooFinanceApi()
+	if tltQuote, err := yahoo.GetQuoteNoCtx("TLT"); err == nil {
 		enhanced.TLTPrice = tltQuote.Price
 		enhanced.TLTChangePct = tltQuote.ChangePct
 	} else {
 		logger.SugaredLogger.Warnf("Yahoo TLT quote failed: %v", err)
 	}
-	if tipQuote, err := yahoo.GetQuote("TIP"); err == nil {
+	if tipQuote, err := yahoo.GetQuoteNoCtx("TIP"); err == nil {
 		enhanced.TIPPrice = tipQuote.Price
 		enhanced.TIPChangePct = tipQuote.ChangePct
 	} else {

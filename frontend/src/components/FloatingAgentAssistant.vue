@@ -178,7 +178,7 @@ const {
 
 // ---- 会话管理与面板开合（agent/useChatSession） ----
 const {
-  sessionId, panelVisible, vipLevel,
+  sessionId, panelVisible,
   loadHistory, saveHistory, openPanel, closePanel, togglePanel, scrollToBottom,
 } = useChatSession({ messages, scrollbarRef, message, initDefaultExpanded })
 

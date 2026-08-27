@@ -229,14 +229,6 @@ export async function getAIResponseResult(stock: string): Promise<any> {
   return callApi(AnalysisHandler.GetAIResponseResult, stock)
 }
 
-/**
- * 获取有效赞助商 VIP 信息
- * Go: GetEffectiveSponsorVip() map[string]any
- */
-export async function getEffectiveSponsorVip(): Promise<any> {
-  return callApi(SystemHandler.GetEffectiveSponsorVip)
-}
-
 // ========== 保存/分享 ==========
 
 /**
@@ -462,7 +454,6 @@ export default {
   // AI 分析
   newChatStream,
   getAIResponseResult,
-  getEffectiveSponsorVip,
   aiConfiguredStockPick,
 
   // 保存/分享

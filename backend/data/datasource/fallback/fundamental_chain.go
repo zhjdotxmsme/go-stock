@@ -19,7 +19,6 @@ func (p *TushareFundamentalProvider) GetFundamental(ctx context.Context, code st
 	reports := data.GetFinancialReports(code, 30)
 	if reports != nil && len(*reports) > 0 {
 		logger.SugaredLogger.Infof("datasource: fundamental %s from tushare (%d reports)", code, len(*reports))
-		// Return a basic FundamentalData with the raw report text
 		return &datasource.FundamentalData{
 			Revenue:   float64(len(*reports)),
 			NetProfit: 0,
@@ -46,7 +45,9 @@ func (p *EastMoneyFundamentalProvider) GetFundamental(ctx context.Context, code 
 	return nil, fmt.Errorf("eastmoney fundamental: empty for %s", code)
 }
 
+// RegisterFundamentalChain registers all fundamental providers with the router.
 func RegisterFundamentalChain(router *datasource.Router) {
 	router.RegisterFundamentalProvider(&TushareFundamentalProvider{})
 	router.RegisterFundamentalProvider(&EastMoneyFundamentalProvider{})
+	router.RegisterFundamentalProvider(NewYahooFundamentalProvider()) // Yahoo Finance: global stocks fundamentals
 }

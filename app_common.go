@@ -16,5 +16,8 @@ func GetShanghaiTime() time.Time {
 }
 
 func FormatShanghaiTime(t time.Time) string {
+	if ShanghaiTimezone == nil {
+		return t.Format("2006-01-02 15:04:05")
+	}
 	return t.In(ShanghaiTimezone).Format("2006-01-02 15:04:05")
 }

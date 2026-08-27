@@ -272,7 +272,7 @@ func (h *HotMoneyTracker) calculateRiskLevel(seats []*HotMoneySeat, trend string
 			return "中风险"
 		}
 	} else if trend == "持续流入" {
-		return "中等风险"
+		return "中风险"
 	} else if totalAmount > 30000000 {
 		return "中风险"
 	} else {

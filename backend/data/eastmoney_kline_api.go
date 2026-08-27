@@ -390,6 +390,13 @@ func (receiver *EastMoneyKLineApi) convertStockCode(stockCode string) string {
 		if len(parts) == 2 {
 			code := parts[0]
 			market := parts[1]
+			// 清理 code 中的非数字前缀（如 "中国西电 - 601179" → "601179"）
+			if !validator.IsNumber(code) {
+				code = extractNumericCode(code)
+				if code == "" {
+					return stockCode
+				}
+			}
 
 			switch market {
 			case "SH", "SS":
@@ -447,6 +454,25 @@ func (receiver *EastMoneyKLineApi) convertStockCode(stockCode string) string {
 	}
 
 	return stockCode
+}
+
+// extractNumericCode extracts the last 6-digit numeric code from a mixed string like "中国西电 - 601179".
+func extractNumericCode(s string) string {
+	var nums []rune
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			nums = append(nums, r)
+		}
+	}
+	if len(nums) == 0 {
+		return ""
+	}
+	result := string(nums)
+	// Take last 6 digits as the stock code
+	if len(result) > 6 {
+		result = result[len(result)-6:]
+	}
+	return result
 }
 
 // getAdjustType 获取复权类型对应的数字

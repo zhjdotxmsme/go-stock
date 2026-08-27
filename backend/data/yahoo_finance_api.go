@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -8,9 +9,12 @@ import (
 	"go-stock/backend/logger"
 	"net"
 	"net/http"
+	"net/url"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -61,18 +65,16 @@ func getYahooClient() *resty.Client {
 	return yahooHTTPClient
 }
 
-// YahooFinanceApi 提供 Yahoo Finance 行情与 K 线数据，作为商品现货 fallback。
-// Yahoo 商品代码：黄金 GC=F、白银 SI=F、原油 CL=F。
-type YahooFinanceApi struct{}
+// --- Package-level fetch functions (shared by all Yahoo API clients) ---
 
 // yahooFetch 使用专用 HTTP 客户端请求 Yahoo API，支持子域名轮询与超时重试。
 // 如果 HTTP 方式均被限流，Windows 下降级到 PowerShell（WinHTTP，不受 TLS 指纹限流影响）。
-func (y *YahooFinanceApi) yahooFetch(url string) ([]byte, error) {
+func yahooFetch(urlStr string) ([]byte, error) {
 	// 如果之前 HTTP 已被限流过，直接跳过 HTTP 尝试
 	if !isYahooRateLimited() {
 		for _, sub := range []string{"query1", "query2"} {
-			altURL := strings.Replace(url, "query1.finance.yahoo.com", sub+".finance.yahoo.com", 1)
-			body, err := y.yahooDoRequest(altURL)
+			altURL := strings.Replace(urlStr, "query1.finance.yahoo.com", sub+".finance.yahoo.com", 1)
+			body, err := yahooDoRequest(altURL)
 			if err == nil {
 				return body, nil
 			}
@@ -80,23 +82,36 @@ func (y *YahooFinanceApi) yahooFetch(url string) ([]byte, error) {
 		markYahooRateLimited() // 所有 HTTP 子域名均失败，标记限流
 	}
 	// HTTP 方式失败（通常是被限流），降级到 PowerShell WinHTTP（仅 Windows 可用）
-	body, err := y.yahooFetchViaPowerShell(url)
+	body, err := yahooFetchViaPowerShell(urlStr)
 	if err == nil {
-		logger.SugaredLogger.Infof("Yahoo PowerShell fallback succeeded for %s", url)
+		logger.SugaredLogger.Infof("Yahoo PowerShell fallback succeeded for %s", urlStr)
 		return body, nil
 	}
 	return nil, fmt.Errorf("yahoo all subdomains (and PowerShell fallback) failed")
 }
 
+// yahooFetchViaPowerShell 通过 PowerShell 的 Invoke-WebRequest（WinHTTP）发起请求，
+// 绕过 Go TLS 指纹被 Yahoo 限流的问题。
+func yahooFetchViaPowerShell(urlStr string) ([]byte, error) {
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+		`try { $r = Invoke-WebRequest -Uri '`+urlStr+`' -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop; Write-Output $r.Content } catch { exit 1 }`)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("yahoo powershell fallback: %w", err)
+	}
+	return out, nil
+}
+
 // yahooDoRequest 执行一次 Yahoo API 请求
-func (y *YahooFinanceApi) yahooDoRequest(url string) ([]byte, error) {
+func yahooDoRequest(urlStr string) ([]byte, error) {
 	client := getYahooClient()
 	resp, err := client.R().
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
 		SetHeader("Accept", "application/json").
 		SetHeader("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8").
 		SetHeader("Accept-Encoding", "gzip, deflate").
-		Get(url)
+		Get(urlStr)
 	if err != nil {
 		return nil, fmt.Errorf("yahoo request: %w", err)
 	}
@@ -111,41 +126,46 @@ func (y *YahooFinanceApi) yahooDoRequest(url string) ([]byte, error) {
 	return body, nil
 }
 
-var yahooCommoditySymbols = map[string]string{
-	// 国际现货
-	"XAUUSD": "GC=F",  // COMEX 黄金期货
-	"XAGUSD": "SI=F",  // COMEX 白银期货
-	"USCL":   "CL=F",  // WTI 原油期货
-	"XAU":    "XAU=X", // 伦敦金现货
-	"XAG":    "XAG=X", // 伦敦银现货
-	"USCO":   "BZ=F",  // 布伦特原油期货
-	// 国内期货主力合约映射到国际期货，作为 Sina 失效时的 fallback。
-	"AU": "GC=F",
-	"AG": "SI=F",
-	"SC": "CL=F",
-	// 基金
-	"161226": "161226.SZ", // 国投白银LOF
-	// 宏观指标 ETF
-	"TLT": "TLT", // iShares 20+ Year Treasury Bond ETF
-	"TIP": "TIP", // iShares TIPS Bond ETF
+// --- Package-level fetch functions (shared by all Yahoo API clients) ---
+
+// YahooFinanceApi 提供 Yahoo Finance 行情与 K 线数据，支持全球市场。
+type YahooFinanceApi struct {
+	resolver *YahooSymbolResolver // 新增：全局代码解析器
 }
 
+// NewYahooFinanceApi creates a Yahoo Finance API client with global symbol resolution.
+func NewYahooFinanceApi() *YahooFinanceApi {
+	return &YahooFinanceApi{
+		resolver: NewYahooSymbolResolver(),
+	}
+}
+
+// resolveSymbol resolves go-stock code to Yahoo Finance symbol.
+// First tries the global resolver, then falls back to legacy commodity mapping.
 func (y *YahooFinanceApi) resolveSymbol(code string) (string, error) {
-	if sym, ok := yahooCommoditySymbols[code]; ok {
+	// Try global resolver first (safe for nil resolver)
+	if y.resolver != nil {
+		if sym, err := y.resolver.Resolve(code); err == nil {
+			return sym, nil
+		}
+	}
+	// Fallback to legacy commodity mapping (for backward compatibility)
+	if sym, ok := yahooCommoditySymbols[strings.ToLower(code)]; ok {
 		return sym, nil
 	}
 	return "", fmt.Errorf("Yahoo Finance 不支持品种: %s", code)
 }
 
 // GetQuote 获取实时行情，使用 Yahoo Finance chart API (range=1d)。
-func (y *YahooFinanceApi) GetQuote(code string) (*datasource.QuoteData, error) {
+// This is the Provider interface implementation (with context).
+func (y *YahooFinanceApi) GetQuote(ctx context.Context, code string) (*datasource.QuoteData, error) {
 	symbol, err := y.resolveSymbol(code)
 	if err != nil {
 		return nil, err
 	}
 
-	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=1d", symbol)
-	body, err := y.yahooFetch(url)
+	urlStr := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=1d", url.QueryEscape(symbol))
+	body, err := yahooFetch(urlStr)
 	if err != nil {
 		return nil, err
 	}
@@ -181,14 +201,9 @@ func (y *YahooFinanceApi) GetQuote(code string) (*datasource.QuoteData, error) {
 		changePct = change / prevClose * 100
 	}
 
-	name := code
-	switch code {
-	case "XAUUSD", "AU":
-		name = "黄金"
-	case "XAGUSD", "AG":
-		name = "白银"
-	case "USCL", "SC":
-		name = "原油"
+	name := meta.Symbol
+	if name == "" {
+		name = code
 	}
 
 	return &datasource.QuoteData{
@@ -198,12 +213,17 @@ func (y *YahooFinanceApi) GetQuote(code string) (*datasource.QuoteData, error) {
 		Change:    change,
 		ChangePct: changePct,
 		Time:      time.Now(),
+		Extra: map[string]interface{}{
+			"currency": meta.Currency,
+			"source":   "yahoo",
+		},
 	}, nil
 }
 
 // GetKLine 获取历史 K 线。
 // period 支持 day/week/month；count 用于估算 range。
-func (y *YahooFinanceApi) GetKLine(code, period string, count int) ([]datasource.KLineBar, error) {
+// This is the Provider interface implementation (with context).
+func (y *YahooFinanceApi) GetKLine(ctx context.Context, code, period string, count int) (*datasource.KLineData, error) {
 	symbol, err := y.resolveSymbol(code)
 	if err != nil {
 		return nil, err
@@ -218,8 +238,8 @@ func (y *YahooFinanceApi) GetKLine(code, period string, count int) ([]datasource
 	}
 
 	rangeParam := yahooRangeForCount(count, period)
-	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=%s&range=%s", symbol, interval, rangeParam)
-	body, err := y.yahooFetch(url)
+	urlStr := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=%s&range=%s", url.QueryEscape(symbol), interval, rangeParam)
+	body, err := yahooFetch(urlStr)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +249,37 @@ func (y *YahooFinanceApi) GetKLine(code, period string, count int) ([]datasource
 		return nil, fmt.Errorf("yahoo kline parse: %w", err)
 	}
 
-	return yahooBarsFromChart(chart, code, count)
+	bars, err := yahooBarsFromChart(chart, code, count)
+	if err != nil {
+		return nil, err
+	}
+
+	return &datasource.KLineData{
+		Code:   code,
+		Period: period,
+		Bars:   bars,
+	}, nil
+}
+
+// GetKLineBars 获取历史 K 线条（兼容旧接口）
+func (y *YahooFinanceApi) GetKLineBars(code, period string, count int) ([]datasource.KLineBar, error) {
+	kd, err := y.GetKLine(context.Background(), code, period, count)
+	if err != nil {
+		return nil, err
+	}
+	return kd.Bars, nil
+}
+
+// --- Backward-compatible methods (no context, used by commodity_api.go and others) ---
+
+// GetQuoteNoCtx is the backward-compatible version without context parameter.
+func (y *YahooFinanceApi) GetQuoteNoCtx(code string) (*datasource.QuoteData, error) {
+	return y.GetQuote(context.Background(), code)
+}
+
+// GetKLineNoCtx is the backward-compatible version without context parameter.
+func (y *YahooFinanceApi) GetKLineNoCtx(code, period string, count int) ([]datasource.KLineBar, error) {
+	return y.GetKLineBars(code, period, count)
 }
 
 // yahooRangeForCount 根据期望条数和周期选择 Yahoo range 参数。

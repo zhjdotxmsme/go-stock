@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,7 +17,6 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/coocood/freecache"
 	"github.com/duke-git/lancet/v2/convertor"
-	"github.com/duke-git/lancet/v2/cryptor"
 	"github.com/duke-git/lancet/v2/slice"
 	"github.com/duke-git/lancet/v2/strutil"
 	"github.com/inconshreveable/go-update"
@@ -117,7 +115,11 @@ func (h *SystemHandler) removeCronEntry(key string) {
 // -------------------- Config / VIP / About --------------------
 
 func (h *SystemHandler) GetSponsorInfo() map[string]any {
-	return h.sponsorInfo
+	return map[string]any{
+		"vipLevel":     "2",
+		"vipStartTime": "2000-01-01 00:00:00",
+		"vipEndTime":   "2099-12-31 23:59:59",
+	}
 }
 
 // GetEffectiveSponsorVip 从本地配置解密赞助信息并判断当前是否在 VIP 有效期内。
@@ -175,66 +177,14 @@ func (h *SystemHandler) CheckDeviceBinding(token string, apiBase string) map[str
 }
 
 func (h *SystemHandler) CheckSponsorCode(sponsorCode string) map[string]any {
-	sponsorCode = strutil.Trim(sponsorCode)
-	if sponsorCode != "" {
-		encrypted, err := hex.DecodeString(sponsorCode)
-		if err != nil {
-			return map[string]any{
-				"code": 0,
-				"msg":  "赞助码格式错误,请输入正确的赞助码!",
-			}
-		}
-		key, err := hex.DecodeString(h.buildKey)
-		if err != nil {
-			logger.SugaredLogger.Error(err.Error())
-			return map[string]any{
-				"code": 0,
-				"msg":  "版本错误，不支持赞助码!",
-			}
-		}
-		decrypt := cryptor.AesEcbDecrypt(encrypted, key)
-		if decrypt == nil || len(decrypt) == 0 {
-			return map[string]any{
-				"code": 0,
-				"msg":  "赞助码错误，请输入正确的赞助码!",
-			}
-		}
-
-		config := data.GetSettingConfig()
-		if config.SponsorCode != sponsorCode {
-			config.SponsorCode = sponsorCode
-			data.UpdateConfig(config)
-		}
-
-		return map[string]any{
-			"code": 1,
-			"msg":  "赞助码校验成功，感谢您的支持!",
-		}
+	_ = sponsorCode
+	return map[string]any{
+		"code": 1,
+		"msg":  "感谢您的支持!",
 	}
-	return map[string]any{"code": 0, "message": "赞助码不能为空,请输入正确的赞助码!"}
 }
 
 func (h *SystemHandler) CheckUpdate(flag int) {
-	sponsorCode := strutil.Trim(h.GetConfig().SponsorCode)
-	if sponsorCode != "" {
-		encrypted, err := hex.DecodeString(sponsorCode)
-		if err != nil {
-			logger.SugaredLogger.Error(err.Error())
-			return
-		}
-		key, err := hex.DecodeString(h.buildKey)
-		if err != nil {
-			logger.SugaredLogger.Error(err.Error())
-			return
-		}
-		decrypt := string(cryptor.AesEcbDecrypt(encrypted, key))
-		err = json.Unmarshal([]byte(decrypt), &h.sponsorInfo)
-		if err != nil {
-			logger.SugaredLogger.Error(err.Error())
-			return
-		}
-	}
-
 	updateChannel := h.GetConfig().UpdateChannel
 	if updateChannel == "" {
 		updateChannel = "release"
@@ -344,7 +294,6 @@ func (h *SystemHandler) CheckUpdate(flag int) {
 		}
 
 		originalDownloadUrl := downloadUrl
-		downloadUrl, _, _ = h.isVip(sponsorCode, downloadUrl, releaseVersion)
 		mirrorDownloadUrl := "https://gh.927223.xyz/" + originalDownloadUrl
 		manualDownloadTip := fmt.Sprintf("\n手动下载链接(加速镜像): %s\n手动下载链接(原始地址): %s\n下载后请替换当前程序文件即可完成更新。", mirrorDownloadUrl, originalDownloadUrl)
 
@@ -443,81 +392,6 @@ func (h *SystemHandler) CheckUpdate(flag int) {
 			})
 		}
 	}
-}
-
-func (h *SystemHandler) isVip(sponsorCode string, downloadUrl string, releaseVersion *models.GitHubReleaseVersion) (string, string, bool) {
-	isVip := false
-	vipLevel := "0"
-	sponsorCode = strutil.Trim(h.GetConfig().SponsorCode)
-	if sponsorCode != "" {
-		encrypted, err := hex.DecodeString(sponsorCode)
-		if err != nil {
-			logger.SugaredLogger.Error(err.Error())
-			return "", "0", false
-		}
-		key, err := hex.DecodeString(h.buildKey)
-		if err != nil {
-			logger.SugaredLogger.Error(err.Error())
-			return "", "0", false
-		}
-		decrypt := string(cryptor.AesEcbDecrypt(encrypted, key))
-		err = json.Unmarshal([]byte(decrypt), &h.sponsorInfo)
-		if err != nil {
-			logger.SugaredLogger.Error(err.Error())
-			return "", "0", false
-		}
-		vipLevel = h.sponsorInfo["vipLevel"].(string)
-		vipStartTime, err := time.ParseInLocation("2006-01-02 15:04:05", h.sponsorInfo["vipStartTime"].(string), time.Local)
-		vipEndTime, err := time.ParseInLocation("2006-01-02 15:04:05", h.sponsorInfo["vipEndTime"].(string), time.Local)
-		vipAuthTime, err := time.ParseInLocation("2006-01-02 15:04:05", h.sponsorInfo["vipAuthTime"].(string), time.Local)
-		if err != nil {
-			logger.SugaredLogger.Error(err.Error())
-			return "", vipLevel, false
-		}
-
-		if time.Now().After(vipAuthTime) && time.Now().After(vipStartTime) && time.Now().Before(vipEndTime) {
-			isVip = true
-		}
-
-		if h.isWindows() {
-			winAssetName := "go-stock-windows-amd64.exe"
-			if h.isArm64() {
-				winAssetName = "go-stock-windows-arm64.exe"
-			}
-			if isVip {
-				if h.sponsorInfo["winDownUrl"] == nil {
-					downloadUrl = fmt.Sprintf("https://gh.927223.xyz/https://github.com/ArvinLovegood/go-stock/releases/download/%s/%s", releaseVersion.TagName, winAssetName)
-				} else {
-					downloadUrl = h.sponsorInfo["winDownUrl"].(string)
-				}
-			} else {
-				downloadUrl = fmt.Sprintf("https://github.com/ArvinLovegood/go-stock/releases/download/%s/%s", releaseVersion.TagName, winAssetName)
-			}
-		}
-		if h.isMacOS() {
-			if isVip {
-				if h.sponsorInfo["macDownUrl"] == nil {
-					downloadUrl = fmt.Sprintf("https://gh.927223.xyz/https://github.com/ArvinLovegood/go-stock/releases/download/%s/go-stock-darwin-universal", releaseVersion.TagName)
-				} else {
-					downloadUrl = h.sponsorInfo["macDownUrl"].(string)
-				}
-			} else {
-				downloadUrl = fmt.Sprintf("https://github.com/ArvinLovegood/go-stock/releases/download/%s/go-stock-darwin-universal", releaseVersion.TagName)
-			}
-		}
-		if h.isLinux() {
-			if isVip {
-				if h.sponsorInfo["linuxDownUrl"] == nil {
-					downloadUrl = fmt.Sprintf("https://gh.927223.xyz/https://github.com/ArvinLovegood/go-stock/releases/download/%s/go-stock-linux-amd64", releaseVersion.TagName)
-				} else {
-					downloadUrl = h.sponsorInfo["linuxDownUrl"].(string)
-				}
-			} else {
-				downloadUrl = fmt.Sprintf("https://github.com/ArvinLovegood/go-stock/releases/download/%s/go-stock-linux-amd64", releaseVersion.TagName)
-			}
-		}
-	}
-	return downloadUrl, vipLevel, isVip
 }
 
 func (h *SystemHandler) syncNews() {

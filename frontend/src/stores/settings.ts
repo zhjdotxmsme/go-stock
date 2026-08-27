@@ -30,8 +30,6 @@ export interface SettingsState {
   browserPoolSize: number
   /** 主题设置 */
   darkTheme: boolean
-  /** 升级提示 */
-  sponsorCode: string
 }
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -65,9 +63,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
   /** 主题设置 */
   const darkTheme = ref<boolean>(false)
-
-  /** 升级提示 */
-  const sponsorCode = ref<string>('')
 
   // ========== 计算属性 ==========
 
@@ -114,9 +109,6 @@ export const useSettingsStore = defineStore('settings', () => {
     // AI 配置
     if (settings.aiConfigs !== undefined) aiConfigs.value = settings.aiConfigs
     if (settings.activeAiConfigId !== undefined) activeAiConfigId.value = settings.activeAiConfigId
-
-    // 赞助码
-    if (settings.sponsorCode !== undefined) sponsorCode.value = settings.sponsorCode
   }
 
   /**
@@ -139,7 +131,6 @@ export const useSettingsStore = defineStore('settings', () => {
       darkTheme: darkTheme.value,
       aiConfigs: aiConfigs.value,
       activeAiConfigId: activeAiConfigId.value,
-      sponsorCode: sponsorCode.value,
     }
   }
 
@@ -194,7 +185,6 @@ export const useSettingsStore = defineStore('settings', () => {
     darkTheme,
     aiConfigs,
     activeAiConfigId,
-    sponsorCode,
 
     // 计算属性
     currentAiConfig,
