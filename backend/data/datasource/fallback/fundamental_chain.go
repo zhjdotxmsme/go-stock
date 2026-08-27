@@ -28,7 +28,7 @@ func (p *EastMoneyDuPontFundamentalProvider) Available(ctx context.Context) bool
 
 func (p *EastMoneyDuPontFundamentalProvider) GetFundamental(ctx context.Context, code string) (*datasource.FundamentalData, error) {
 	if !isAShareCode(code) {
-		return nil, fmt.Errorf("eastmoney_fundamental: %s is not an A-share code, skipping", code)
+		return nil, fmt.Errorf("%w: eastmoney_fundamental only covers A-shares, skipping %s", datasource.ErrUnsupported, code)
 	}
 
 	resp := data.NewStockDataApi().GetStockFinancialInfo(code)

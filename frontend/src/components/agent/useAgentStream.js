@@ -97,7 +97,7 @@ export function useAgentStream(ctx) {
       }
       scrollToBottom()
     })
-    systemApi.chatWithAgent(text, configId, sysPromptId.value, memoryMode.value, memoryCount.value, thinkingMode.value, agentMode.value === 'auto' ? '' : agentMode.value)
+    systemApi.chatWithAgent(text, configId, sysPromptId.value, memoryMode.value, memoryCount.value, thinkingMode.value, agentMode.value === 'auto' ? '' : agentMode.value, sessionId.value)
   }
 
   function startNewChat() {

@@ -193,6 +193,10 @@ var groupKeywordsList = []groupKeywords{
 		"跟踪报告", "个股跟踪", "行业跟踪", "动态跟踪", "最新动态跟踪",
 		"查数", "金融数据查询", "数据查询", "指标查询", "估值数据", "行情数据查询",
 		"分析", "诊断", "评估", "估值",
+		"stock", "kline", "k-line", "candlestick", "quote", "price", "share price",
+		"technical", "fundamental", "earnings", "revenue", "profit", "balance sheet",
+		"ROE", "PE", "PB", "EPS", "MACD", "KDJ", "RSI", "BOLL", "moving average",
+		"shareholder", "margin trading", "dividend", "valuation",
 		"技术面", "基本面", "MACD", "KDJ", "RSI", "布林", "BOLL",
 		"均线", "MA5", "MA10", "MA20", "MA60", "MA120",
 		"前复权", "后复权", "复权",
@@ -265,15 +269,19 @@ var groupKeywordsList = []groupKeywords{
 		"AI分析", "AI推荐", "历史分析", "分析报告",
 		"推荐股票", "买入评级", "增持", "减持",
 		"止盈", "止损", "买入价", "目标价",
-		"帮我查", "分析一下", "怎么样", "是什么", "解释一下", "总结一下",
 		"深度分析", "深度思考", "详细分析", "仔细想想",
 		"金融问答", "智能问答",
+		"AI analysis", "AI recommendation", "buy rating", "take profit", "stop loss",
+		// 注意：曾经收录的 "帮我查/分析一下/怎么样/是什么/解释一下/总结一下"
+		// 几乎命中一切中文提问，导致 AIAnalysis 组在任何问题上都被全量加载；
+		// 泛化问题现在落入 ClassifyQuestion 的默认三组兜底。
 	}},
 	{GroupOperations, []string{
 		"预警", "价位", "开仓", "止盈价", "止损价", "成本价",
 		"钉钉", "QQ", "通知", "推送", "发送消息",
 		"基金", "基金代码", "基金名称", "净值",
 		"GDP", "CPI", "PPI", "PMI", "宏观经济",
+		"fund code", "nav", "notification", "alert price", "macro",
 	}},
 }
 

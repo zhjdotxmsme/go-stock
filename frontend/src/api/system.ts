@@ -362,10 +362,10 @@ export async function batchDeleteAIResponseResult(ids: any): Promise<any> {
 
 /**
  * 与 Agent 聊天
- * Go: ChatWithAgent(agentType, question string, context []any, stream bool, aiConfigId int, sysPromptId *int, enableTools bool)
+ * Go: ChatWithAgent(question string, aiConfigId int, sysPromptId *int, memoryMode bool, memoryCount int, thinkingMode bool, agentMode string, sessionID string)
  */
-export async function chatWithAgent(agentType: string, question: string, context: any, stream: boolean, aiConfigId: number, sysPromptId: any, enableTools: boolean): Promise<any> {
-  return callApi(AgentHandler.ChatWithAgent, agentType, question, context, stream, aiConfigId, sysPromptId, enableTools)
+export async function chatWithAgent(question: string, aiConfigId: number, sysPromptId: any, memoryMode: boolean, memoryCount: number, thinkingMode: boolean, agentMode: string, sessionId: string): Promise<any> {
+  return callApi(AgentHandler.ChatWithAgent, question, aiConfigId, sysPromptId, memoryMode, memoryCount, thinkingMode, agentMode, sessionId)
 }
 
 /**

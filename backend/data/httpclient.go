@@ -1,6 +1,7 @@
 package data
 
 import (
+	"go-stock/backend/db"
 	"net"
 	"net/http"
 	"net/url"
@@ -119,10 +120,16 @@ func CreateHTTPClientWithTimeout(timeout time.Duration) *resty.Client {
 // of referencing SharedHTTPClient directly: calling SetTimeout on the shared
 // client mutates global state and races with concurrent requests using
 // different timeouts.
+//
+// Falls back to the 300s default when the settings store is unavailable
+// (db not initialized yet, e.g. unit tests or early startup) — it must never
+// panic, because constructors like NewStockDataApi depend on it.
 func ConfiguredHTTPClient() *resty.Client {
 	timeout := 300 * time.Second
-	if cfg := GetSettingConfig(); cfg != nil && cfg.CrawlTimeOut > 0 {
-		timeout = time.Duration(cfg.CrawlTimeOut) * time.Second
+	if db.Dao != nil {
+		if cfg := GetSettingConfig(); cfg != nil && cfg.CrawlTimeOut > 0 {
+			timeout = time.Duration(cfg.CrawlTimeOut) * time.Second
+		}
 	}
 	return CreateHTTPClientWithTimeout(timeout)
 }

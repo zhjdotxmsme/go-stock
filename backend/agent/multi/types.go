@@ -123,6 +123,10 @@ type AgentContext struct {
 	// When set, each node pushes streaming events as it processes.
 	StreamCh chan *schema.Message
 
+	// DataPack 是引擎预取的共享数据包（A2）：分析师优先读取，为 nil 时
+	// 各自回退到自己的抓取路径（兼容测试与自定义管线）。
+	DataPack *DataPack
+
 	// A5 增强状态（T2 反思记忆注入；由引擎从 EngineConfig 同步，分析师节点读取）
 	MemoryInjectionOff bool // 关闭反思记忆注入 Prompt
 	// MemoryRetrieve 记忆检索注入点（测试/自定义用）；nil = 默认 SQLite 记忆库。

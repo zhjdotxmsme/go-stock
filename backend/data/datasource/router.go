@@ -2,6 +2,7 @@ package datasource
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -10,6 +11,8 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/stockcode"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // Router manages data source providers per data type, routing to the highest-priority
@@ -22,6 +25,20 @@ type Router struct {
 	fundamentalProviders []FundamentalProvider
 	sectorProviders      []SectorProvider
 	cache                *CacheLayer
+	flights              singleflight.Group
+}
+
+// providerTimeouts bounds each provider call per data type so a hanging
+// source cannot consume the whole fallback budget. The call runs in a
+// goroutine with a buffered result channel: on deadline the Router moves on
+// while the abandoned call still completes into the buffer (bounded by the
+// provider's own HTTP client timeout) instead of leaking.
+var providerTimeouts = map[DataType]time.Duration{
+	DataTypeQuote:       8 * time.Second,
+	DataTypeKLine:       25 * time.Second,
+	DataTypeNews:        10 * time.Second,
+	DataTypeFundamental: 12 * time.Second,
+	DataTypeSector:      10 * time.Second,
 }
 
 var (
@@ -84,16 +101,66 @@ func (r *Router) RegisterSectorProvider(p SectorProvider) {
 	r.sortProviders()
 }
 
+// skipLog logs a provider failure at the appropriate level: expected
+// unsupported requests are debug-level, real failures warn.
+func skipLog(dataType, code, provider string, err error) {
+	if errors.Is(err, ErrUnsupported) {
+		logger.SugaredLogger.Debugf("datasource: %s %s skipped by %s: %v", dataType, code, provider, err)
+		return
+	}
+	logger.SugaredLogger.Warnf("datasource: %s %s from %s failed: %v, trying next", dataType, code, provider, err)
+}
+
+// callWithProviderTimeout runs fn under the per-provider deadline for the
+// given data type.
+func callWithProviderTimeout[T any](ctx context.Context, dt DataType, fn func(ctx context.Context) (T, error)) (T, error) {
+	timeout, ok := providerTimeouts[dt]
+	if !ok {
+		timeout = 10 * time.Second
+	}
+	pctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	type result struct {
+		val T
+		err error
+	}
+	ch := make(chan result, 1) // buffered: abandoned calls complete without blocking
+	go func() {
+		v, err := fn(pctx)
+		ch <- result{v, err}
+	}()
+
+	select {
+	case res := <-ch:
+		return res.val, res.err
+	case <-pctx.Done():
+		var zero T
+		return zero, fmt.Errorf("provider timeout after %s: %w", timeout, pctx.Err())
+	}
+}
+
 // GetQuote gets quote data with automatic fallback through all registered providers.
 func (r *Router) GetQuote(ctx context.Context, code string) (*QuoteData, error) {
 	code = stockcode.Normalize(code)
+	key := CacheKey(DataTypeQuote, code)
+
+	v, err, _ := r.flights.Do(key, func() (interface{}, error) {
+		return r.getQuoteInner(ctx, code, key)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*QuoteData), nil
+}
+
+func (r *Router) getQuoteInner(ctx context.Context, code, key string) (interface{}, error) {
 	r.mu.RLock()
 	providers := r.quoteProviders
 	r.mu.RUnlock()
 
 	// Check cache first
 	if r.cache != nil {
-		key := CacheKey(DataTypeQuote, code)
 		d := &QuoteData{}
 		if r.cache.GetInto(ctx, key, d) {
 			return d, nil
@@ -105,17 +172,18 @@ func (r *Router) GetQuote(ctx context.Context, code string) (*QuoteData, error) 
 			logger.SugaredLogger.Debugf("datasource: %s unavailable, skipping", p.Name())
 			continue
 		}
-		data, err := p.GetQuote(ctx, code)
+		data, err := callWithProviderTimeout(ctx, DataTypeQuote, func(c context.Context) (*QuoteData, error) {
+			return p.GetQuote(c, code)
+		})
 		if err == nil {
 			logger.SugaredLogger.Infof("datasource: quote %s from %s", code, p.Name())
 			// Write to cache
 			if r.cache != nil {
-				key := CacheKey(DataTypeQuote, code)
 				_ = r.cache.Set(ctx, key, string(DataTypeQuote), data, 60*time.Second)
 			}
 			return data, nil
 		}
-		logger.SugaredLogger.Warnf("datasource: quote %s from %s failed: %v, trying next", code, p.Name(), err)
+		skipLog("quote", code, p.Name(), err)
 	}
 	return nil, fmt.Errorf("GetQuote(%s): %w", code, ErrAllSourcesFailed)
 }
@@ -123,12 +191,23 @@ func (r *Router) GetQuote(ctx context.Context, code string) (*QuoteData, error) 
 // GetKLine gets K-line data with automatic fallback.
 func (r *Router) GetKLine(ctx context.Context, code string, period string, count int) (*KLineData, error) {
 	code = stockcode.Normalize(code)
+	key := CacheKey(DataTypeKLine, code, period, fmt.Sprintf("%d", count))
+
+	v, err, _ := r.flights.Do(key, func() (interface{}, error) {
+		return r.getKLineInner(ctx, code, period, count, key)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*KLineData), nil
+}
+
+func (r *Router) getKLineInner(ctx context.Context, code, period string, count int, key string) (interface{}, error) {
 	r.mu.RLock()
 	providers := r.klineProviders
 	r.mu.RUnlock()
 
 	if r.cache != nil {
-		key := CacheKey(DataTypeKLine, code, period, fmt.Sprintf("%d", count))
 		d := &KLineData{}
 		if r.cache.GetInto(ctx, key, d) {
 			return d, nil
@@ -142,10 +221,11 @@ func (r *Router) GetKLine(ctx context.Context, code string, period string, count
 			continue
 		}
 		triedProviders = append(triedProviders, p.Name())
-		data, err := p.GetKLine(ctx, code, period, count)
+		data, err := callWithProviderTimeout(ctx, DataTypeKLine, func(c context.Context) (*KLineData, error) {
+			return p.GetKLine(c, code, period, count)
+		})
 		if err == nil {
 			if r.cache != nil {
-				key := CacheKey(DataTypeKLine, code, period, fmt.Sprintf("%d", count))
 				_ = r.cache.Set(ctx, key, string(DataTypeKLine), data, 300*time.Second)
 			}
 			// Persist to SQLite via KLineStore (async, non-blocking)
@@ -164,7 +244,7 @@ func (r *Router) GetKLine(ctx context.Context, code string, period string, count
 			}
 			return data, nil
 		}
-		logger.SugaredLogger.Warnf("datasource: kline %s from %s failed: %v, trying next", code, p.Name(), err)
+		skipLog("kline", code, p.Name(), err)
 	}
 	logger.SugaredLogger.Errorf("datasource: K线数据全部失败 %s — 尝试了 %d 个源: %v", code, len(triedProviders), triedProviders)
 	return nil, fmt.Errorf("GetKLine(%s): %w", code, ErrAllSourcesFailed)
@@ -188,12 +268,23 @@ func (r *Router) GetStockKLineMonthData(ctx context.Context, stockCode string, c
 // GetNews gets news data with automatic fallback.
 func (r *Router) GetNews(ctx context.Context, code string, count int) ([]NewsItem, error) {
 	code = stockcode.Normalize(code)
+	key := CacheKey(DataTypeNews, code, fmt.Sprintf("%d", count))
+
+	v, err, _ := r.flights.Do(key, func() (interface{}, error) {
+		return r.getNewsInner(ctx, code, count, key)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.([]NewsItem), nil
+}
+
+func (r *Router) getNewsInner(ctx context.Context, code string, count int, key string) (interface{}, error) {
 	r.mu.RLock()
 	providers := r.newsProviders
 	r.mu.RUnlock()
 
 	if r.cache != nil {
-		key := CacheKey(DataTypeNews, code, fmt.Sprintf("%d", count))
 		items := []NewsItem{}
 		if r.cache.GetInto(ctx, key, &items) {
 			return items, nil
@@ -204,15 +295,16 @@ func (r *Router) GetNews(ctx context.Context, code string, count int) ([]NewsIte
 		if !p.Available(ctx) {
 			continue
 		}
-		data, err := p.GetNews(ctx, code, count)
+		data, err := callWithProviderTimeout(ctx, DataTypeNews, func(c context.Context) ([]NewsItem, error) {
+			return p.GetNews(c, code, count)
+		})
 		if err == nil {
 			if r.cache != nil {
-				key := CacheKey(DataTypeNews, code, fmt.Sprintf("%d", count))
 				_ = r.cache.Set(ctx, key, string(DataTypeNews), data, 120*time.Second)
 			}
 			return data, nil
 		}
-		logger.SugaredLogger.Warnf("datasource: news %s from %s failed: %v, trying next", code, p.Name(), err)
+		skipLog("news", code, p.Name(), err)
 	}
 	return nil, fmt.Errorf("GetNews(%s): %w", code, ErrAllSourcesFailed)
 }
@@ -220,12 +312,23 @@ func (r *Router) GetNews(ctx context.Context, code string, count int) ([]NewsIte
 // GetFundamental gets fundamental data with automatic fallback.
 func (r *Router) GetFundamental(ctx context.Context, code string) (*FundamentalData, error) {
 	code = stockcode.Normalize(code)
+	key := CacheKey(DataTypeFundamental, code)
+
+	v, err, _ := r.flights.Do(key, func() (interface{}, error) {
+		return r.getFundamentalInner(ctx, code, key)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*FundamentalData), nil
+}
+
+func (r *Router) getFundamentalInner(ctx context.Context, code, key string) (interface{}, error) {
 	r.mu.RLock()
 	providers := r.fundamentalProviders
 	r.mu.RUnlock()
 
 	if r.cache != nil {
-		key := CacheKey(DataTypeFundamental, code)
 		d := &FundamentalData{}
 		if r.cache.GetInto(ctx, key, d) {
 			return d, nil
@@ -236,15 +339,16 @@ func (r *Router) GetFundamental(ctx context.Context, code string) (*FundamentalD
 		if !p.Available(ctx) {
 			continue
 		}
-		data, err := p.GetFundamental(ctx, code)
+		data, err := callWithProviderTimeout(ctx, DataTypeFundamental, func(c context.Context) (*FundamentalData, error) {
+			return p.GetFundamental(c, code)
+		})
 		if err == nil {
 			if r.cache != nil {
-				key := CacheKey(DataTypeFundamental, code)
 				_ = r.cache.Set(ctx, key, string(DataTypeFundamental), data, 600*time.Second)
 			}
 			return data, nil
 		}
-		logger.SugaredLogger.Warnf("datasource: fundamental %s from %s failed: %v, trying next", code, p.Name(), err)
+		skipLog("fundamental", code, p.Name(), err)
 	}
 	return nil, fmt.Errorf("GetFundamental(%s): %w", code, ErrAllSourcesFailed)
 }
@@ -252,12 +356,23 @@ func (r *Router) GetFundamental(ctx context.Context, code string) (*FundamentalD
 // GetSectorData gets sector data with automatic fallback.
 func (r *Router) GetSectorData(ctx context.Context, code string) (*SectorData, error) {
 	code = stockcode.Normalize(code)
+	key := CacheKey(DataTypeSector, code)
+
+	v, err, _ := r.flights.Do(key, func() (interface{}, error) {
+		return r.getSectorInner(ctx, code, key)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*SectorData), nil
+}
+
+func (r *Router) getSectorInner(ctx context.Context, code, key string) (interface{}, error) {
 	r.mu.RLock()
 	providers := r.sectorProviders
 	r.mu.RUnlock()
 
 	if r.cache != nil {
-		key := CacheKey(DataTypeSector, code)
 		d := &SectorData{}
 		if r.cache.GetInto(ctx, key, d) {
 			return d, nil
@@ -268,15 +383,16 @@ func (r *Router) GetSectorData(ctx context.Context, code string) (*SectorData, e
 		if !p.Available(ctx) {
 			continue
 		}
-		data, err := p.GetSectorData(ctx, code)
+		data, err := callWithProviderTimeout(ctx, DataTypeSector, func(c context.Context) (*SectorData, error) {
+			return p.GetSectorData(c, code)
+		})
 		if err == nil {
 			if r.cache != nil {
-				key := CacheKey(DataTypeSector, code)
 				_ = r.cache.Set(ctx, key, string(DataTypeSector), data, 300*time.Second)
 			}
 			return data, nil
 		}
-		logger.SugaredLogger.Warnf("datasource: sector %s from %s failed: %v, trying next", code, p.Name(), err)
+		skipLog("sector", code, p.Name(), err)
 	}
 	return nil, fmt.Errorf("GetSectorData(%s): %w", code, ErrAllSourcesFailed)
 }

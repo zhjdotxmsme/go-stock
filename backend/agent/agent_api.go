@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/flow/agent"
@@ -353,7 +354,8 @@ func runPlanExecuteWithFallback(ctx context.Context, stockAiAgent *StockAiAgent,
 	planExecuteSuccess := tryPlanExecute(ctx, stockAiAgent, messages, ch, memoryService, aiConfigId)
 
 	if !planExecuteSuccess {
-		// 如果 PlanExecute 失败，降级到 React 模式
+		// 如果 PlanExecute 失败，降级到 React 模式：按当前 AI 配置重建一个
+		// React Agent（getToolsByQuestion 已缓存不了配置，需重新拉取）。
 		logger.SugaredLogger.Warnf("PlanExecute 模式失败，降级到 React 模式")
 
 		safeSend(ch, &schema.Message{
@@ -362,10 +364,9 @@ func runPlanExecuteWithFallback(ctx context.Context, stockAiAgent *StockAiAgent,
 			ReasoningContent: "[FALLBACK]⚠️ 检测到编码问题，切换到标准分析模式...\n",
 		})
 
-		// 创建临时的 React Agent
-		reactAgent := createFallbackReactAgent(ctx, stockAiAgent)
-		if reactAgent != nil {
-			runReactWithAgent(ctx, reactAgent, messages, ch, memoryService, historyMessages, sysPrompt, question)
+		reactInstance := buildFallbackReactAgent(ctx, aiConfigId, question)
+		if reactInstance != nil && reactInstance.ReactAgent != nil {
+			runReactWithAgent(ctx, reactInstance.ReactAgent, messages, ch, memoryService, historyMessages, sysPrompt, question)
 		} else {
 			safeSend(ch, &schema.Message{
 				Role:    schema.Assistant,
@@ -373,6 +374,23 @@ func runPlanExecuteWithFallback(ctx context.Context, stockAiAgent *StockAiAgent,
 			})
 		}
 	}
+}
+
+// buildFallbackReactAgent rebuilds a React-mode agent from the current AI
+// config so the PlanExecute → React degradation path is real instead of
+// always failing.
+func buildFallbackReactAgent(ctx context.Context, aiConfigId int, question string) *AgentInstance {
+	settingConfig := data.GetSettingConfig()
+	if settingConfig == nil {
+		return nil
+	}
+	aiConfig, ok := lo.Find(settingConfig.AiConfigs, func(item *data.AIConfig) bool {
+		return uint(aiConfigId) == item.ID
+	})
+	if !ok || aiConfig == nil {
+		return nil
+	}
+	return GetStockAiAgent(&ctx, *aiConfig, question, string(AgentModeReact))
 }
 
 func tryPlanExecute(ctx context.Context, stockAiAgent *StockAiAgent, messages []*schema.Message, ch chan *schema.Message, memoryService *ChatMemoryService, aiConfigId int) bool {
@@ -501,16 +519,6 @@ func tryPlanExecute(ctx context.Context, stockAiAgent *StockAiAgent, messages []
 	return true // 成功完成
 }
 
-func createFallbackReactAgent(ctx context.Context, stockAiAgent *StockAiAgent) *react.Agent {
-	// 从 PlanExecute Agent 中提取原始配置来创建 React Agent
-	// 这里需要重新创建，因为我们没有保存原始的 chatModel 和 tools
-
-	// 为了简化，我们返回 nil，让上层处理
-	// 在实际生产环境中，应该保存原始配置或重新创建
-	logger.SugaredLogger.Warnf("暂不支持降级到 React 模式，需要重新实现")
-	return nil
-}
-
 func runReactWithAgent(ctx context.Context, reactAgent *react.Agent, messages []*schema.Message, ch chan *schema.Message, memoryService *ChatMemoryService, historyMessages []*schema.Message, sysPrompt string, question string) {
 	// 类似于原来的 runReact 函数，但使用指定的 agent
 	if reactAgent == nil {
@@ -598,115 +606,6 @@ func runReactWithAgent(ctx context.Context, reactAgent *react.Agent, messages []
 	wg.Wait()
 }
 
-func runPlanExecute(ctx context.Context, stockAiAgent *StockAiAgent, messages []*schema.Message, ch chan *schema.Message, memoryService *ChatMemoryService) {
-	defer close(ch)
-
-	adkAgent := stockAiAgent.instance.AdkAgent
-	if adkAgent == nil {
-		ch <- &schema.Message{
-			Role:    schema.Assistant,
-			Content: "❌ PlanExecute Agent 实例无效",
-		}
-		return
-	}
-
-	runner := adk.NewRunner(ctx, adk.RunnerConfig{
-		Agent: adkAgent,
-	})
-
-	safeSend(ch, &schema.Message{
-		Role:             schema.Assistant,
-		Content:          "",
-		ReasoningContent: "[STEP]🧠 规划模式启动，正在分析问题并制定执行计划...\n",
-	})
-
-	iter := runner.Run(ctx, messages)
-
-	var fullResponse strings.Builder
-	stepCount := 0
-	lastPhase := ""
-
-	for {
-		event, ok := iter.Next()
-		if !ok {
-			break
-		}
-		if event == nil {
-			continue
-		}
-
-		if event.Err != nil {
-			logger.SugaredLogger.Errorf("agent event error: %v", event.Err)
-
-			isMaxSteps := strings.Contains(event.Err.Error(), "exceeds max iterations") || strings.Contains(event.Err.Error(), "exceeds max steps")
-			errMsg := fmt.Sprintf("❌ Agent 调用失败：%v", event.Err)
-			if isTokenLimitError(event.Err) {
-				errMsg = "❌ Agent 调用失败（token 超限）：输入内容超过模型最大上下文长度限制。请尝试缩短对话历史或使用支持更长上下文的模型。"
-			} else if isMaxSteps {
-				if fullResponse.Len() > 0 {
-					errMsg = "\n---\n⚠️ **分析步骤已达上限，以下为已生成的部分分析结果：**\n\n"
-				} else {
-					errMsg = "❌ Agent 调用失败：分析步骤超过最大限制。\n\n**解决方案**：\n1. 尝试更精确地描述你的问题，减少模糊性\n2. 切换到支持更长上下文或更强推理能力的模型\n3. 简化查询条件"
-				}
-			} else if strings.Contains(event.Err.Error(), "reasoning_content") || strings.Contains(event.Err.Error(), "thinking is enabled") {
-				errMsg += "\n\n**可能原因**：当前模型开启了 thinking/reasoning 模式，但该模式与 Agent 工具调用不兼容。\n\n**解决方案**：请在 AI 配置中关闭 thinking 模式，或切换到支持工具调用的模型（如 deepseek-chat、gpt-4o 等）。"
-			} else if strings.Contains(event.Err.Error(), "unmarshal plan error") || strings.Contains(event.Err.Error(), "invalid char") {
-				errMsg += "\n\n**可能原因**：计划解析时遇到中文字符编码问题，通常是模型返回的计划内容包含非UTF-8字符。\n\n**解决方案**：请尝试重新提问，或切换到不同的AI模型。"
-			}
-			safeSend(ch, &schema.Message{
-				Role:    schema.Assistant,
-				Content: errMsg,
-			})
-			if isMaxSteps && fullResponse.Len() > 0 {
-				safeSend(ch, &schema.Message{
-					Role:    schema.Assistant,
-					Content: fullResponse.String(),
-				})
-			}
-			continue
-		}
-
-		if event.Output != nil && event.Output.MessageOutput != nil {
-			mv := event.Output.MessageOutput
-			phase := detectPhase(mv.Role, mv.ToolName)
-			if phase != "" && phase != lastPhase {
-				lastPhase = phase
-				if phase == "planning" {
-					safeSend(ch, &schema.Message{
-						Role:             schema.Assistant,
-						Content:          "",
-						ReasoningContent: "[STEP]📋 正在制定执行计划...\n",
-					})
-				} else if phase == "executing" {
-					stepCount++
-					safeSend(ch, &schema.Message{
-						Role:             schema.Assistant,
-						Content:          "",
-						ReasoningContent: fmt.Sprintf("[STEP]⚡ 执行步骤 %d...\n", stepCount),
-					})
-				} else if phase == "replanning" {
-					safeSend(ch, &schema.Message{
-						Role:             schema.Assistant,
-						Content:          "",
-						ReasoningContent: "[STEP]🔄 评估进度，调整计划...\n",
-					})
-				}
-			}
-
-			if mv.IsStreaming && mv.MessageStream != nil {
-				processAdkMessageStream(mv.MessageStream, mv.Role, mv.ToolName, ch, &fullResponse)
-			} else if mv.Message != nil {
-				processAdkMessage(mv.Message, mv.Role, mv.ToolName, ch, &fullResponse)
-			}
-		}
-	}
-
-	if fullResponse.Len() != 0 && memoryService != nil {
-		if err := memoryService.AddAssistantMessage(fullResponse.String()); err != nil {
-			logger.SugaredLogger.Errorf("failed to save assistant message: %v", err)
-		}
-	}
-}
 
 func detectPhase(role schema.RoleType, toolName string) string {
 	if toolName == "plan" {
@@ -1053,11 +952,18 @@ func safeSend(ch chan *schema.Message, msg *schema.Message) {
 			logger.SugaredLogger.Errorf("panic when sending to channel: %v", r)
 		}
 	}()
-	select {
-	case ch <- msg:
-	default:
-		logger.SugaredLogger.Warnf("channel full, message dropped")
+	// Retry briefly before dropping: a full 1024-slot buffer is transient
+	// backpressure, and silently dropped chunks surface as truncated answers
+	// on the frontend with no way to notice.
+	for attempt := 0; attempt < 3; attempt++ {
+		select {
+		case ch <- msg:
+			return
+		default:
+			time.Sleep(50 * time.Millisecond)
+		}
 	}
+	logger.SugaredLogger.Errorf("channel full after retries, message dropped: %.80s", msg.Content)
 }
 
 func truncateString(s string, maxLen int) string {

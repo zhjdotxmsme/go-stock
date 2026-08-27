@@ -285,6 +285,16 @@ func updateAiConfigs(aiConfigs []*AIConfig) error {
 	return err
 }
 
+// GetSettingConfigSafe returns the stored settings, or an empty config when
+// the database is not initialized (unit tests, early startup). Plain
+// GetSettingConfig panics on nil db.Dao.
+func GetSettingConfigSafe() *SettingConfig {
+	if db.Dao == nil {
+		return &SettingConfig{}
+	}
+	return GetSettingConfig()
+}
+
 func GetSettingConfig() *SettingConfig {
 	settingConfig := &SettingConfig{}
 	settings := &Settings{}

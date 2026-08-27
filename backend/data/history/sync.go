@@ -254,7 +254,31 @@ func CreateSyncTask(ctx context.Context, stockCode, period, startDate, endDate s
 
 // syncDateRange syncs K-line data for a specific date range.
 func syncDateRange(ctx context.Context, router *datasource.Router, store *datasource.KLineStore, stockCode, period, startDate, endDate string, adjusted bool) error {
-	count := 2000
+	// Estimate bars from the range span instead of always pulling 2000:
+	// trading days ≈ calendar days × 5/7, clamped to a sane minimum.
+	startT, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		return fmt.Errorf("invalid start date %q: %w", startDate, err)
+	}
+	endT, err := time.Parse("2006-01-02", endDate)
+	if err != nil {
+		return fmt.Errorf("invalid end date %q: %w", endDate, err)
+	}
+	days := int(endT.Sub(startT).Hours()/24) + 1
+	count := days * 5 / 7
+	if period != "day" {
+		// week/month bars span more per bar; keep a small multiplier
+		count = days/7 + 2
+		if period == "month" {
+			count = days/28 + 2
+		}
+	}
+	if count < 50 {
+		count = 50
+	}
+	if count > 2000 {
+		count = 2000
+	}
 
 	data, err := router.GetKLine(ctx, stockCode, period, count)
 	if err != nil {

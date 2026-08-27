@@ -84,7 +84,7 @@ var toolRequiredKey = map[string]string{
 
 // isApiKeyConfigured 检查指定类型的 API Key 是否已配置
 func isApiKeyConfigured(keyType string) bool {
-	config := GetSettingConfig()
+	config := GetSettingConfigSafe()
 	if config == nil || config.Settings == nil {
 		return false
 	}

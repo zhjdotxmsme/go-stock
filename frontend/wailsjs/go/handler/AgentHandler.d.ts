@@ -6,7 +6,7 @@ export function AbortChatWithAgent():Promise<void>;
 
 export function AbortSummaryStockNews():Promise<void>;
 
-export function ChatWithAgent(arg1:string,arg2:number,arg3:any,arg4:boolean,arg5:number,arg6:boolean,arg7:string):Promise<void>;
+export function ChatWithAgent(arg1:string,arg2:number,arg3:any,arg4:boolean,arg5:number,arg6:boolean,arg7:string,arg8:string):Promise<void>;
 
 export function GetAllStrategies():Promise<Array<strategy.Strategy>>;
 

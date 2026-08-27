@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go-stock/backend/data"
 	"go-stock/backend/logger"
+	"go-stock/backend/models"
 	"time"
 
 	"github.com/cloudwego/eino/schema"
@@ -40,7 +41,12 @@ func buildHotMoneyData(ctx context.Context, ac *AgentContext) string {
 		dataStr += "\n今日龙虎榜数据: 暂无\n"
 	}
 
-	moneyHis := stockApi.GetStockHistoryMoneyData(ac.StockCode)
+	moneyHis := func() []models.StockMoneyDataHis {
+		if ac.DataPack != nil {
+			return ac.DataPack.HistoryMoneyData
+		}
+		return stockApi.GetStockHistoryMoneyData(ac.StockCode)
+	}()
 	if len(moneyHis) > 0 {
 		dataStr += "\n近5日资金流向:\n"
 		for i := len(moneyHis) - 1; i >= 0 && i >= len(moneyHis)-5; i-- {

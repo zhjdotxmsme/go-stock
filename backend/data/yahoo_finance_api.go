@@ -43,6 +43,13 @@ func markYahooRateLimited() {
 	yahooRateLimitReset = time.Now()
 }
 
+// YahooRateLimited reports whether the HTTP channel is currently marked as
+// rate-limited (all subdomains failed recently). Exported so provider-layer
+// circuit gates can share the same state.
+func YahooRateLimited() bool {
+	return isYahooRateLimited()
+}
+
 func getYahooClient() *resty.Client {
 	yahooClientOnce.Do(func() {
 		tr := &http.Transport{

@@ -13,10 +13,12 @@ import (
 
 // RunFundamentalAnalyst evaluates company financial health, valuation, and growth.
 func RunFundamentalAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, error) {
-	stockApi := data.NewStockDataApi()
-	stockApi.GetStockBaseInfo()
-
-	reports := data.GetFinancialReports(ac.StockCode, 30)
+	var reports *[]string
+	if ac.DataPack != nil {
+		reports = ac.DataPack.FinancialReports
+	} else {
+		reports = data.GetFinancialReports(ac.StockCode, 30)
+	}
 
 	dataStr := fmt.Sprintf("股票: %s(%s)\n", ac.StockName, ac.StockCode)
 	if reports != nil && len(*reports) > 0 {

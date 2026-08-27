@@ -10,26 +10,12 @@ import (
 	"time"
 )
 
-// TDXKLineProvider wraps TDX K-line data source (primary).
-type TDXKLineProvider struct{}
-
-func (p *TDXKLineProvider) Name() string                      { return "tdx_kline" }
-func (p *TDXKLineProvider) Priority() int                     { return 10 }
-func (p *TDXKLineProvider) Available(ctx context.Context) bool { return true }
-
-func (p *TDXKLineProvider) GetKLine(ctx context.Context, code string, period string, count int) (*datasource.KLineData, error) {
-	tdx := data.NewTdxKLineApi()
-	if tdx == nil {
-		return nil, fmt.Errorf("tdx kline api not available")
-	}
-	period = datasource.NormalizePeriod(period)
-	kLines := tdx.GetKLineData(code, period, count)
-	if kLines == nil || len(*kLines) == 0 {
-		return nil, fmt.Errorf("tdx kline: empty result for %s", code)
-	}
-	logger.SugaredLogger.Infof("datasource: kline %s from tdx (%d bars)", code, len(*kLines))
-	return ConvertKLineData(code, period, *kLines), nil
-}
+// TDXKLineProvider was removed: MootdxKLineProvider (free_data.go, priority 5)
+// wraps the exact same upstream (data.NewTdxKLineApi().GetKLineData), so the
+// duplicate only added a guaranteed second TDX attempt on failure.
+//
+// Live K-line chain: mootdx_kline(5, TDX) → tencent_kline(10) →
+// eastmoney_kline(20) → yahoo_kline(25, non-A-share, circuit gated).
 
 // EastMoneyKLineProvider wraps EastMoney K-line data source (fallback).
 type EastMoneyKLineProvider struct{}
@@ -59,7 +45,6 @@ func (p *EastMoneyKLineProvider) GetKLine(ctx context.Context, code string, peri
 
 // RegisterKLineChain registers all K-line providers with the router.
 func RegisterKLineChain(router *datasource.Router) {
-	router.RegisterKLineProvider(&TDXKLineProvider{})
 	router.RegisterKLineProvider(&EastMoneyKLineProvider{})
 	router.RegisterKLineProvider(NewYahooKLineProvider()) // Yahoo Finance: global stocks, indices
 }

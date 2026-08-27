@@ -75,7 +75,7 @@ func (h *AgentHandler) getCronEntry(key string) (cron.EntryID, bool) {
 	return id, exists
 }
 
-func (h *AgentHandler) ChatWithAgent(question string, aiConfigId int, sysPromptId *int, memoryMode bool, memoryCount int, thinkingMode bool, agentMode string) {
+func (h *AgentHandler) ChatWithAgent(question string, aiConfigId int, sysPromptId *int, memoryMode bool, memoryCount int, thinkingMode bool, agentMode string, sessionID string) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.SugaredLogger.Errorf("ChatWithAgent panic: %v", r)
@@ -96,7 +96,11 @@ func (h *AgentHandler) ChatWithAgent(question string, aiConfigId int, sysPromptI
 		h.agentMu.Unlock()
 	}()
 
-	ch := agent.NewStockAiAgentApi().ChatWithContext(ctx, question, aiConfigId, sysPromptId, memoryMode, memoryCount, thinkingMode, agentMode)
+	// optsOverride: [0]=sysPrompt override (unused here), [1]=session override
+	// so conversation memory is isolated per chat session instead of being
+	// shared across every window using the same AI config.
+	optsOverride := []string{"", sessionID}
+	ch := agent.NewStockAiAgentApi().ChatWithContext(ctx, question, aiConfigId, sysPromptId, memoryMode, memoryCount, thinkingMode, agentMode, optsOverride...)
 	for msg := range ch {
 		runtime.EventsEmit(h.currentCtx(), "agent-message", agentMessageToFrontendMap(msg))
 	}

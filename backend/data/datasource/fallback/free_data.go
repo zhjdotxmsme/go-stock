@@ -164,7 +164,9 @@ func parseKLineTime(s string) time.Time {
 	return time.Time{}
 }
 
-// MootdxQuoteProvider provides real-time quotes via existing TDX API (free, unlimited).
+// MootdxQuoteProvider provides real-time quotes by scraping the EastMoney
+// real-time page (data.GetRealTimeStockPriceInfo). The historical name
+// refers to the mootdx/TDX integration it once used.
 type MootdxQuoteProvider struct{}
 
 func (p *MootdxQuoteProvider) Name() string                      { return "mootdx" }
@@ -247,27 +249,6 @@ func (p *TonghuashunFundamentalProvider) GetFundamental(ctx context.Context, cod
 	return fd, nil
 }
 
-// BaiduSectorProvider provides sector and concept data for A-share stocks.
-type BaiduSectorProvider struct{}
-
-func (p *BaiduSectorProvider) Name() string                      { return "baidu" }
-func (p *BaiduSectorProvider) Priority() int                     { return 20 }
-func (p *BaiduSectorProvider) Available(ctx context.Context) bool { return true }
-
-func (p *BaiduSectorProvider) GetSectorData(ctx context.Context, code string) (*datasource.SectorData, error) {
-	stockApi := data.NewStockDataApi()
-	info := stockApi.GetStockConceptInfo(code)
-	if info.Result.Data == nil || len(info.Result.Data) == 0 {
-		return nil, fmt.Errorf("baidu sector: empty for %s", code)
-	}
-	first := info.Result.Data[0]
-	logger.SugaredLogger.Infof("datasource: sector %s from baidu: %s", code, first.BOARDNAME)
-	return &datasource.SectorData{
-		Code:   code,
-		Sector: first.BOARDNAME,
-	}, nil
-}
-
 func toFloat64(v any) float64 {
 	if v == nil {
 		return 0
@@ -294,6 +275,5 @@ func RegisterFreeDataSources(router *datasource.Router) {
 	router.RegisterKLineProvider(&MootdxKLineProvider{})
 	router.RegisterKLineProvider(&TencentKLineProvider{})
 	router.RegisterFundamentalProvider(&TonghuashunFundamentalProvider{})
-	router.RegisterSectorProvider(&BaiduSectorProvider{})
-	logger.SugaredLogger.Info("free data sources registered: mootdx, tencent, 10jqka, baidu")
+	logger.SugaredLogger.Info("free data sources registered: mootdx, tencent, 10jqka")
 }

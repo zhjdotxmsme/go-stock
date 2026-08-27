@@ -134,10 +134,10 @@ func createReactAgent(ctx context.Context, chatModel model.ToolCallingChatModel,
 		},
 	}
 
-	maxStep := len(allTools)*2 + 10
-	if maxStep < 30 {
-		maxStep = 30
-	}
+	// Bounded step budget: deep analyses rarely exceed ~15 tool rounds, and
+	// with 100+ registered tools the old "tools*2+10" formula allowed 200+
+	// wasted rounds on looping behavior.
+	maxStep := 30
 	agent, err := react.NewAgent(ctx, &react.AgentConfig{
 		ToolCallingModel: chatModel,
 		ToolsConfig:      aiTools,
@@ -324,28 +324,6 @@ func buildSkillPrompt(question string) string {
 		}
 	}
 	return sb.String()
-}
-
-func GetAllTools() []tool.BaseTool {
-	var allTools []tool.BaseTool
-	allTools = append(allTools, tools.GetQueryStockCodeInfoTool())
-	allTools = append(allTools, tools.GetQueryStockNewsTool())
-	//allTools = append(allTools, tools.GetIndustryResearchReportTool())
-	allTools = append(allTools, tools.GetQueryBKDictTool())
-
-	allTools = append(allTools, tools.GetAllDataTools()...)
-
-	allTools = append(allTools, tools.GetHolidayTools()...)
-
-	allTools = append(allTools, tools.GetMCPServerTools()...)
-	allTools = append(allTools, tools.GetSkillTools()...)
-
-	mcpTools := getMCPTools()
-	if len(mcpTools) > 0 {
-		allTools = append(allTools, mcpTools...)
-	}
-
-	return allTools
 }
 
 func getToolsByQuestion(question string) []tool.BaseTool {

@@ -13,8 +13,12 @@ import (
 
 // RunTechnicalAnalyst analyzes K-line data and technical indicators.
 func RunTechnicalAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, error) {
-	stockApi := data.NewStockDataApi()
-	klineData := stockApi.GetKLineData(ac.StockCode, "101", int64(60))
+	klineData := func() *[]data.KLineData {
+		if ac.DataPack != nil {
+			return ac.DataPack.KLineDaily
+		}
+		return data.NewStockDataApi().GetKLineData(ac.StockCode, "101", int64(60))
+	}()
 
 	dataStr := fmt.Sprintf("股票: %s(%s)\n", ac.StockName, ac.StockCode)
 	if klineData != nil {
@@ -28,8 +32,13 @@ func RunTechnicalAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, e
 		dataStr += "暂无K线数据\n"
 	}
 
-	// Try to fetch technical indicators from stock-sdk MCP
-	indicators, _ := data.GetTechnicalIndicators(ctx, ac.StockCode, "101", 60)
+	// Technical indicators from stock-sdk MCP (shared via DataPack when set)
+	var indicators *data.IndicatorResult
+	if ac.DataPack != nil {
+		indicators = ac.DataPack.TechnicalIndicators
+	} else {
+		indicators, _ = data.GetTechnicalIndicators(ctx, ac.StockCode, "101", 60)
+	}
 	if indicators != nil {
 		dataStr += "\n技术指标:\n"
 		if len(indicators.MA) > 0 {

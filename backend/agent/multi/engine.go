@@ -100,6 +100,19 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 			"label": "正在初始化分析参数...",
 		})
 
+		// Phase 1.5: Prefetch the shared DataPack once (A2) so the seven
+		// analysts read from one parallel fetch instead of re-hitting the
+		// same upstreams individually.
+		emitEvent(ctx, ch, "agent:phase", map[string]string{
+			"phase": "datapack", "status": "start",
+			"label": "预取共享行情数据...",
+		})
+		ac.DataPack = PrefetchDataPack(ctx, ac.StockCode)
+		emitEvent(ctx, ch, "agent:phase", map[string]string{
+			"phase": "datapack", "status": "end",
+			"label": "共享数据就绪",
+		})
+
 		// Phase 2: Run 4 analysts in parallel
 		emitEvent(ctx, ch, "agent:phase", map[string]string{
 			"phase": "analysts", "status": "start",

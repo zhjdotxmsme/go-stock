@@ -72,5 +72,9 @@ func NormalizePeriod(period string) string {
 var (
 	ErrAllSourcesFailed = errors.New("all data sources failed")
 	ErrNoProvider       = errors.New("no provider registered for data type")
+	// ErrUnsupported marks an expected, non-failure skip (e.g. a source that
+	// does not cover the requested market). The Router logs it at debug level
+	// instead of warning, keeping fallback logs actionable.
+	ErrUnsupported = errors.New("provider does not support this request")
 )
 
