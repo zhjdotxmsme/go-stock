@@ -290,12 +290,20 @@ func updateAiConfigs(aiConfigs []*AIConfig) error {
 // GetSettingConfig panics on nil db.Dao.
 func GetSettingConfigSafe() *SettingConfig {
 	if db.Dao == nil {
-		return &SettingConfig{}
+		return &SettingConfig{Settings: &Settings{CrawlTimeOut: 60}}
 	}
 	return GetSettingConfig()
 }
 
 func GetSettingConfig() *SettingConfig {
+	// Nil-DB guard: callers exist on paths that can run before DB init or in
+	// unit tests (TDX clients, tool registries, HTTP client config). An empty
+	// config is always safer than a panic here.
+	if db.Dao == nil {
+		// Embedded *Settings must be non-nil or promoted-field access
+		// (cfg.CrawlTimeOut etc.) panics on the empty config.
+		return &SettingConfig{Settings: &Settings{CrawlTimeOut: 60}}
+	}
 	settingConfig := &SettingConfig{}
 	settings := &Settings{}
 	aiConfigs := make([]*AIConfig, 0)

@@ -7,7 +7,9 @@ import (
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/duke-git/lancet/v2/convertor"
 	"github.com/duke-git/lancet/v2/mathutil"
@@ -257,7 +259,10 @@ func (h *StockHandler) GetStockEastMoneyKLinePage(stockCode, stockName string, k
 	return api.GetKLineDataBefore(stockCode, klt, "", limit, end)
 }
 
-// GetStockKLineWithFallback returns K-line data with source fallback strategy
+// GetStockKLineWithFallback returns K-line data with source fallback strategy.
+// Day lines (klt=101) go through the datasource Router (cache + multi-source
+// fallback + SQLite persistence); other periods keep the legacy serial chain
+// because Router providers do not uniformly cover intraday klt codes.
 func (h *StockHandler) GetStockKLineWithFallback(stockCode, stockName string, klt string, limit int) *data.KLineSourceResult {
 	if limit <= 0 {
 		limit = 500
@@ -269,7 +274,47 @@ func (h *StockHandler) GetStockKLineWithFallback(stockCode, stockName string, kl
 	if klt == "" {
 		klt = "101"
 	}
+	if klt == "101" {
+		if result := h.getKLineViaRouter(stockCode, klt, limit); result != nil {
+			return result
+		}
+	}
 	return data.FetchKLineWithFallback(stockCode, stockName, klt, limit, "")
+}
+
+// getKLineViaRouter fetches a day kline via the datasource Router and maps it
+// to the legacy wire format. Returns nil on failure so callers can fall back
+// to the legacy chain.
+func (h *StockHandler) getKLineViaRouter(stockCode, klt string, limit int) *data.KLineSourceResult {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	k, err := datasource.GetRouter().GetKLine(ctx, stockCode, "day", limit)
+	if err != nil || k == nil || len(k.Bars) == 0 {
+		return nil
+	}
+	return barsToLegacyKLineResult(stockCode, k)
+}
+
+// barsToLegacyKLineResult converts Router float64 bars to the legacy
+// string-field wire format consumed by the frontend.
+func barsToLegacyKLineResult(stockCode string, k *datasource.KLineData) *data.KLineSourceResult {
+	rows := make([]data.KLineData, 0, len(k.Bars))
+	dayOnly := k.Period == "" || k.Period == "day" || k.Period == "101"
+	for _, b := range k.Bars {
+		layout := "2006-01-02 15:04:05"
+		if dayOnly {
+			layout = "2006-01-02"
+		}
+		rows = append(rows, data.KLineData{
+			Day:    b.Time.Format(layout),
+			Open:   strconv.FormatFloat(b.Open, 'f', 2, 64),
+			Close:  strconv.FormatFloat(b.Close, 'f', 2, 64),
+			High:   strconv.FormatFloat(b.High, 'f', 2, 64),
+			Low:    strconv.FormatFloat(b.Low, 'f', 2, 64),
+			Volume: strconv.FormatInt(b.Volume, 10),
+		})
+	}
+	return &data.KLineSourceResult{Data: &rows, Source: k.Source}
 }
 
 // GetStockKLinePageWithFallback returns K-line data with pagination and source fallback

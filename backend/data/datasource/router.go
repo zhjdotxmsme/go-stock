@@ -236,6 +236,7 @@ func (r *Router) getKLineInner(ctx context.Context, code, period string, count i
 			return p.GetKLine(c, code, period, count)
 		})
 		if err == nil {
+			data.Source = p.Name()
 			if r.cache != nil {
 				_ = r.cache.Set(ctx, key, string(DataTypeKLine), data, 300*time.Second)
 			}

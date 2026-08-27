@@ -64,10 +64,11 @@ func ConvertKLineData(code, period string, src []data.KLineData) *datasource.KLi
 			Close:  parseFloat64(k.Close),
 			Volume: parseInt64(k.Volume),
 		}
-		if t, err := time.Parse("2006-01-02 15:04:05", k.Day); err == nil {
-			bar.Time = t
-		} else if t, err := time.Parse("2006-01-02", k.Day); err == nil {
-			bar.Time = t
+		for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04", "2006-01-02"} {
+			if t, err := time.Parse(layout, k.Day); err == nil {
+				bar.Time = t
+				break
+			}
 		}
 		dst.Bars = append(dst.Bars, bar)
 	}

@@ -81,6 +81,9 @@ type KLineData struct {
 	Code   string     `json:"code"`
 	Period string     `json:"period"`
 	Bars   []KLineBar `json:"bars"`
+	// Source is filled in by the Router with the provider that served the
+	// data; empty when constructed outside the Router.
+	Source string `json:"source,omitempty"`
 }
 
 // KLineBar represents a single K-line bar.
