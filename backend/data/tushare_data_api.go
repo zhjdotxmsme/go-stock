@@ -22,7 +22,7 @@ type TushareApi struct {
 
 func NewTushareApi(config *SettingConfig) *TushareApi {
 	return &TushareApi{
-		client: SharedHTTPClient,
+		client: ConfiguredHTTPClient(),
 		config: config,
 	}
 }

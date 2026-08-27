@@ -53,7 +53,7 @@ func (p *TencentQuoteProvider) Available(ctx context.Context) bool { return true
 func (p *TencentQuoteProvider) GetQuote(ctx context.Context, code string) (*datasource.QuoteData, error) {
 	tencentCode := toTencentCode(code)
 	url := fmt.Sprintf("http://qt.gtimg.cn/q=%s", tencentCode)
-	resp, err := data.SharedHTTPClient.SetTimeout(10*time.Second).R().
+	resp, err := data.CreateHTTPClientWithTimeout(10*time.Second).R().
 		SetHeader("Host", "qt.gtimg.cn").
 		SetHeader("Referer", "https://gu.qq.com/").
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
@@ -138,7 +138,7 @@ func (p *TencentKLineProvider) GetKLine(ctx context.Context, code string, period
 	tencentCode := toTencentCode(code)
 	period = datasource.NormalizePeriod(period)
 	url := fmt.Sprintf("http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,%s,,,%d,qfq", tencentCode, period, count)
-	resp, err := data.SharedHTTPClient.SetTimeout(15*time.Second).R().
+	resp, err := data.CreateHTTPClientWithTimeout(15*time.Second).R().
 		SetHeader("Host", "web.ifzq.gtimg.cn").
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
 		Get(url)

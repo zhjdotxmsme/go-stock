@@ -44,7 +44,7 @@ type MetalSpot struct {
 }
 
 func (a *AurumRatesApi) fetchSpot() (*SpotResponse, error) {
-	resp, err := SharedHTTPClient.SetTimeout(15 * time.Second).R().
+	resp, err := CreateHTTPClientWithTimeout(15 * time.Second).R().
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
 		Get("https://aurumrates.com/api/v1/spot")
 	if err != nil {

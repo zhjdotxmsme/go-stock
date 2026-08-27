@@ -161,7 +161,7 @@ func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*d
 	sinaSymbol := "nf_" + asset.Code + "0"
 	url := fmt.Sprintf("http://hq.sinajs.cn/rn=%d&list=%s", time.Now().UnixMilli(), sinaSymbol)
 
-	resp, err := SharedHTTPClient.SetTimeout(10*time.Second).R().
+	resp, err := CreateHTTPClientWithTimeout(10*time.Second).R().
 		SetHeader("Referer", "https://finance.sina.com.cn").
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
 		Get(url)
@@ -269,7 +269,7 @@ func (c *CommodityApi) getETFQuote(asset *models.CommodityAsset) (*datasource.Qu
 
 func (c *CommodityApi) getETFQuoteFromSina(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
 	url := fmt.Sprintf("http://hq.sinajs.cn/rn=%d&list=%s", time.Now().UnixMilli(), asset.Symbol)
-	resp, err := SharedHTTPClient.SetTimeout(10*time.Second).R().
+	resp, err := CreateHTTPClientWithTimeout(10*time.Second).R().
 		SetHeader("Referer", "https://finance.sina.com.cn").
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
 		Get(url)
@@ -329,7 +329,7 @@ func (c *CommodityApi) getETFQuoteFromSina(asset *models.CommodityAsset) (*datas
 
 func (c *CommodityApi) getETFQuoteFromTencent(symbol string) (*datasource.QuoteData, error) {
 	url := fmt.Sprintf("http://qt.gtimg.cn/?_=%d&q=%s", time.Now().Unix(), strings.ToLower(symbol))
-	resp, err := SharedHTTPClient.SetTimeout(10*time.Second).R().
+	resp, err := CreateHTTPClientWithTimeout(10*time.Second).R().
 		SetHeader("Host", "qt.gtimg.cn").
 		SetHeader("Referer", "https://gu.qq.com/").
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
@@ -479,7 +479,7 @@ func (c *CommodityApi) getFuturesKLineFromSina(asset *models.CommodityAsset, per
 	sinaSymbol := "nf_" + asset.Code + "0"
 	url := fmt.Sprintf("http://stock.finance.sina.com.cn/futures/api/jsonp.php/InnerFuturesNewService.getDailyKLine?symbol=%s", sinaSymbol)
 
-	resp, err := SharedHTTPClient.SetTimeout(15*time.Second).R().
+	resp, err := CreateHTTPClientWithTimeout(15*time.Second).R().
 		SetHeader("Referer", "https://finance.sina.com.cn").
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
 		Get(url)

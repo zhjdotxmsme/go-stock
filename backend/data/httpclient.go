@@ -114,6 +114,19 @@ func CreateHTTPClientWithTimeout(timeout time.Duration) *resty.Client {
 		SetRetryCount(0)
 }
 
+// ConfiguredHTTPClient returns a per-instance client that shares the global
+// connection pool but carries the configured crawl timeout. Use this instead
+// of referencing SharedHTTPClient directly: calling SetTimeout on the shared
+// client mutates global state and races with concurrent requests using
+// different timeouts.
+func ConfiguredHTTPClient() *resty.Client {
+	timeout := 300 * time.Second
+	if cfg := GetSettingConfig(); cfg != nil && cfg.CrawlTimeOut > 0 {
+		timeout = time.Duration(cfg.CrawlTimeOut) * time.Second
+	}
+	return CreateHTTPClientWithTimeout(timeout)
+}
+
 func CreateDownloadClient() *resty.Client {
 	httpConfigMutex.RLock()
 	transport := sharedTransport

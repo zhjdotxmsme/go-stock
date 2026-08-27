@@ -11,12 +11,16 @@ import (
 	"time"
 )
 
-// TDXQuoteProvider wraps TDX as quote source (primary).
+// TDXQuoteProvider is a placeholder for a future TDX quote source.
+// TDX currently exposes no real-time quote function, so the provider reports
+// itself unavailable and the chain skips it without a failed request.
 type TDXQuoteProvider struct{}
 
-func (p *TDXQuoteProvider) Name() string                      { return "tdx" }
-func (p *TDXQuoteProvider) Priority() int                     { return 10 }
-func (p *TDXQuoteProvider) Available(ctx context.Context) bool { return true }
+func (p *TDXQuoteProvider) Name() string  { return "tdx" }
+func (p *TDXQuoteProvider) Priority() int { return 10 }
+func (p *TDXQuoteProvider) Available(ctx context.Context) bool {
+	return false // no TDX quote implementation yet
+}
 
 func (p *TDXQuoteProvider) GetQuote(ctx context.Context, code string) (*datasource.QuoteData, error) {
 	// TDX doesn't have a direct real-time quote function yet
@@ -57,12 +61,15 @@ func (p *EastMoneyQuoteProvider) GetQuote(ctx context.Context, code string) (*da
 	}, nil
 }
 
-// SinaQuoteProvider wraps Sina Finance as fallback.
+// SinaQuoteProvider is a placeholder for a future Sina quote source; it
+// reports itself unavailable so the chain skips it without a failed request.
 type SinaQuoteProvider struct{}
 
-func (p *SinaQuoteProvider) Name() string                      { return "sina" }
-func (p *SinaQuoteProvider) Priority() int                     { return 30 }
-func (p *SinaQuoteProvider) Available(ctx context.Context) bool { return true }
+func (p *SinaQuoteProvider) Name() string  { return "sina" }
+func (p *SinaQuoteProvider) Priority() int { return 30 }
+func (p *SinaQuoteProvider) Available(ctx context.Context) bool {
+	return false // no Sina quote implementation yet
+}
 
 func (p *SinaQuoteProvider) GetQuote(ctx context.Context, code string) (*datasource.QuoteData, error) {
 	return nil, fmt.Errorf("sina quote: not available for %s", code)

@@ -92,7 +92,7 @@ func (e *CommodityEngine) Run(ctx context.Context, code, name, userQuery string)
 		saveCommodityResult(cc)
 
 		// Phase 5: Emit final report
-		emitFinalReport(ch, finalReport)
+		emitFinalReport(ctx, ch, finalReport)
 	}()
 
 	return ch
@@ -151,7 +151,10 @@ func describeExperts(cat models.CommodityCategory) string {
 	return fmt.Sprintf("%d位专家(%s)", len(experts), strings.Join(names, "/"))
 }
 
-func emitFinalReport(ch chan<- *schema.Message, report *CommodityReport) {
+// emitFinalReport sends the final commodity analysis report to the channel.
+// Uses a ctx select so a non-reading consumer (closed window / cancelled ctx)
+// does not block the engine goroutine forever.
+func emitFinalReport(ctx context.Context, ch chan<- *schema.Message, report *CommodityReport) {
 	payload := map[string]interface{}{
 		"type":   "agent:final",
 		"report": report,
@@ -161,9 +164,9 @@ func emitFinalReport(ch chan<- *schema.Message, report *CommodityReport) {
 		logger.SugaredLogger.Errorf("emitFinalReport marshal error: %v", err)
 		return
 	}
-	ch <- &schema.Message{
-		Role:    schema.Assistant,
-		Content: string(raw),
+	select {
+	case ch <- &schema.Message{Role: schema.Assistant, Content: string(raw)}:
+	case <-ctx.Done():
 	}
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"go-stock/backend/db"
@@ -105,17 +107,28 @@ func (s *KLineStore) FindMissingDateRanges(ctx context.Context, stockCode, perio
 		return nil, fmt.Errorf("parse end date: %w", err)
 	}
 
+	// Bulk-load holiday flags for the range first: one batched HTTP request
+	// per 50 dates instead of one request per trading day (N+1 avoidance).
+	var rangeDates []time.Time
+	for d := startT; !d.After(endT); d = d.AddDate(0, 0, 1) {
+		if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
+			continue
+		}
+		rangeDates = append(rangeDates, d)
+	}
+	prefetchHolidays(rangeDates)
+
 	var missing []DateRange
 	var rangeStart *time.Time
 
 	for d := startT; !d.After(endT); d = d.AddDate(0, 0, 1) {
 		dateStr := d.Format("2006-01-02")
-		
+
 		// Skip non-trading days (weekends)
 		if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
 			continue
 		}
-		
+
 		// Skip holidays (check if it's a trading day)
 		if isHoliday(d) {
 			continue
@@ -147,10 +160,61 @@ func (s *KLineStore) FindMissingDateRanges(ctx context.Context, stockCode, perio
 	return missing, nil
 }
 
+// holidayCache caches holiday lookups per date ("2006-01-02" → bool) for the
+// process lifetime so repeated range scans don't re-query the holiday API.
+var holidayCache sync.Map
+
+// prefetchHolidays bulk-loads holiday flags via the timor.tech batch endpoint
+// (50 dates per request). On batch failure the affected dates fall back to
+// per-date queries inside isHoliday; only successful determinations are cached.
+func prefetchHolidays(dates []time.Time) {
+	var need []string
+	for _, d := range dates {
+		s := d.Format("2006-01-02")
+		if _, ok := holidayCache.Load(s); !ok {
+			need = append(need, s)
+		}
+	}
+	if len(need) == 0 {
+		return
+	}
+
+	client := resty.New().SetTimeout(15 * time.Second)
+	var result struct {
+		Code int `json:"code"`
+		Data map[string]struct {
+			Holiday bool `json:"holiday"`
+		} `json:"data"`
+	}
+
+	for len(need) > 0 {
+		chunk := need
+		if len(chunk) > 50 {
+			chunk = chunk[:50]
+		}
+		need = need[len(chunk):]
+
+		result.Code = -1
+		result.Data = nil
+		url := "https://timor.tech/api/holiday/batch?d=" + strings.Join(chunk, "|")
+		resp, err := client.R().SetResult(&result).Get(url)
+		if err != nil || resp.StatusCode() != 200 || result.Code != 0 || result.Data == nil {
+			continue // per-date fallback inside isHoliday handles these
+		}
+		for dateStr, info := range result.Data {
+			holidayCache.Store(dateStr, info.Holiday)
+		}
+	}
+}
+
 // isHoliday checks if a given date is a holiday using the holiday tool API.
 func isHoliday(date time.Time) bool {
 	dateStr := date.Format("2006-01-02")
-	
+
+	if v, ok := holidayCache.Load(dateStr); ok {
+		return v.(bool)
+	}
+
 	apiURL := fmt.Sprintf("https://timor.tech/api/holiday/info/%s", dateStr)
 	var result struct {
 		Code    int `json:"code"`
@@ -158,15 +222,16 @@ func isHoliday(date time.Time) bool {
 			Holiday bool `json:"holiday"`
 		} `json:"holiday"`
 	}
-	
+
 	resp, err := resty.New().SetTimeout(10*time.Second).R().
 		SetResult(&result).
 		Get(apiURL)
-	
+
 	if err != nil || resp.StatusCode() != 200 || result.Code != 0 {
 		return false
 	}
-	
+
+	holidayCache.Store(dateStr, result.Holiday.Holiday)
 	return result.Holiday.Holiday
 }
 

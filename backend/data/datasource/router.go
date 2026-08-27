@@ -94,10 +94,9 @@ func (r *Router) GetQuote(ctx context.Context, code string) (*QuoteData, error) 
 	// Check cache first
 	if r.cache != nil {
 		key := CacheKey(DataTypeQuote, code)
-		if cached, ok := r.cache.Get(ctx, key); ok {
-			if d, ok2 := cached.(*QuoteData); ok2 {
-				return d, nil
-			}
+		d := &QuoteData{}
+		if r.cache.GetInto(ctx, key, d) {
+			return d, nil
 		}
 	}
 
@@ -130,10 +129,9 @@ func (r *Router) GetKLine(ctx context.Context, code string, period string, count
 
 	if r.cache != nil {
 		key := CacheKey(DataTypeKLine, code, period, fmt.Sprintf("%d", count))
-		if cached, ok := r.cache.Get(ctx, key); ok {
-			if d, ok2 := cached.(*KLineData); ok2 {
-				return d, nil
-			}
+		d := &KLineData{}
+		if r.cache.GetInto(ctx, key, d) {
+			return d, nil
 		}
 	}
 
@@ -196,10 +194,9 @@ func (r *Router) GetNews(ctx context.Context, code string, count int) ([]NewsIte
 
 	if r.cache != nil {
 		key := CacheKey(DataTypeNews, code, fmt.Sprintf("%d", count))
-		if cached, ok := r.cache.Get(ctx, key); ok {
-			if d, ok2 := cached.([]NewsItem); ok2 {
-				return d, nil
-			}
+		items := []NewsItem{}
+		if r.cache.GetInto(ctx, key, &items) {
+			return items, nil
 		}
 	}
 
@@ -229,10 +226,9 @@ func (r *Router) GetFundamental(ctx context.Context, code string) (*FundamentalD
 
 	if r.cache != nil {
 		key := CacheKey(DataTypeFundamental, code)
-		if cached, ok := r.cache.Get(ctx, key); ok {
-			if d, ok2 := cached.(*FundamentalData); ok2 {
-				return d, nil
-			}
+		d := &FundamentalData{}
+		if r.cache.GetInto(ctx, key, d) {
+			return d, nil
 		}
 	}
 
@@ -262,10 +258,9 @@ func (r *Router) GetSectorData(ctx context.Context, code string) (*SectorData, e
 
 	if r.cache != nil {
 		key := CacheKey(DataTypeSector, code)
-		if cached, ok := r.cache.Get(ctx, key); ok {
-			if d, ok2 := cached.(*SectorData); ok2 {
-				return d, nil
-			}
+		d := &SectorData{}
+		if r.cache.GetInto(ctx, key, d) {
+			return d, nil
 		}
 	}
 
@@ -286,11 +281,12 @@ func (r *Router) GetSectorData(ctx context.Context, code string) (*SectorData, e
 	return nil, fmt.Errorf("GetSectorData(%s): %w", code, ErrAllSourcesFailed)
 }
 
-// sortProviders sorts all provider slices by priority (ascending).
+// sortProviders sorts all provider slices by priority (ascending, stable so
+// same-priority providers keep registration order deterministically).
 func (r *Router) sortProviders() {
-	sort.Slice(r.quoteProviders, func(i, j int) bool { return r.quoteProviders[i].Priority() < r.quoteProviders[j].Priority() })
-	sort.Slice(r.klineProviders, func(i, j int) bool { return r.klineProviders[i].Priority() < r.klineProviders[j].Priority() })
-	sort.Slice(r.newsProviders, func(i, j int) bool { return r.newsProviders[i].Priority() < r.newsProviders[j].Priority() })
-	sort.Slice(r.fundamentalProviders, func(i, j int) bool { return r.fundamentalProviders[i].Priority() < r.fundamentalProviders[j].Priority() })
-	sort.Slice(r.sectorProviders, func(i, j int) bool { return r.sectorProviders[i].Priority() < r.sectorProviders[j].Priority() })
+	sort.SliceStable(r.quoteProviders, func(i, j int) bool { return r.quoteProviders[i].Priority() < r.quoteProviders[j].Priority() })
+	sort.SliceStable(r.klineProviders, func(i, j int) bool { return r.klineProviders[i].Priority() < r.klineProviders[j].Priority() })
+	sort.SliceStable(r.newsProviders, func(i, j int) bool { return r.newsProviders[i].Priority() < r.newsProviders[j].Priority() })
+	sort.SliceStable(r.fundamentalProviders, func(i, j int) bool { return r.fundamentalProviders[i].Priority() < r.fundamentalProviders[j].Priority() })
+	sort.SliceStable(r.sectorProviders, func(i, j int) bool { return r.sectorProviders[i].Priority() < r.sectorProviders[j].Priority() })
 }

@@ -268,7 +268,7 @@ func (receiver StockBasic) TableName() string {
 
 func NewStockDataApi() *StockDataApi {
 	return &StockDataApi{
-		client: SharedHTTPClient,
+		client: ConfiguredHTTPClient(),
 		config: GetSettingConfig(),
 	}
 }

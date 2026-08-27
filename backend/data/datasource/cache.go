@@ -37,7 +37,9 @@ func NewCacheLayer(memSizeMB int) *CacheLayer {
 	}
 }
 
-// Get retrieves data from cache (L1 → L2).
+// Get retrieves data from cache (L1 → L2) as a generic decoded value.
+// Prefer GetInto for typed reads; this method cannot satisfy concrete-type
+// assertions because JSON decoding into interface{} yields maps/slices.
 func (c *CacheLayer) Get(ctx context.Context, key string) (interface{}, bool) {
 	// L1: try memory
 	if val, err := c.l1Cache.Get([]byte(key)); err == nil {
@@ -50,8 +52,7 @@ func (c *CacheLayer) Get(ctx context.Context, key string) (interface{}, bool) {
 
 	// L2: try SQLite
 	var entry CacheEntry
-	err := db.Dao.Where("cache_key = ? AND expires_at > ?", key, time.Now()).First(&entry).Error
-	if err != nil {
+	if !c.getL2(key, &entry) {
 		return nil, false
 	}
 
@@ -60,10 +61,60 @@ func (c *CacheLayer) Get(ctx context.Context, key string) (interface{}, bool) {
 	if err := json.Unmarshal([]byte(entry.Data), &data); err != nil {
 		return nil, false
 	}
-	_ = c.l1Cache.Set([]byte(key), []byte(entry.Data), 300) // 5 min TTL in L1
+	_ = c.l1Cache.Set([]byte(key), []byte(entry.Data), c.l1TTLFor(&entry))
 
 	logger.SugaredLogger.Debugf("cache L2 hit: %s", key)
 	return data, true
+}
+
+// GetInto retrieves data from cache into target, which must be a pointer to
+// the concrete type stored by Set (e.g. *QuoteData or *[]NewsItem).
+// Returns true on cache hit.
+func (c *CacheLayer) GetInto(ctx context.Context, key string, target interface{}) bool {
+	// L1: try memory
+	if val, err := c.l1Cache.Get([]byte(key)); err == nil {
+		if err := json.Unmarshal(val, target); err == nil {
+			logger.SugaredLogger.Debugf("cache L1 hit: %s", key)
+			return true
+		}
+	}
+
+	// L2: try SQLite
+	var entry CacheEntry
+	if !c.getL2(key, &entry) {
+		return false
+	}
+
+	if err := json.Unmarshal([]byte(entry.Data), target); err != nil {
+		return false
+	}
+	_ = c.l1Cache.Set([]byte(key), []byte(entry.Data), c.l1TTLFor(&entry))
+
+	logger.SugaredLogger.Debugf("cache L2 hit: %s", key)
+	return true
+}
+
+// getL2 loads a non-expired entry from SQLite. Returns false on miss or when
+// the DB is not initialized.
+func (c *CacheLayer) getL2(key string, entry *CacheEntry) bool {
+	if db.Dao == nil {
+		return false
+	}
+	err := db.Dao.Where("cache_key = ? AND expires_at > ?", key, time.Now()).First(entry).Error
+	return err == nil
+}
+
+// l1TTLFor computes the remaining L1 TTL when promoting an L2 entry, clamped
+// to [1, 300] seconds so promoted entries can never outlive the stored expiry.
+func (c *CacheLayer) l1TTLFor(entry *CacheEntry) int {
+	remaining := int(time.Until(entry.ExpiresAt).Seconds())
+	if remaining > 300 {
+		remaining = 300
+	}
+	if remaining < 1 {
+		remaining = 1
+	}
+	return remaining
 }
 
 // Set stores data in cache (L1 + L2).
@@ -77,6 +128,9 @@ func (c *CacheLayer) Set(ctx context.Context, key string, dataType string, data 
 	_ = c.l1Cache.Set([]byte(key), raw, int(ttl.Seconds()))
 
 	// L2: SQLite (upsert)
+	if db.Dao == nil {
+		return nil
+	}
 	entry := CacheEntry{
 		CacheKey:  key,
 		DataType:  dataType,
@@ -90,6 +144,10 @@ func (c *CacheLayer) Set(ctx context.Context, key string, dataType string, data 
 
 // Invalidate removes all cache entries for a data type.
 func (c *CacheLayer) Invalidate(dataType string) {
+	if db.Dao == nil {
+		c.l1Cache.Clear()
+		return
+	}
 	db.Dao.Where("data_type = ?", dataType).Delete(&CacheEntry{})
 	c.l1Cache.Clear()
 	logger.SugaredLogger.Infof("cache invalidated for data type: %s", dataType)

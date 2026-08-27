@@ -6,48 +6,49 @@ import (
 	"go-stock/backend/data"
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/logger"
+	"strings"
 )
 
-// TushareFundamentalProvider wraps Tushare data source for fundamental data.
-type TushareFundamentalProvider struct{}
-
-func (p *TushareFundamentalProvider) Name() string                      { return "tushare" }
-func (p *TushareFundamentalProvider) Priority() int                     { return 10 }
-func (p *TushareFundamentalProvider) Available(ctx context.Context) bool { return true }
-
-func (p *TushareFundamentalProvider) GetFundamental(ctx context.Context, code string) (*datasource.FundamentalData, error) {
-	reports := data.GetFinancialReports(code, 30)
-	if reports != nil && len(*reports) > 0 {
-		logger.SugaredLogger.Infof("datasource: fundamental %s from tushare (%d reports)", code, len(*reports))
-		return &datasource.FundamentalData{
-			Revenue:   float64(len(*reports)),
-			NetProfit: 0,
-		}, nil
-	}
-	return nil, fmt.Errorf("tushare fundamental: empty for %s", code)
+// isAShareCode reports whether a normalized go-stock code refers to an
+// A-share security (the only market the EastMoney DuPont endpoint covers).
+func isAShareCode(code string) bool {
+	lc := strings.ToLower(code)
+	return strings.HasPrefix(lc, "sh") || strings.HasPrefix(lc, "sz") || strings.HasPrefix(lc, "bj")
 }
 
-// EastMoneyFundamentalProvider wraps EastMoney financial data as fallback.
-type EastMoneyFundamentalProvider struct{}
+// EastMoneyDuPontFundamentalProvider serves A-share fundamentals from the
+// EastMoney F10 DuPont analysis endpoint (structured ROE/net-profit/revenue/
+// debt-ratio data), replacing earlier providers that wrote report counts
+// into the Revenue field.
+type EastMoneyDuPontFundamentalProvider struct{}
 
-func (p *EastMoneyFundamentalProvider) Name() string                      { return "eastmoney_fund" }
-func (p *EastMoneyFundamentalProvider) Priority() int                     { return 20 }
-func (p *EastMoneyFundamentalProvider) Available(ctx context.Context) bool { return true }
+func (p *EastMoneyDuPontFundamentalProvider) Name() string                      { return "eastmoney_fund" }
+func (p *EastMoneyDuPontFundamentalProvider) Priority() int                     { return 10 }
+func (p *EastMoneyDuPontFundamentalProvider) Available(ctx context.Context) bool { return true }
 
-func (p *EastMoneyFundamentalProvider) GetFundamental(ctx context.Context, code string) (*datasource.FundamentalData, error) {
-	reports := data.GetFinancialReportsByXUEQIU(code, 30)
-	if reports != nil && len(*reports) > 0 {
-		logger.SugaredLogger.Infof("datasource: fundamental %s from xueqiu (%d reports)", code, len(*reports))
-		return &datasource.FundamentalData{
-			Revenue: float64(len(*reports)),
-		}, nil
+func (p *EastMoneyDuPontFundamentalProvider) GetFundamental(ctx context.Context, code string) (*datasource.FundamentalData, error) {
+	if !isAShareCode(code) {
+		return nil, fmt.Errorf("eastmoney_fundamental: %s is not an A-share code, skipping", code)
 	}
-	return nil, fmt.Errorf("eastmoney fundamental: empty for %s", code)
+
+	resp := data.NewStockDataApi().GetStockFinancialInfo(code)
+	if resp == nil || !resp.Success || len(resp.Result.Data) == 0 {
+		return nil, fmt.Errorf("eastmoney_fundamental: empty duPont data for %s", code)
+	}
+
+	// Rows are sorted by REPORT_DATE desc; the first entry is the latest report.
+	latest := resp.Result.Data[0]
+	logger.SugaredLogger.Infof("datasource: fundamental %s from eastmoney duPont (report %s)", code, latest.REPORTDATE)
+	return &datasource.FundamentalData{
+		ROE:       latest.ROE,
+		Revenue:   latest.TOTALOPERATEINCOME,
+		NetProfit: latest.NETPROFIT,
+		DebtRatio: latest.DEBTASSETRATIO,
+	}, nil
 }
 
 // RegisterFundamentalChain registers all fundamental providers with the router.
 func RegisterFundamentalChain(router *datasource.Router) {
-	router.RegisterFundamentalProvider(&TushareFundamentalProvider{})
-	router.RegisterFundamentalProvider(&EastMoneyFundamentalProvider{})
+	router.RegisterFundamentalProvider(&EastMoneyDuPontFundamentalProvider{})
 	router.RegisterFundamentalProvider(NewYahooFundamentalProvider()) // Yahoo Finance: global stocks fundamentals
 }

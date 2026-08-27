@@ -28,7 +28,7 @@ type FundApi struct {
 
 func NewFundApi() *FundApi {
 	return &FundApi{
-		client: SharedHTTPClient,
+		client: ConfiguredHTTPClient(),
 		config: GetSettingConfig(),
 	}
 }

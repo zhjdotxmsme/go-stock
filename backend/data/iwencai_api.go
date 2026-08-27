@@ -39,7 +39,7 @@ type IwencaiAPI struct {
 
 func NewIwencaiAPI() *IwencaiAPI {
 	return &IwencaiAPI{
-		client: SharedHTTPClient,
+		client: ConfiguredHTTPClient(),
 		config: GetSettingConfig(),
 	}
 }

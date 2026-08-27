@@ -18,7 +18,7 @@ type DingDingAPI struct {
 
 func NewDingDingAPI() *DingDingAPI {
 	return &DingDingAPI{
-		client: SharedHTTPClient,
+		client: ConfiguredHTTPClient(),
 	}
 }
 
