@@ -23,7 +23,7 @@ type QueryStockNewsTool struct {
 
 func (q QueryStockNewsTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
-		Name: "QueryStockNewsTool",
+		Name: "QueryStockNews",
 		Desc: "按关键词搜索相关市场资讯/新闻",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"searchWords": {
