@@ -33,7 +33,7 @@ func handleSearchETF(o *OpenAi, funcArguments string, ctx *ToolContext) error {
 	}
 
 	res := NewSearchStockApi(words).SearchETF(random.RandInt(50, 120))
-	content := thsResultToMarkdown(res, "工具筛选出的相关ETF数据")
+	content := ThsResultToMarkdown(res, "工具筛选出的相关ETF数据")
 	//logger.SugaredLogger.Infof("SearchETF:words:%s  --> \n%s", words, content)
 
 	appendToolMessages(
@@ -62,7 +62,7 @@ func handleSearchStockByIndicators(o *OpenAi, funcArguments string, ctx *ToolCon
 	}
 
 	res := NewSearchStockApi(words).SearchStock(random.RandInt(50, 120))
-	content := thsResultToMarkdown(res, "工具筛选出的相关股票数据")
+	content := ThsResultToMarkdown(res, "工具筛选出的相关股票数据")
 	//logger.SugaredLogger.Infof("SearchStockByIndicators:words:%s  --> \n%s", words, content)
 
 	appendToolMessages(

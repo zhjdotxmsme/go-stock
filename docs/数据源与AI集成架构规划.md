@@ -144,9 +144,10 @@ multi-agent 引擎
 | ✅ P0 | 缓存失效/超时篡改/假数据/死 provider/N+1/goroutine 泄漏 | ✅ 已完成（commit 11c8b65） |
 | ✅ P1 | provider 去重与链收敛（P1-3 quote 链去 EM 重复、P1-4 kline 链去 TDX 重复、sector 链三合一）、P1-8 Router per-provider 硬超时、P1-1 Yahoo 单一共享熔断器+指数退避（2min→30min 封顶）+Available 统一门控 | ✅ 已完成 |
 | ✅ P2 | A2 PrefetchDataPack 共享数据包（引擎并行预取 kline/指标/研报/资金流，7 分析师零改动消费，nil 安全回退）、A4 死代码清理（runPlanExecute/GetAllTools 删除、createFallbackReactAgent→buildFallbackReactAgent 真降级）、A5 工具关键词双语化+去万金油短语、A6 maxStep=30+safeSend 3 次重试、A3 sessionId 全栈透传（前端→wailsjs→handler→ChatWithContext 会话隔离）、singleflight 防击穿、ErrUnsupported 哨兵、P2-9 sync 按跨度估算 count | ✅ 已完成 |
-| ⬜ P3（结构级迁移，按需） | A1 三套工具注册统一（需重写旧 openai 链工具路径）；P1-5 StockHandler 等调用方迁移至 Router（handler 69 处 data 引用）；P1-2 Yahoo PowerShell 进程复用；S1 handler 80 处 ctx 传播；S4 daily_pick（约2800行）service 化 | 独立排期 |
+| ✅ P3-a（本轮完成） | P1-2 Yahoo PowerShell 降级响应缓存（60s TTL，进程创建从每请求一次降为每 TTL 一次；顺带删除 `_windows/_other` 死代码副本）；S1 handler ctx 传播（6 个 handler 74 处 `context.Background()` → `h.currentCtx()`，fund/news/stockchange/trading 新增 ctxFn 管道并在 app.go 接线——服务调用可随应用退出取消）；A1 子集：`thsResultToMarkdown` 双实现合并为 data 包 `ThsResultToMarkdown` 单一实现 | ✅ 已完成 |
+| ⬜ P3-b（结构级迁移，独立排期） | A1 剩余：三套工具注册完全统一（旧 openai 链的 toolHandlers 注册表迁移到 eino 工具，需回归验证 cron/Web 两条链路）；P1-5：StockHandler 等 69 处 data 直连迁移 Router（K线 240 周期/复权语义与前端图表格式强耦合，需逐个行为对照）；S4：daily_pick 全家桶（约2800行）service 化（直绑 Wails + DB 直查，属完整功能迁移） | 独立排期，每项需专项回归 |
 
-**P2 附带修复**：`ConfiguredHTTPClient`/`GetSettingConfigSafe` nil-DB 防护（修复了 `TestGetAllDataTools` 长期因 `db.Dao == nil` panic 的问题）。
+**附带修复**：`ConfiguredHTTPClient`/`GetSettingConfigSafe` nil-DB 防护（修复了 `TestGetAllDataTools` 长期因 `db.Dao == nil` panic 的问题）。
 
 ---
 

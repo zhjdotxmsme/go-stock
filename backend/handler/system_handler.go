@@ -783,7 +783,7 @@ func getBuiltinModelMaxTokens(modelName string) int {
 }
 
 func (h *SystemHandler) GetAiAssistantSession(sessionId string) (*models.AiAssistantSessionResp, error) {
-	resp, err := h.svc.GetAiAssistantSession(context.Background(), sessionId)
+	resp, err := h.svc.GetAiAssistantSession(h.currentCtx(), sessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -791,7 +791,7 @@ func (h *SystemHandler) GetAiAssistantSession(sessionId string) (*models.AiAssis
 }
 
 func (h *SystemHandler) SaveAiAssistantSession(sessionId string, messages []models.AiAssistantMessage) error {
-	return h.svc.SaveAiAssistantSession(context.Background(), sessionId, sqlite.AiAssistantMessagesToDomain(messages))
+	return h.svc.SaveAiAssistantSession(h.currentCtx(), sessionId, sqlite.AiAssistantMessagesToDomain(messages))
 }
 
 // -------------------- Cron --------------------
@@ -846,7 +846,7 @@ func (h *SystemHandler) AbortSummaryStockNews() {
 
 func (h *SystemHandler) CreateCronTask(task *models.CronTask) string {
 	dtask := sqlite.CronTaskToDomain(task)
-	err := h.svc.CreateCronTask(context.Background(), dtask)
+	err := h.svc.CreateCronTask(h.currentCtx(), dtask)
 	if err != nil {
 		return fmt.Sprintf("创建失败：%v", err)
 	}
@@ -867,7 +867,7 @@ func (h *SystemHandler) CreateCronTask(task *models.CronTask) string {
 }
 
 func (h *SystemHandler) UpdateCronTask(task *models.CronTask) string {
-	err := h.svc.UpdateCronTask(context.Background(), sqlite.CronTaskToDomain(task))
+	err := h.svc.UpdateCronTask(h.currentCtx(), sqlite.CronTaskToDomain(task))
 	if err != nil {
 		return fmt.Sprintf("更新失败：%v", err)
 	}
@@ -890,8 +890,8 @@ func (h *SystemHandler) UpdateCronTask(task *models.CronTask) string {
 }
 
 func (h *SystemHandler) DeleteCronTask(id uint) string {
-	err := h.svc.DeleteCronTask(context.Background(), id)
-	task, err := h.svc.GetCronTaskByID(context.Background(), id)
+	err := h.svc.DeleteCronTask(h.currentCtx(), id)
+	task, err := h.svc.GetCronTaskByID(h.currentCtx(), id)
 	if err == nil {
 		if entryID, exists := h.getCronEntry(convertor.ToString(id) + "_" + task.Name); exists {
 			h.cronScheduler.Remove(entryID)
@@ -904,7 +904,7 @@ func (h *SystemHandler) DeleteCronTask(id uint) string {
 }
 
 func (h *SystemHandler) GetCronTaskByID(id uint) *models.CronTask {
-	task, err := h.svc.GetCronTaskByID(context.Background(), id)
+	task, err := h.svc.GetCronTaskByID(h.currentCtx(), id)
 	if err != nil {
 		return nil
 	}
@@ -912,7 +912,7 @@ func (h *SystemHandler) GetCronTaskByID(id uint) *models.CronTask {
 }
 
 func (h *SystemHandler) GetCronTaskList(query *models.CronTaskQuery) *models.CronTaskPageResp {
-	resp, err := h.svc.GetCronTaskList(context.Background(), sqlite.CronTaskQueryToDomain(query))
+	resp, err := h.svc.GetCronTaskList(h.currentCtx(), sqlite.CronTaskQueryToDomain(query))
 	if err != nil {
 		return nil
 	}
@@ -920,8 +920,8 @@ func (h *SystemHandler) GetCronTaskList(query *models.CronTaskQuery) *models.Cro
 }
 
 func (h *SystemHandler) EnableCronTask(id uint, enable bool) string {
-	err := h.svc.EnableCronTask(context.Background(), id, enable)
-	dtask, err := h.svc.GetCronTaskByID(context.Background(), id)
+	err := h.svc.EnableCronTask(h.currentCtx(), id, enable)
+	dtask, err := h.svc.GetCronTaskByID(h.currentCtx(), id)
 	if err == nil {
 		task := sqlite.CronTaskFromDomain(dtask)
 		if entryID, exists := h.getCronEntry(convertor.ToString(id) + "_" + task.Name); exists {
@@ -977,7 +977,7 @@ func (h *SystemHandler) ValidateCronExpr(expr string) string {
 }
 
 func (h *SystemHandler) SearchCronTasks(keyword string) []models.CronTask {
-	tasks, _ := h.svc.SearchCronTasks(context.Background(), keyword)
+	tasks, _ := h.svc.SearchCronTasks(h.currentCtx(), keyword)
 	return sqlite.CronTaskListFromDomain(tasks)
 }
 
@@ -998,7 +998,7 @@ func (h *SystemHandler) CalculateNextRunTimes(cron string, count int) []string {
 // -------------------- MCP / Skills --------------------
 
 func (h *SystemHandler) CreateMCPServer(server *models.MCPServer) string {
-	err := h.svc.CreateMCPServer(context.Background(), sqlite.MCPServerToDomain(server))
+	err := h.svc.CreateMCPServer(h.currentCtx(), sqlite.MCPServerToDomain(server))
 	if err != nil {
 		logger.SugaredLogger.Errorf("创建MCP服务器失败: %v", err)
 		return "创建失败: " + err.Error()
@@ -1007,7 +1007,7 @@ func (h *SystemHandler) CreateMCPServer(server *models.MCPServer) string {
 }
 
 func (h *SystemHandler) UpdateMCPServer(server *models.MCPServer) string {
-	err := h.svc.UpdateMCPServer(context.Background(), sqlite.MCPServerToDomain(server))
+	err := h.svc.UpdateMCPServer(h.currentCtx(), sqlite.MCPServerToDomain(server))
 	if err != nil {
 		logger.SugaredLogger.Errorf("更新MCP服务器失败: %v", err)
 		return "更新失败: " + err.Error()
@@ -1016,7 +1016,7 @@ func (h *SystemHandler) UpdateMCPServer(server *models.MCPServer) string {
 }
 
 func (h *SystemHandler) DeleteMCPServer(id uint) string {
-	err := h.svc.DeleteMCPServer(context.Background(), id)
+	err := h.svc.DeleteMCPServer(h.currentCtx(), id)
 	if err != nil {
 		logger.SugaredLogger.Errorf("删除MCP服务器失败: %v", err)
 		return "删除失败: " + err.Error()
@@ -1025,7 +1025,7 @@ func (h *SystemHandler) DeleteMCPServer(id uint) string {
 }
 
 func (h *SystemHandler) GetMCPServerByID(id uint) *models.MCPServer {
-	server, err := h.svc.GetMCPServerByID(context.Background(), id)
+	server, err := h.svc.GetMCPServerByID(h.currentCtx(), id)
 	if err != nil {
 		logger.SugaredLogger.Errorf("获取MCP服务器失败: %v", err)
 		return nil
@@ -1034,7 +1034,7 @@ func (h *SystemHandler) GetMCPServerByID(id uint) *models.MCPServer {
 }
 
 func (h *SystemHandler) GetMCPServerList(query *models.MCPServerQuery) *models.MCPServerPageResp {
-	resp, err := h.svc.GetMCPServerList(context.Background(), sqlite.MCPServerQueryToDomain(query))
+	resp, err := h.svc.GetMCPServerList(h.currentCtx(), sqlite.MCPServerQueryToDomain(query))
 	if err != nil {
 		return nil
 	}
@@ -1042,7 +1042,7 @@ func (h *SystemHandler) GetMCPServerList(query *models.MCPServerQuery) *models.M
 }
 
 func (h *SystemHandler) EnableMCPServer(id uint, enable bool) string {
-	err := h.svc.EnableMCPServer(context.Background(), id, enable)
+	err := h.svc.EnableMCPServer(h.currentCtx(), id, enable)
 	if err != nil {
 		logger.SugaredLogger.Errorf("启用/禁用MCP服务器失败: %v", err)
 		return "操作失败: " + err.Error()
@@ -1063,17 +1063,17 @@ func (h *SystemHandler) TestMCPServer(id uint) string {
 }
 
 func (h *SystemHandler) GetMCPToolsByServerID(serverID uint) []models.MCPServerTool {
-	tools, _ := h.svc.GetMCPToolsByServerID(context.Background(), serverID)
+	tools, _ := h.svc.GetMCPToolsByServerID(h.currentCtx(), serverID)
 	return sqlite.MCPServerToolListFromDomain(tools)
 }
 
 func (h *SystemHandler) GetAllMCPTools() []models.MCPServerTool {
-	tools, _ := h.svc.GetAllMCPTools(context.Background())
+	tools, _ := h.svc.GetAllMCPTools(h.currentCtx())
 	return sqlite.MCPServerToolListFromDomain(tools)
 }
 
 func (h *SystemHandler) CreateSkill(skill *models.Skill) string {
-	err := h.svc.CreateSkill(context.Background(), sqlite.SkillToDomain(skill))
+	err := h.svc.CreateSkill(h.currentCtx(), sqlite.SkillToDomain(skill))
 	if err != nil {
 		logger.SugaredLogger.Errorf("创建技能失败: %v", err)
 		return "创建失败: " + err.Error()
@@ -1082,7 +1082,7 @@ func (h *SystemHandler) CreateSkill(skill *models.Skill) string {
 }
 
 func (h *SystemHandler) UpdateSkill(skill *models.Skill) string {
-	err := h.svc.UpdateSkill(context.Background(), sqlite.SkillToDomain(skill))
+	err := h.svc.UpdateSkill(h.currentCtx(), sqlite.SkillToDomain(skill))
 	if err != nil {
 		logger.SugaredLogger.Errorf("更新技能失败: %v", err)
 		return "更新失败: " + err.Error()
@@ -1091,7 +1091,7 @@ func (h *SystemHandler) UpdateSkill(skill *models.Skill) string {
 }
 
 func (h *SystemHandler) DeleteSkill(id uint) string {
-	err := h.svc.DeleteSkill(context.Background(), id)
+	err := h.svc.DeleteSkill(h.currentCtx(), id)
 	if err != nil {
 		logger.SugaredLogger.Errorf("删除技能失败: %v", err)
 		return "删除失败: " + err.Error()
@@ -1100,7 +1100,7 @@ func (h *SystemHandler) DeleteSkill(id uint) string {
 }
 
 func (h *SystemHandler) GetSkillByID(id uint) *models.Skill {
-	skill, err := h.svc.GetSkillByID(context.Background(), id)
+	skill, err := h.svc.GetSkillByID(h.currentCtx(), id)
 	if err != nil {
 		logger.SugaredLogger.Errorf("获取技能失败: %v", err)
 		return nil
@@ -1109,7 +1109,7 @@ func (h *SystemHandler) GetSkillByID(id uint) *models.Skill {
 }
 
 func (h *SystemHandler) GetSkillList(query *models.SkillQuery) *models.SkillPageResp {
-	resp, err := h.svc.GetSkillList(context.Background(), sqlite.SkillQueryToDomain(query))
+	resp, err := h.svc.GetSkillList(h.currentCtx(), sqlite.SkillQueryToDomain(query))
 	if err != nil {
 		return nil
 	}
@@ -1117,7 +1117,7 @@ func (h *SystemHandler) GetSkillList(query *models.SkillQuery) *models.SkillPage
 }
 
 func (h *SystemHandler) EnableSkill(id uint, enable bool) string {
-	err := h.svc.EnableSkill(context.Background(), id, enable)
+	err := h.svc.EnableSkill(h.currentCtx(), id, enable)
 	if err != nil {
 		logger.SugaredLogger.Errorf("启用/禁用技能失败: %v", err)
 		return "操作失败: " + err.Error()
@@ -1129,7 +1129,7 @@ func (h *SystemHandler) EnableSkill(id uint, enable bool) string {
 }
 
 func (h *SystemHandler) GetAllSkills() []models.Skill {
-	skills, _ := h.svc.GetAllSkills(context.Background())
+	skills, _ := h.svc.GetAllSkills(h.currentCtx())
 	return sqlite.SkillListFromDomain(skills)
 }
 

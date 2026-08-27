@@ -15,19 +15,20 @@ import (
 // see no change) and delegates business logic to the stockchange service.
 // Realtime change items are still fetched directly via the data-layer API.
 type StockChangeHandler struct {
+	ctxFn func() context.Context
 	svc *stockchange.Service
 }
 
 // NewStockChangeHandler creates a new StockChangeHandler.
-func NewStockChangeHandler(svc *stockchange.Service) *StockChangeHandler {
-	return &StockChangeHandler{svc: svc}
+func NewStockChangeHandler(ctxFn func() context.Context, svc *stockchange.Service) *StockChangeHandler {
+	return &StockChangeHandler{ctxFn: ctxFn, svc: svc}
 }
 
 // NewDefaultStockChangeHandler wires the production dependencies
 // (sqlite repository) and returns the handler. The wiring lives here
 // because backend/internal packages cannot be imported by the main package.
-func NewDefaultStockChangeHandler() *StockChangeHandler {
-	return NewStockChangeHandler(stockchange.NewService(sqlite.NewStockRepository()))
+func NewDefaultStockChangeHandler(ctxFn func() context.Context) *StockChangeHandler {
+	return NewStockChangeHandler(ctxFn, stockchange.NewService(sqlite.NewStockRepository()))
 }
 
 // stockChangeItemsToDomain maps realtime change items to domain items.
@@ -58,12 +59,12 @@ func (h *StockChangeHandler) GetStockChanges(changeTypes []int, pageIndex, pageS
 
 func (h *StockChangeHandler) GetAllStockChangesWithPaging(pageSize int) *data.StockChangesResponse {
 	all := data.NewStockChangesApi().GetAllStockChangesWithPaging(pageSize)
-	_, _ = h.svc.SaveStockChangesWithDedup(context.Background(), stockChangeItemsToDomain(all.Data))
+	_, _ = h.svc.SaveStockChangesWithDedup(h.currentCtx(), stockChangeItemsToDomain(all.Data))
 	return all
 }
 
 func (h *StockChangeHandler) GetStockChangeHistory(query models.StockChangeHistoryQuery) *models.StockChangeHistoryPageData {
-	result, err := h.svc.GetStockChangeHistory(context.Background(), stock.StockChangeHistoryQuery{
+	result, err := h.svc.GetStockChangeHistory(h.currentCtx(), stock.StockChangeHistoryQuery{
 		StockCode:     query.StockCode,
 		StockName:     query.StockName,
 		ChangeType:    query.ChangeType,
@@ -91,17 +92,17 @@ func (h *StockChangeHandler) GetStockChangeHistory(query models.StockChangeHisto
 func (h *StockChangeHandler) SaveStockChangesToHistory(changeTypes []int) string {
 	result := data.NewStockChangesApi().GetStockChanges(changeTypes, 0, 500)
 	if result == nil {
-		return h.svc.SaveStockChangesToHistory(context.Background(), nil)
+		return h.svc.SaveStockChangesToHistory(h.currentCtx(), nil)
 	}
-	return h.svc.SaveStockChangesToHistory(context.Background(), stockChangeItemsToDomain(result.Data))
+	return h.svc.SaveStockChangesToHistory(h.currentCtx(), stockChangeItemsToDomain(result.Data))
 }
 
 func (h *StockChangeHandler) DeleteStockChangeHistory(days int) string {
-	return h.svc.DeleteStockChangeHistory(context.Background(), days)
+	return h.svc.DeleteStockChangeHistory(h.currentCtx(), days)
 }
 
 func (h *StockChangeHandler) GetDailyChangeStats(days int) []data.DailyChangeStats {
-	result, err := h.svc.GetDailyChangeStats(context.Background(), days)
+	result, err := h.svc.GetDailyChangeStats(h.currentCtx(), days)
 	if err != nil {
 		return []data.DailyChangeStats{}
 	}
@@ -120,7 +121,7 @@ func (h *StockChangeHandler) GetDailyChangeStats(days int) []data.DailyChangeSta
 }
 
 func (h *StockChangeHandler) GetChangeTypeDailyStats(days int) []data.ChangeTypeDailyStats {
-	result, err := h.svc.GetChangeTypeDailyStats(context.Background(), days)
+	result, err := h.svc.GetChangeTypeDailyStats(h.currentCtx(), days)
 	if err != nil {
 		return []data.ChangeTypeDailyStats{}
 	}
@@ -136,7 +137,7 @@ func (h *StockChangeHandler) GetChangeTypeDailyStats(days int) []data.ChangeType
 }
 
 func (h *StockChangeHandler) GetChangeRank(days int, topN int) *data.ChangeRankResult {
-	result, err := h.svc.GetChangeRank(context.Background(), days, topN)
+	result, err := h.svc.GetChangeRank(h.currentCtx(), days, topN)
 	if err != nil {
 		return &data.ChangeRankResult{}
 	}
@@ -164,7 +165,7 @@ func (h *StockChangeHandler) GetChangeRank(days int, topN int) *data.ChangeRankR
 }
 
 func (h *StockChangeHandler) GetDailyDimensionStats(dimension string, name string, days int) []data.DailyDimensionStats {
-	result, err := h.svc.GetDailyDimensionStats(context.Background(), dimension, name, days)
+	result, err := h.svc.GetDailyDimensionStats(h.currentCtx(), dimension, name, days)
 	if err != nil {
 		return []data.DailyDimensionStats{}
 	}
@@ -181,7 +182,7 @@ func (h *StockChangeHandler) GetDailyDimensionStats(dimension string, name strin
 }
 
 func (h *StockChangeHandler) GetTypeStatsByDate(date string) []data.TypeCountStats {
-	result, err := h.svc.GetTypeStatsByDate(context.Background(), date)
+	result, err := h.svc.GetTypeStatsByDate(h.currentCtx(), date)
 	if err != nil {
 		return []data.TypeCountStats{}
 	}
@@ -195,4 +196,14 @@ func (h *StockChangeHandler) GetTypeStatsByDate(date string) []data.TypeCountSta
 		})
 	}
 	return out
+}
+
+// currentCtx returns the Wails app context (set after startup), falling back
+// to context.Background when not wired — so in-flight service calls observe
+// app shutdown instead of running detached.
+func (h *StockChangeHandler) currentCtx() context.Context {
+	if h.ctxFn != nil {
+		return h.ctxFn()
+	}
+	return context.Background()
 }

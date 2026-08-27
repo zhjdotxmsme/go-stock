@@ -97,9 +97,31 @@ func yahooFetch(urlStr string) ([]byte, error) {
 	return nil, fmt.Errorf("yahoo all subdomains (and PowerShell fallback) failed")
 }
 
+// PowerShell 降级通道的短周期响应缓存：行情轮询场景下同一 URL 会被反复请求，
+// 每次起一个 powershell.exe 进程开销巨大（百毫秒级+进程创建）。限流期间对
+// 同一 URL 在 TTL 内直接复用上次成功响应，把进程创建从"每请求一次"降到
+// "每 TTL 一次"。
+var (
+	psCacheMu  sync.RWMutex
+	psCache    = map[string]psCacheEntry{}
+	psCacheTTL = 60 * time.Second
+)
+
+type psCacheEntry struct {
+	body      []byte
+	fetchedAt time.Time
+}
+
 // yahooFetchViaPowerShell 通过 PowerShell 的 Invoke-WebRequest（WinHTTP）发起请求，
 // 绕过 Go TLS 指纹被 Yahoo 限流的问题。
 func yahooFetchViaPowerShell(urlStr string) ([]byte, error) {
+	psCacheMu.RLock()
+	if e, ok := psCache[urlStr]; ok && time.Since(e.fetchedAt) < psCacheTTL {
+		psCacheMu.RUnlock()
+		return e.body, nil
+	}
+	psCacheMu.RUnlock()
+
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
 		`try { $r = Invoke-WebRequest -Uri '`+urlStr+`' -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop; Write-Output $r.Content } catch { exit 1 }`)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
@@ -107,6 +129,13 @@ func yahooFetchViaPowerShell(urlStr string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("yahoo powershell fallback: %w", err)
 	}
+
+	psCacheMu.Lock()
+	if len(psCache) > 128 { // 简单容量上限：超出后整体重建，避免长驻膨胀
+		psCache = map[string]psCacheEntry{}
+	}
+	psCache[urlStr] = psCacheEntry{body: out, fetchedAt: time.Now()}
+	psCacheMu.Unlock()
 	return out, nil
 }
 

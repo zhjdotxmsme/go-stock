@@ -84,17 +84,17 @@ func (h *AnalysisHandler) AIConfiguredStockPick(query string, topN int) ([]model
 	config, err := data.CallLLMForConfig(query)
 	if err != nil {
 		logger.SugaredLogger.Warnf("AIConfiguredStockPick: LLM config failed, fallback to default: %v", err)
-		return data.NewDailyPickEngine().RunDailyPick(context.Background(), time.Now().Format("2006-01-02"), topN)
+		return data.NewDailyPickEngine().RunDailyPick(h.currentCtx(), time.Now().Format("2006-01-02"), topN)
 	}
 	if config.TopN <= 0 {
 		config.TopN = topN
 	}
 
-	return data.NewDailyPickEngine().RunWithConfig(context.Background(), time.Now().Format("2006-01-02"), config)
+	return data.NewDailyPickEngine().RunWithConfig(h.currentCtx(), time.Now().Format("2006-01-02"), config)
 }
 
 func (h *AnalysisHandler) GetCustomStrategyList(query models.CustomStrategyQuery) *models.CustomStrategyPageData {
-	page, err := h.svc.GetCustomStrategyList(context.Background(), *sqlite.CustomStrategyQueryToDomain(query))
+	page, err := h.svc.GetCustomStrategyList(h.currentCtx(), *sqlite.CustomStrategyQueryToDomain(query))
 	if err != nil {
 		return &models.CustomStrategyPageData{}
 	}
@@ -102,7 +102,7 @@ func (h *AnalysisHandler) GetCustomStrategyList(query models.CustomStrategyQuery
 }
 
 func (h *AnalysisHandler) GetAllCustomStrategies() *[]models.CustomStrategy {
-	list, err := h.svc.GetAllCustomStrategies(context.Background())
+	list, err := h.svc.GetAllCustomStrategies(h.currentCtx())
 	if err != nil {
 		return &[]models.CustomStrategy{}
 	}
@@ -114,11 +114,11 @@ func (h *AnalysisHandler) GetAllCustomStrategies() *[]models.CustomStrategy {
 }
 
 func (h *AnalysisHandler) SaveCustomStrategy(strategy models.CustomStrategy) string {
-	return h.svc.SaveCustomStrategy(context.Background(), *sqlite.CustomStrategyToDomain(&strategy))
+	return h.svc.SaveCustomStrategy(h.currentCtx(), *sqlite.CustomStrategyToDomain(&strategy))
 }
 
 func (h *AnalysisHandler) DeleteCustomStrategy(id uint) string {
-	return h.svc.DeleteCustomStrategy(context.Background(), id)
+	return h.svc.DeleteCustomStrategy(h.currentCtx(), id)
 }
 
 func (h *AnalysisHandler) GetAllStocks(page int, pageSize int, name string, technicalIndicators models.TechnicalIndicators) *models.AllStocksResp {
@@ -138,7 +138,7 @@ func (h *AnalysisHandler) AnalyzeSentimentWithFreqWeight(text string) map[string
 }
 
 func (h *AnalysisHandler) GetAIResponseResultList(query models.AIResponseResultQuery) *models.AIResponseResultPageData {
-	page, err := h.svc.GetAIResponseResultList(context.Background(), *sqlite.AIResponseResultQueryToDomain(query))
+	page, err := h.svc.GetAIResponseResultList(h.currentCtx(), *sqlite.AIResponseResultQueryToDomain(query))
 	if err != nil {
 		return &models.AIResponseResultPageData{}
 	}
@@ -146,23 +146,23 @@ func (h *AnalysisHandler) GetAIResponseResultList(query models.AIResponseResultQ
 }
 
 func (h *AnalysisHandler) DeleteAIResponseResult(id uint) string {
-	return h.svc.DeleteAIResponseResult(context.Background(), id)
+	return h.svc.DeleteAIResponseResult(h.currentCtx(), id)
 }
 
 func (h *AnalysisHandler) BatchDeleteAIResponseResult(ids []uint) string {
-	return h.svc.BatchDeleteAIResponseResult(context.Background(), ids)
+	return h.svc.BatchDeleteAIResponseResult(h.currentCtx(), ids)
 }
 
 func (h *AnalysisHandler) SaveAIResponseResult(stockCode, stockName, result, chatId, question string, aiConfigId int) {
 	// ModelName 仍从 AI 配置解析（外部配置耦合留 handler），落库走 service
 	modelName := data.NewDeepSeekOpenAi(h.currentCtx(), aiConfigId).GetModel()
-	if err := h.svc.SaveAIResponseResult(context.Background(), stockCode, stockName, result, chatId, question, modelName); err != nil {
+	if err := h.svc.SaveAIResponseResult(h.currentCtx(), stockCode, stockName, result, chatId, question, modelName); err != nil {
 		logger.SugaredLogger.Errorf("failed to save ai response result: %v", err)
 	}
 }
 
 func (h *AnalysisHandler) GetAIResponseResult(stock string) *models.AIResponseResult {
-	item, err := h.svc.GetAIResponseResult(context.Background(), stock)
+	item, err := h.svc.GetAIResponseResult(h.currentCtx(), stock)
 	if err != nil || item == nil {
 		// 原实现记录不存在时返回空结构体指针，保持契约
 		return &models.AIResponseResult{}
@@ -171,7 +171,7 @@ func (h *AnalysisHandler) GetAIResponseResult(stock string) *models.AIResponseRe
 }
 
 func (h *AnalysisHandler) GetAiRecommendStocksList(query models.AiRecommendStocksQuery) *models.AiRecommendStocksPageData {
-	page, err := h.svc.GetAiRecommendStocksList(context.Background(), *sqlite.AiRecommendStocksQueryToDomain(query))
+	page, err := h.svc.GetAiRecommendStocksList(h.currentCtx(), *sqlite.AiRecommendStocksQueryToDomain(query))
 	if err != nil {
 		return &models.AiRecommendStocksPageData{}
 	}
@@ -179,15 +179,15 @@ func (h *AnalysisHandler) GetAiRecommendStocksList(query models.AiRecommendStock
 }
 
 func (h *AnalysisHandler) DeleteAiRecommendStocks(id uint) string {
-	return h.svc.DeleteAiRecommendStocks(context.Background(), id)
+	return h.svc.DeleteAiRecommendStocks(h.currentCtx(), id)
 }
 
 func (h *AnalysisHandler) UpdateAiRecommendStocksAlert(id uint, enableAlert bool) string {
-	return h.svc.UpdateAiRecommendStocksAlert(context.Background(), id, enableAlert)
+	return h.svc.UpdateAiRecommendStocksAlert(h.currentCtx(), id, enableAlert)
 }
 
 func (h *AnalysisHandler) GetAiRecommendStats() *data.AiRecommendStats {
-	stats, err := h.svc.GetAiRecommendStats(context.Background())
+	stats, err := h.svc.GetAiRecommendStats(h.currentCtx())
 	if err != nil {
 		return &data.AiRecommendStats{}
 	}
@@ -195,7 +195,7 @@ func (h *AnalysisHandler) GetAiRecommendStats() *data.AiRecommendStats {
 }
 
 func (h *AnalysisHandler) GetPromptTemplates(name, promptType string) *[]models.PromptTemplate {
-	list, err := h.svc.GetPromptTemplates(context.Background(), name, promptType)
+	list, err := h.svc.GetPromptTemplates(h.currentCtx(), name, promptType)
 	if err != nil {
 		return &[]models.PromptTemplate{}
 	}
@@ -210,15 +210,15 @@ func (h *AnalysisHandler) AddPrompt(prompt models.Prompt) string {
 		Name:    prompt.Name,
 		Type:    prompt.Type,
 	}
-	return h.svc.SavePromptTemplate(context.Background(), *sqlite.PromptTemplateToDomain(&promptTemplate))
+	return h.svc.SavePromptTemplate(h.currentCtx(), *sqlite.PromptTemplateToDomain(&promptTemplate))
 }
 
 func (h *AnalysisHandler) DelPrompt(id uint) string {
-	return h.svc.DeletePromptTemplate(context.Background(), id)
+	return h.svc.DeletePromptTemplate(h.currentCtx(), id)
 }
 
 func (h *AnalysisHandler) GetPromptTemplateList(query models.PromptTemplateQuery) *models.PromptTemplatePageData {
-	page, err := h.svc.GetPromptTemplateList(context.Background(), *sqlite.PromptTemplateQueryToDomain(query))
+	page, err := h.svc.GetPromptTemplateList(h.currentCtx(), *sqlite.PromptTemplateQueryToDomain(query))
 	if err != nil {
 		return &models.PromptTemplatePageData{}
 	}
@@ -226,19 +226,19 @@ func (h *AnalysisHandler) GetPromptTemplateList(query models.PromptTemplateQuery
 }
 
 func (h *AnalysisHandler) AddPromptTemplate(template models.PromptTemplate) string {
-	return h.svc.SavePromptTemplate(context.Background(), *sqlite.PromptTemplateToDomain(&template))
+	return h.svc.SavePromptTemplate(h.currentCtx(), *sqlite.PromptTemplateToDomain(&template))
 }
 
 func (h *AnalysisHandler) UpdatePromptTemplate(template models.PromptTemplate) string {
-	return h.svc.SavePromptTemplate(context.Background(), *sqlite.PromptTemplateToDomain(&template))
+	return h.svc.SavePromptTemplate(h.currentCtx(), *sqlite.PromptTemplateToDomain(&template))
 }
 
 func (h *AnalysisHandler) DeletePromptTemplate(id uint) string {
-	return h.svc.DeletePromptTemplate(context.Background(), id)
+	return h.svc.DeletePromptTemplate(h.currentCtx(), id)
 }
 
 func (h *AnalysisHandler) GetMultiAgentPrompts() []models.PromptTemplate {
-	list, err := h.svc.GetMultiAgentPrompts(context.Background())
+	list, err := h.svc.GetMultiAgentPrompts(h.currentCtx())
 	if err != nil {
 		return []models.PromptTemplate{}
 	}
@@ -246,7 +246,7 @@ func (h *AnalysisHandler) GetMultiAgentPrompts() []models.PromptTemplate {
 }
 
 func (h *AnalysisHandler) UpdateMultiAgentPrompt(roleKey, name, content string) string {
-	return h.svc.UpdateMultiAgentPrompt(context.Background(), roleKey, name, content)
+	return h.svc.UpdateMultiAgentPrompt(h.currentCtx(), roleKey, name, content)
 }
 
 func (h *AnalysisHandler) ShareAnalysis(stockCode, stockName string) string {

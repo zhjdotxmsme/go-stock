@@ -116,7 +116,7 @@ func appendToolMessages(
 }
 
 // thsResultToMarkdown 将通联/同花顺搜索结果统一转换为 markdown 表格
-func thsResultToMarkdown(res map[string]any, title string) string {
+func ThsResultToMarkdown(res map[string]any, title string) string {
 	if convertor.ToString(res["code"]) != "100" {
 		return "无符合条件的数据"
 	}

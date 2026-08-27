@@ -13,24 +13,25 @@ import (
 // 电报列表 DB 读路径委托 news service（port/adapter 分层）;
 // 外部拉取（财联社/新浪/TradingView）与板块新闻编排仍直连 data 层。
 type NewsHandler struct {
+	ctxFn func() context.Context
 	svc *newssvc.Service
 }
 
 // NewNewsHandler creates a new NewsHandler with the given service.
-func NewNewsHandler(svc *newssvc.Service) *NewsHandler {
-	return &NewsHandler{svc: svc}
+func NewNewsHandler(ctxFn func() context.Context, svc *newssvc.Service) *NewsHandler {
+	return &NewsHandler{ctxFn: ctxFn, svc: svc}
 }
 
 // NewDefaultNewsHandler wires the production dependencies (sqlite repository)
 // and returns the handler. The wiring lives here because backend/internal
 // packages cannot be imported by the main package at the repository root.
-func NewDefaultNewsHandler() *NewsHandler {
-	return NewNewsHandler(newssvc.NewService(sqlite.NewTelegraphRepository()))
+func NewDefaultNewsHandler(ctxFn func() context.Context) *NewsHandler {
+	return NewNewsHandler(ctxFn, newssvc.NewService(sqlite.NewTelegraphRepository()))
 }
 
 // GetTelegraphList returns telegraph (fast news) list for the given source.
 func (h *NewsHandler) GetTelegraphList(source string) *[]*models.Telegraph {
-	list, err := h.svc.GetTelegraphList(context.Background(), source)
+	list, err := h.svc.GetTelegraphList(h.currentCtx(), source)
 	if err != nil {
 		return &[]*models.Telegraph{}
 	}
@@ -45,7 +46,7 @@ func (h *NewsHandler) ReFleshTelegraphList(source string) *[]*models.Telegraph {
 	go data.NewMarketNewsApi().TelegraphList(30)
 	go data.NewMarketNewsApi().GetSinaNews(30)
 	go data.NewMarketNewsApi().TradingViewNews()
-	list, err := h.svc.GetTelegraphList(context.Background(), source)
+	list, err := h.svc.GetTelegraphList(h.currentCtx(), source)
 	if err != nil {
 		return &[]*models.Telegraph{}
 	}
@@ -70,4 +71,14 @@ func (h *NewsHandler) GetStockRelatedNews(code string, limit int) ([]data.Sector
 // GetSectors returns the predefined sector list used for news classification.
 func (h *NewsHandler) GetSectors() []data.Sector {
 	return data.NewsSectors
+}
+
+// currentCtx returns the Wails app context (set after startup), falling back
+// to context.Background when not wired — so in-flight service calls observe
+// app shutdown instead of running detached.
+func (h *NewsHandler) currentCtx() context.Context {
+	if h.ctxFn != nil {
+		return h.ctxFn()
+	}
+	return context.Background()
 }

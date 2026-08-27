@@ -14,18 +14,19 @@ import (
 // go directly through the data-layer API; the followed-fund CRUD is delegated
 // to the fund service.
 type FundHandler struct {
+	ctxFn func() context.Context
 	svc *fundsvc.Service
 }
 
 // NewFundHandler creates a new FundHandler.
-func NewFundHandler(svc *fundsvc.Service) *FundHandler {
-	return &FundHandler{svc: svc}
+func NewFundHandler(ctxFn func() context.Context, svc *fundsvc.Service) *FundHandler {
+	return &FundHandler{ctxFn: ctxFn, svc: svc}
 }
 
 // NewDefaultFundHandler wires the production dependencies (sqlite repository
 // + fund-basic crawl) and returns the handler. The wiring lives here because
 // backend/internal packages cannot be imported by the main package.
-func NewDefaultFundHandler() *FundHandler {
+func NewDefaultFundHandler(ctxFn func() context.Context) *FundHandler {
 	crawlFn := func(fundCode string) (*fund.FundBasic, error) {
 		crawled, err := data.NewFundApi().CrawlFundBasic(fundCode)
 		if err != nil || crawled == nil {
@@ -33,7 +34,7 @@ func NewDefaultFundHandler() *FundHandler {
 		}
 		return sqlite.FundBasicToDomain(crawled), nil
 	}
-	return NewFundHandler(fundsvc.NewService(sqlite.NewFundRepository(), crawlFn))
+	return NewFundHandler(ctxFn, fundsvc.NewService(sqlite.NewFundRepository(), crawlFn))
 }
 
 // GetfundList searches fund basic info by keyword.
@@ -43,7 +44,7 @@ func (h *FundHandler) GetfundList(key string) []data.FundBasic {
 
 // GetFollowedFund returns all followed funds.
 func (h *FundHandler) GetFollowedFund() []data.FollowedFund {
-	funds, err := h.svc.GetFollowedFund(context.Background())
+	funds, err := h.svc.GetFollowedFund(h.currentCtx())
 	if err != nil {
 		return []data.FollowedFund{}
 	}
@@ -56,12 +57,12 @@ func (h *FundHandler) GetFollowedFund() []data.FollowedFund {
 
 // FollowFund adds a fund to the follow list.
 func (h *FundHandler) FollowFund(fundCode string) string {
-	return h.svc.FollowFund(context.Background(), fundCode)
+	return h.svc.FollowFund(h.currentCtx(), fundCode)
 }
 
 // UnFollowFund removes a fund from the follow list.
 func (h *FundHandler) UnFollowFund(fundCode string) string {
-	return h.svc.UnFollowFund(context.Background(), fundCode)
+	return h.svc.UnFollowFund(h.currentCtx(), fundCode)
 }
 
 // GetFundKLine returns fund K-line data with source fallback.
@@ -103,9 +104,19 @@ func (h *FundHandler) SearchFundCodes(keyword string) []data.FundSearchItem {
 
 // GetFollowedFundPaged returns followed funds with pagination.
 func (h *FundHandler) GetFollowedFundPaged(pageIndex, pageSize int, keyword string) *data.FollowedFundPagedResult {
-	paged, err := h.svc.GetFollowedFundPaged(context.Background(), pageIndex, pageSize, keyword)
+	paged, err := h.svc.GetFollowedFundPaged(h.currentCtx(), pageIndex, pageSize, keyword)
 	if err != nil || paged == nil {
 		return &data.FollowedFundPagedResult{}
 	}
 	return sqlite.FollowedFundPagedResultFromDomain(paged)
+}
+
+// currentCtx returns the Wails app context (set after startup), falling back
+// to context.Background when not wired — so in-flight service calls observe
+// app shutdown instead of running detached.
+func (h *FundHandler) currentCtx() context.Context {
+	if h.ctxFn != nil {
+		return h.ctxFn()
+	}
+	return context.Background()
 }
