@@ -20,6 +20,10 @@ func toTencentCode(code string) string {
 	if strings.HasPrefix(upper, "SH") || strings.HasPrefix(upper, "SZ") {
 		return strings.ToLower(upper[:2]) + upper[2:]
 	}
+	// HK/US codes are native tencent symbols (hk00700, usAAPL) — pass through.
+	if strings.HasPrefix(upper, "HK") || strings.HasPrefix(upper, "US") {
+		return strings.ToLower(upper[:2]) + upper[2:]
+	}
 	if strings.HasPrefix(code, "6") || strings.HasPrefix(code, "68") || strings.HasPrefix(code, "9") {
 		return "sh" + code
 	}
@@ -136,7 +140,18 @@ func (p *TencentKLineProvider) Available(ctx context.Context) bool { return true
 
 func (p *TencentKLineProvider) GetKLine(ctx context.Context, code string, period string, count int) (*datasource.KLineData, error) {
 	tencentCode := toTencentCode(code)
+	// Tencent fqkline wants its own period vocabulary ("day"/"week"/"month"),
+	// not the normalized numeric codes ("101"/...) — the numeric form made
+	// every request fail silently whenever an earlier provider missed.
 	period = datasource.NormalizePeriod(period)
+	switch period {
+	case "101", "day":
+		period = "day"
+	case "102", "week":
+		period = "week"
+	case "103", "month":
+		period = "month"
+	}
 	url := fmt.Sprintf("http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,%s,,,%d,qfq", tencentCode, period, count)
 	resp, err := data.CreateHTTPClientWithTimeout(15*time.Second).R().
 		SetHeader("Host", "web.ifzq.gtimg.cn").
@@ -174,6 +189,9 @@ func (p *MootdxQuoteProvider) Priority() int                     { return 5 }
 func (p *MootdxQuoteProvider) Available(ctx context.Context) bool { return true }
 
 func (p *MootdxQuoteProvider) GetQuote(ctx context.Context, code string) (*datasource.QuoteData, error) {
+	if !isAShareCode(code) {
+		return nil, fmt.Errorf("%w: mootdx quote only covers A-shares, skipping %s", datasource.ErrUnsupported, code)
+	}
 	price, priceTime := data.GetRealTimeStockPriceInfo(ctx, code)
 	if price == "" {
 		return nil, fmt.Errorf("mootdx quote: empty price for %s", code)
@@ -198,6 +216,12 @@ func (p *MootdxKLineProvider) Priority() int                     { return 5 }
 func (p *MootdxKLineProvider) Available(ctx context.Context) bool { return true }
 
 func (p *MootdxKLineProvider) GetKLine(ctx context.Context, code string, period string, count int) (*datasource.KLineData, error) {
+	// TDX only covers A-shares; other markets must skip (not "try anyway"):
+	// the TDX client silently returns wrong-instrument bars for codes it
+	// cannot map, which poisoned the fallback chain for HK/US requests.
+	if !isAShareCode(code) {
+		return nil, fmt.Errorf("%w: tdx kline only covers A-shares, skipping %s", datasource.ErrUnsupported, code)
+	}
 		tdx := data.NewTdxKLineApi()
 		if tdx == nil {
 			return nil, fmt.Errorf("mootdx kline api not available")

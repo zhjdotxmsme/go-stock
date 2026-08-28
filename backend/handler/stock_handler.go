@@ -216,8 +216,13 @@ func (h *StockHandler) RemoveGroup(groupId int) string {
 	return "移除失败"
 }
 
-// GetStockKLine returns stock K-line data (short-term, quick)
+// GetStockKLine returns stock K-line data (short-term, quick).
+// Day klines go through the datasource Router (same tencent upstream plus
+// multi-source fallback and caching); legacy direct call kept as fallback.
 func (h *StockHandler) GetStockKLine(stockCode, stockName string, days int64) *[]data.KLineData {
+	if result := h.getKLineViaRouter(stockCode, "101", int(days)); result != nil {
+		return result.Data
+	}
 	return data.NewStockDataApi().GetHK_KLineData(stockCode, "day", days)
 }
 
@@ -232,8 +237,12 @@ func (h *StockHandler) GetStockMinutePriceLineData(stockCode, stockName string) 
 	return res
 }
 
-// GetStockCommonKLine returns common K-line data
+// GetStockCommonKLine returns common K-line data via the datasource Router
+// (same tencent fqkline upstream, plus fallback and caching).
 func (h *StockHandler) GetStockCommonKLine(stockCode, stockName string, days int64) *[]data.KLineData {
+	if result := h.getKLineViaRouter(stockCode, "101", int(days)); result != nil {
+		return result.Data
+	}
 	return data.NewStockDataApi().GetCommonKLineData(stockCode, "day", days)
 }
 
