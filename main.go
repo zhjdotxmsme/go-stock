@@ -250,7 +250,7 @@ func main() {
 		Bind: []interface{}{
 			app,
 			backtestService.NewService(),
-			data.NewDailyPickService(),
+			app.dailyPickHandler,
 			dailyPickBacktestService.NewDailyPickBacktestService(),
 			app.stockHandler,
 			app.systemHandler,

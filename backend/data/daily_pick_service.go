@@ -10,7 +10,6 @@ import (
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // DailyPickProgressEvent is the Wails event name used to report async
@@ -23,13 +22,34 @@ type DailyPickService struct {
 	review *DailyPickReview
 
 	asyncRunning atomic.Bool // guards against concurrent async runs
+
+	// emit 是可选的进度事件发射器（S4 解耦）：由装配方注入（如 handler 用
+	// Wails runtime 转发到前端）；nil 时进度事件被丢弃，服务自身不依赖
+	// 任何 GUI runtime。
+	emit ProgressEmitter
 }
+
+// ProgressEmitter 接收进度事件（事件名 + 负载）。
+type ProgressEmitter func(event string, payload map[string]any)
 
 // NewDailyPickService creates a new service instance.
 func NewDailyPickService() *DailyPickService {
 	return &DailyPickService{
 		engine: NewDailyPickEngine(),
 		review: NewDailyPickReview(),
+	}
+}
+
+// WithEmitter 注入进度事件发射器，返回自身以便链式装配。
+func (s *DailyPickService) WithEmitter(emit ProgressEmitter) *DailyPickService {
+	s.emit = emit
+	return s
+}
+
+// emitProgress 发送一条进度事件；未注入发射器时静默丢弃。
+func (s *DailyPickService) emitProgress(payload map[string]any) {
+	if s.emit != nil {
+		s.emit(DailyPickProgressEvent, payload)
 	}
 }
 
@@ -61,7 +81,7 @@ func (s *DailyPickService) RunDailyPick(tradeDate string, topN int) ([]models.Da
 func (s *DailyPickService) RunDailyPickAsync(tradeDate string, topN int) {
 	ctx := context.Background()
 	if !s.asyncRunning.CompareAndSwap(false, true) {
-		runtime.EventsEmit(ctx, DailyPickProgressEvent, map[string]any{
+		s.emitProgress(map[string]any{
 			"stage":   "busy",
 			"message": "选股任务正在运行中，请稍候",
 		})
@@ -72,7 +92,7 @@ func (s *DailyPickService) RunDailyPickAsync(tradeDate string, topN int) {
 		defer func() {
 			if err := recover(); err != nil {
 				logger.SugaredLogger.Errorf("daily_pick: async pick panic: %v", err)
-				runtime.EventsEmit(ctx, DailyPickProgressEvent, map[string]any{
+				s.emitProgress(map[string]any{
 					"stage":   "error",
 					"message": "选股任务异常",
 				})
@@ -80,7 +100,7 @@ func (s *DailyPickService) RunDailyPickAsync(tradeDate string, topN int) {
 		}()
 
 		s.engine.WithProgressHook(func(stage string, done, total int) {
-			runtime.EventsEmit(ctx, DailyPickProgressEvent, map[string]any{
+			s.emitProgress(map[string]any{
 				"stage": stage,
 				"done":  done,
 				"total": total,
@@ -91,13 +111,13 @@ func (s *DailyPickService) RunDailyPickAsync(tradeDate string, topN int) {
 		picks, err := s.engine.RunDailyPick(ctx, tradeDate, topN)
 		if err != nil {
 			logger.SugaredLogger.Errorf("daily_pick: async pick failed: %v", err)
-			runtime.EventsEmit(ctx, DailyPickProgressEvent, map[string]any{
+			s.emitProgress(map[string]any{
 				"stage":   "error",
 				"message": err.Error(),
 			})
 			return
 		}
-		runtime.EventsEmit(ctx, DailyPickProgressEvent, map[string]any{
+		s.emitProgress(map[string]any{
 			"stage": "done",
 			"count": len(picks),
 		})

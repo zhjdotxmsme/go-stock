@@ -25,6 +25,7 @@ type App struct {
 	stockAlertLastSent  map[string]time.Time
 	priceAtAlertReset   map[string]float64
 	notificationHandler *handler.NotificationHandler
+	dailyPickHandler    *handler.DailyPickHandler
 	fundHandler         *handler.FundHandler
 	commodityHandler    *handler.CommodityHandler
 	newsHandler         *handler.NewsHandler
@@ -54,6 +55,7 @@ func NewApp() *App {
 		priceAtAlertReset:  make(map[string]float64),
 	}
 	app.notificationHandler = handler.NewNotificationHandler(cache, func() context.Context { return app.ctx })
+	app.dailyPickHandler = handler.NewDefaultDailyPickHandler(func() context.Context { return app.ctx })
 	app.fundHandler = handler.NewDefaultFundHandler(func() context.Context { return app.ctx })
 	app.commodityHandler = handler.NewCommodityHandler()
 	app.newsHandler = handler.NewDefaultNewsHandler(func() context.Context { return app.ctx })

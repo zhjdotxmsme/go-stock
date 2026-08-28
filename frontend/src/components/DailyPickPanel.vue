@@ -112,7 +112,7 @@ import {
   RunDailyPickAsync, GetDailyPicks, GetDailyPickStats,
   UpdateDailyPickRemarks, RunDailyReview,
   GetReviewTrend,
-} from '../../wailsjs/go/data/DailyPickService'
+} from '../../wailsjs/go/handler/DailyPickHandler'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 
 const message = useMessage()
