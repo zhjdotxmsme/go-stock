@@ -5,7 +5,6 @@ import (
 	"math"
 	"time"
 
-	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 )
@@ -13,12 +12,14 @@ import (
 // DailyPickReview handles the next-day review of previous picks.
 type DailyPickReview struct {
 	engine *DailyPickEngine
+	repo   *DailyPickRepository
 }
 
 // NewDailyPickReview creates a new review instance.
 func NewDailyPickReview() *DailyPickReview {
 	return &DailyPickReview{
 		engine: NewDailyPickEngine(),
+		repo:   NewDailyPickRepository(),
 	}
 }
 
@@ -29,22 +30,15 @@ func (r *DailyPickReview) RunDailyReview(ctx context.Context, reviewDate string,
 	var picks []models.DailyPick
 
 	if pickDate != "" {
-		db.Dao.WithContext(ctx).
-			Where("trade_date = ? AND reviewed = ?", pickDate, false).
-			Find(&picks)
+		picks = r.repo.FindUnreviewedByDate(ctx, pickDate)
 	} else {
 		// Find the most recent unreviewed date
-		var latest models.DailyPick
-		if err := db.Dao.WithContext(ctx).
-			Where("reviewed = ?", false).
-			Order("trade_date ASC").
-			First(&latest).Error; err != nil {
+		latest, err := r.repo.EarliestUnreviewed(ctx)
+		if err != nil {
 			logger.SugaredLogger.Info("daily_review: no unreviewed picks found")
 			return 0
 		}
-		db.Dao.WithContext(ctx).
-			Where("trade_date = ? AND reviewed = ?", latest.TradeDate, false).
-			Find(&picks)
+		picks = r.repo.FindUnreviewedByDate(ctx, latest.TradeDate)
 	}
 
 	if len(picks) == 0 {
@@ -99,7 +93,7 @@ func (r *DailyPickReview) reviewOne(ctx context.Context, pick *models.DailyPick,
 
 	pick.Reviewed = true
 
-	if err := db.Dao.WithContext(ctx).Save(pick).Error; err != nil {
+	if err := r.repo.SavePick(ctx, pick); err != nil {
 		logger.SugaredLogger.Errorf("daily_review: save review failed for %s: %v", pick.StockCode, err)
 		return false
 	}
@@ -114,11 +108,8 @@ func (r *DailyPickReview) ReviewAllUnreviewed(ctx context.Context) int {
 
 // GetUnreviewedDate returns the earliest date with unreviewed picks, or empty string.
 func (r *DailyPickReview) GetUnreviewedDate(ctx context.Context) string {
-	var pick models.DailyPick
-	if err := db.Dao.WithContext(ctx).
-		Where("reviewed = ?", false).
-		Order("trade_date ASC").
-		First(&pick).Error; err != nil {
+	pick, err := r.repo.EarliestUnreviewed(ctx)
+	if err != nil {
 		return ""
 	}
 	return pick.TradeDate
@@ -126,12 +117,7 @@ func (r *DailyPickReview) GetUnreviewedDate(ctx context.Context) string {
 
 // GetReviewSummary returns a summary of review results for a given date.
 func (r *DailyPickReview) GetReviewSummary(ctx context.Context, tradeDate string) map[string]interface{} {
-	var picks []models.DailyPick
-	tx := db.Dao.WithContext(ctx).Where("reviewed = ?", true)
-	if tradeDate != "" {
-		tx = tx.Where("trade_date = ?", tradeDate)
-	}
-	tx.Find(&picks)
+	picks := r.repo.ReviewedPicks(ctx, tradeDate)
 
 	n := len(picks)
 	if n == 0 {

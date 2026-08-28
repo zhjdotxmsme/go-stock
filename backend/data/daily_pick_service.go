@@ -20,6 +20,7 @@ const DailyPickProgressEvent = "dailyPickProgress"
 type DailyPickService struct {
 	engine *DailyPickEngine
 	review *DailyPickReview
+	repo   *DailyPickRepository
 
 	asyncRunning atomic.Bool // guards against concurrent async runs
 
@@ -37,6 +38,7 @@ func NewDailyPickService() *DailyPickService {
 	return &DailyPickService{
 		engine: NewDailyPickEngine(),
 		review: NewDailyPickReview(),
+		repo:   NewDailyPickRepository(),
 	}
 }
 
@@ -154,39 +156,13 @@ func (s *DailyPickService) GetDailyPicks(query models.DailyPickQuery) models.Dai
 	}
 
 	var result models.DailyPickPageData
-	var picks []models.DailyPick
 
-	tx := db.Dao.Model(&models.DailyPick{})
-
-	// Apply filters
-	if query.TradeDate != "" {
-		tx = tx.Where("trade_date = ?", query.TradeDate)
-	}
-	if query.StartDate != "" {
-		tx = tx.Where("trade_date >= ?", query.StartDate)
-	}
-	if query.EndDate != "" {
-		tx = tx.Where("trade_date <= ?", query.EndDate)
-	}
-	if query.Reviewed != nil {
-		tx = tx.Where("reviewed = ?", *query.Reviewed)
-	}
-
-	// Count total
-	if err := tx.Count(&result.Total).Error; err != nil {
-		logger.SugaredLogger.Errorf("daily_pick: count error: %v", err)
-		return result
-	}
-
-	// Paginate
-	offset := (query.Page - 1) * query.PageSize
-	if err := tx.Order("trade_date DESC, score DESC").
-		Offset(offset).
-		Limit(query.PageSize).
-		Find(&picks).Error; err != nil {
+	total, picks, err := s.repo.QueryDailyPicks(context.Background(), query)
+	if err != nil {
 		logger.SugaredLogger.Errorf("daily_pick: query error: %v", err)
 		return result
 	}
+	result.Total = total
 
 	result.List = picks
 	result.Page = query.Page
@@ -204,45 +180,35 @@ func (s *DailyPickService) GetLatestPicks(topN int) []models.DailyPick {
 	}
 
 	today := time.Now().Format("2006-01-02")
-	var picks []models.DailyPick
 
 	// Try today first
-	if err := db.Dao.Where("trade_date = ?", today).
-		Order("score DESC").
-		Limit(topN).
-		Find(&picks).Error; err != nil || len(picks) == 0 {
-
+	picks, err := s.repo.TodayTopPicks(context.Background(), today, topN)
+	if err != nil || len(picks) == 0 {
 		// Fallback to most recent date
-		var latest models.DailyPick
-		if err := db.Dao.Order("trade_date DESC").First(&latest).Error; err != nil {
+		latest, err := s.repo.LatestPick(context.Background())
+		if err != nil {
 			return nil
 		}
-		db.Dao.Where("trade_date = ?", latest.TradeDate).
-			Order("score DESC").
-			Limit(topN).
-			Find(&picks)
+		picks = s.repo.PicksByDateTop(context.Background(), latest.TradeDate, topN)
 	}
 	return picks
 }
 
 // DeleteDailyPick deletes a single pick record.
 func (s *DailyPickService) DeleteDailyPick(id uint) error {
-	return db.Dao.Delete(&models.DailyPick{}, id).Error
+	return s.repo.DeletePick(context.Background(), id)
 }
 
 // UpdateDailyPickRemarks updates the remarks field of a pick.
 func (s *DailyPickService) UpdateDailyPickRemarks(id uint, remarks string) error {
-	return db.Dao.Model(&models.DailyPick{}).Where("id = ?", id).Update("remarks", remarks).Error
+	return s.repo.UpdateRemarks(context.Background(), id, remarks)
 }
 
 // GetDailyPickStats returns aggregate statistics for all picks.
 func (s *DailyPickService) GetDailyPickStats() models.DailyPickStats {
 	var stats models.DailyPickStats
-	var picks []models.DailyPick
 
-	var totalPicks64, reviewedPicks64 int64
-	db.Dao.Model(&models.DailyPick{}).Count(&totalPicks64)
-	db.Dao.Model(&models.DailyPick{}).Where("reviewed = ?", true).Count(&reviewedPicks64)
+	totalPicks64, reviewedPicks64 := s.repo.CountPicks(context.Background())
 	stats.TotalPicks = int(totalPicks64)
 	stats.ReviewedPicks = int(reviewedPicks64)
 
@@ -250,7 +216,7 @@ func (s *DailyPickService) GetDailyPickStats() models.DailyPickStats {
 		return stats
 	}
 
-	db.Dao.Where("reviewed = ?", true).Find(&picks)
+	picks := s.repo.FindReviewed(context.Background())
 
 	var winCount, lossCount int
 	var totalReturn, maxReturn, maxDrawdown float64
@@ -289,31 +255,16 @@ func (s *DailyPickService) GetDailyPickStats() models.DailyPickStats {
 
 // GetLatestUnreviewedPicks returns picks from the most recent date that haven't been reviewed.
 func (s *DailyPickService) GetLatestUnreviewedPicks() []models.DailyPick {
-	var latest models.DailyPick
-	if err := db.Dao.Where("reviewed = ?", false).
-		Order("trade_date DESC").
-		First(&latest).Error; err != nil {
+	latest, err := s.repo.LatestUnreviewed(context.Background())
+	if err != nil {
 		return nil
 	}
-
-	var picks []models.DailyPick
-	db.Dao.Where("trade_date = ? AND reviewed = ?", latest.TradeDate, false).
-		Order("score DESC").
-		Find(&picks)
-	return picks
+	return s.repo.UnreviewedByDate(context.Background(), latest.TradeDate)
 }
 
 // GetDateRange returns the earliest and latest trade dates with picks.
 func (s *DailyPickService) GetDateRange() (string, string) {
-	var first, last models.DailyPick
-	start, end := "", ""
-	if err := db.Dao.Order("trade_date ASC").First(&first).Error; err == nil {
-		start = first.TradeDate
-	}
-	if err := db.Dao.Order("trade_date DESC").First(&last).Error; err == nil {
-		end = last.TradeDate
-	}
-	return start, end
+	return s.repo.DateRange(context.Background())
 }
 
 // ---- Cursor-based listing for charts ----

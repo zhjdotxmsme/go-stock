@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"go-stock/backend/agent/strategy/ranking"
-	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 
@@ -33,6 +32,7 @@ const (
 type DailyPickEngine struct {
 	maxWorkers int
 	strategies []ScoringStrategy
+	repo       *DailyPickRepository
 
 	// enhanceCfg 管线增强配置（D7 硬过滤 / D1 九因子评分 / D3 风控叠加，方案 §8.1 A1）。
 	// 默认全开、失败降级；不影响 Score 等旧字段逻辑。
@@ -60,6 +60,7 @@ type DailyPickEngine struct {
 func NewDailyPickEngine() *DailyPickEngine {
 	return &DailyPickEngine{
 		maxWorkers: 10,
+		repo:       NewDailyPickRepository(),
 		enhanceCfg: DefaultPickEnhanceConfig(),
 		strategies: []ScoringStrategy{
 			&MATrendStrategy{},
@@ -209,7 +210,7 @@ func (e *DailyPickEngine) RunDailyPick(ctx context.Context, tradeDate string, to
 
 	// Step 4: Persist to database
 	for i := range picks {
-		if err := db.Dao.WithContext(ctx).Create(&picks[i]).Error; err != nil {
+		if err := e.repo.CreatePick(ctx, &picks[i]); err != nil {
 			logger.SugaredLogger.Errorf("daily_pick: failed to save pick %s: %v", picks[i].StockCode, err)
 		}
 	}
@@ -306,15 +307,8 @@ type stockCandidate struct {
 
 // getCandidateStocks queries the local all_stock_info table for A-share candidates.
 func (e *DailyPickEngine) getCandidateStocks(ctx context.Context, tradeDate string) []stockCandidate {
-	var infos []models.AllStockInfo
-
 	// Query A-share stocks: SH/SZ exchanges, non-ST, active
-	err := db.Dao.WithContext(ctx).
-		Where("(secucode LIKE ? OR secucode LIKE ?)", "%.SH", "%.SZ").
-		Where("secucode NOT LIKE ?", "688%").      // exclude 科创板
-		Where("sec_uri_tynameabbr NOT LIKE ?", "%ST%").
-		Where("sec_uri_tynameabbr NOT LIKE ?", "%退%").
-		Find(&infos).Error
+	infos, err := e.repo.QueryAShareCandidates(ctx)
 
 	if err != nil {
 		logger.SugaredLogger.Errorf("daily_pick: query all_stock_info error: %v", err)
@@ -824,16 +818,7 @@ func (e *DailyPickEngine) prefetchMacroData() {
 // Called once per RunDailyPick before parallel scoring.
 func (e *DailyPickEngine) prefetchIndustryRankings(ctx context.Context) {
 	// Build stockIndustryMap / stockConceptMap from database
-	var infos []struct {
-		SECUCODE  string
-		INDUSTRY  string
-		CONCEPT   string
-	}
-	err := db.Dao.WithContext(ctx).
-		Model(&models.AllStockInfo{}).
-		Where("secucode IS NOT NULL AND industry IS NOT NULL AND industry != ''").
-		Select("secucode, industry, concept").
-		Find(&infos).Error
+	infos, err := e.repo.LoadIndustryConcept(ctx)
 	if err != nil {
 		logger.SugaredLogger.Errorf("daily_pick: query stock industry error: %v", err)
 		e.stockIndustryMap = make(map[string]string)
@@ -1042,7 +1027,7 @@ func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, c
 
 	// Step 6: Persist
 	for i := range picks {
-		if err := db.Dao.WithContext(ctx).Create(&picks[i]).Error; err != nil {
+		if err := e.repo.CreatePick(ctx, &picks[i]); err != nil {
 			logger.SugaredLogger.Errorf("daily_pick: failed to save pick %s: %v", picks[i].StockCode, err)
 		}
 	}
