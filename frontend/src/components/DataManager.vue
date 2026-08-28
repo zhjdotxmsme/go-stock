@@ -1,9 +1,9 @@
 <script setup>
 import { h, ref, onMounted, computed } from 'vue'
 import {
-  GetKLineCacheStats, StartHistoricalSync, GetSyncProgress,
-  GetSeedImportStatus, RunSeedImport, GetLastSeedImportOutput,
-} from '../../wailsjs/go/backtest/Service'
+  getKLineCacheStats, startHistoricalSync, getSyncProgress,
+  getSeedImportStatus, runSeedImport as runSeedImportApi, getLastSeedImportOutput,
+} from '../api/backtest'
 import * as stockApi from '../api/stock'
 import {
   NAlert, NButton, NCard, NDataTable, NDivider,
@@ -48,7 +48,7 @@ async function loadStats() {
   statsLoading.value = true
   statsError.value = ''
   try {
-    stats.value = await GetKLineCacheStats()
+    stats.value = await getKLineCacheStats()
   } catch (e) {
     statsError.value = String(e)
   } finally {
@@ -78,7 +78,7 @@ const progressColumns = [
 async function startSync() {
   syncLoading.value = true
   try {
-    await StartHistoricalSync(5)
+    await startHistoricalSync(5)
     message.success('历史数据同步已启动，稍后刷新进度查看')
   } catch (e) {
     message.error('启动同步失败: ' + String(e))
@@ -90,7 +90,7 @@ async function startSync() {
 async function refreshProgress() {
   progressLoading.value = true
   try {
-    progressItems.value = await GetSyncProgress()
+    progressItems.value = await getSyncProgress()
   } catch (e) {
     message.error('获取进度失败: ' + String(e))
   } finally {
@@ -159,7 +159,7 @@ const seedForm = ref({
 async function loadSeedStatus() {
   seedStatusLoading.value = true
   try {
-    seedStatus.value = await GetSeedImportStatus()
+    seedStatus.value = await getSeedImportStatus()
   } catch (e) {
     message.error('获取种子导入状态失败: ' + String(e))
   } finally {
@@ -171,7 +171,7 @@ async function runSeedImport() {
   seedImportRunning.value = true
   seedImportOutput.value = ''
   try {
-    const output = await RunSeedImport(
+    const output = await runSeedImportApi(
       '',
       seedForm.value.startDate,
       seedForm.value.endDate,
@@ -190,7 +190,7 @@ async function runSeedImport() {
 
 async function refreshSeedOutput() {
   try {
-    seedImportOutput.value = await GetLastSeedImportOutput()
+    seedImportOutput.value = await getLastSeedImportOutput()
   } catch (e) {
     message.error('获取上次输出失败: ' + String(e))
   }

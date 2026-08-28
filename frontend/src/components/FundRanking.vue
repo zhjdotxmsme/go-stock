@@ -3,7 +3,7 @@ import {h, ref, computed, reactive, onMounted, watch} from "vue";
 import {NButton, NText, NFlex, NTag, NDataTable} from "naive-ui";
 import * as fundApi from "../api/fund";
 import * as systemApi from "../api/system";
-import {OpenURL} from "../../wailsjs/go/handler/SystemHandler";
+
 import {Environment} from "../../wailsjs/runtime";
 import {useMessage} from "naive-ui";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
@@ -280,7 +280,7 @@ function search(code) {
           window.open("https://fund.eastmoney.com/" + code + ".html", "_blank", "noreferrer,width=1000,top=100,left=100,status=no,toolbar=no,location=no,scrollbars=no")
           break
         default:
-          OpenURL("https://fund.eastmoney.com/" + code + ".html")
+          systemApi.openURL("https://fund.eastmoney.com/" + code + ".html")
       }
     })
   }, 300)

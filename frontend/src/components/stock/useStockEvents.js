@@ -5,8 +5,6 @@
  */
 import { h, nextTick, onBeforeMount } from 'vue'
 import { NAvatar, NButton } from 'naive-ui'
-import { RestartAsAdmin } from '../../../wailsjs/go/main/App'
-import { OpenURL } from '../../../wailsjs/go/handler/SystemHandler'
 import { Environment, EventsOn, WindowReload } from '../../../wailsjs/runtime'
 import * as stockApi from '../../api/stock'
 import * as systemApi from '../../api/system'
@@ -252,7 +250,7 @@ export function useStockEvents(ctx) {
                     window.open(msg.html_url)
                     break
                   default :
-                    OpenURL(msg.html_url)
+                    systemApi.openURL(msg.html_url)
                 }
               })
             }
@@ -284,7 +282,7 @@ export function useStockEvents(ctx) {
             type: 'warning',
             size: 'small',
             onClick: () => {
-              RestartAsAdmin()
+              systemApi.restartAsAdmin()
             }
           }, { default: () => '以管理员身份重启' })
         }

@@ -218,6 +218,24 @@ export async function getUserManual(): Promise<any> {
   return callApi(SystemHandler.GetUserManual)
 }
 
+// ========== 系统操作 ==========
+
+/**
+ * 打开外部链接
+ * Go: OpenURL(url string)
+ */
+export async function openURL(url: string): Promise<any> {
+  return callApi(SystemHandler.OpenURL, url)
+}
+
+/**
+ * 以管理员身份重启应用
+ * Go: RestartAsAdmin()
+ */
+export async function restartAsAdmin(): Promise<any> {
+  return callApi(SystemHandler.RestartAsAdmin)
+}
+
 // ========== 配置管理 ==========
 
 /**
@@ -673,6 +691,10 @@ export default {
 
   // 用户手册
   getUserManual,
+
+  // 系统操作
+  openURL,
+  restartAsAdmin,
 
   // 配置管理
   exportConfig,

@@ -4,9 +4,6 @@ import api from '../api'
 import * as stockApi from '../api/stock'
 import * as systemApi from '../api/system'
 import {
-  OpenURL,
-} from '../../wailsjs/go/handler/SystemHandler'
-import {
   NFlex,
   NForm,
   NFormItem,
@@ -506,7 +503,7 @@ function openCenteredWindow(url, width, height) {
         )
         break
       default :
-        OpenURL(url)
+        systemApi.openURL(url)
         break
     }
   })

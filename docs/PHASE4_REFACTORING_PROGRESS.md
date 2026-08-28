@@ -75,26 +75,24 @@
 
 ## 待完成 📋
 
-### P0 - 核心迁移（上线前必须）
+### P0 - 核心迁移（上线前必须）✅ 全部完成（2026-08-28）
 
-#### 1. npm 依赖安装
-```bash
-cd frontend
-npm install  # 安装 pinia
-```
+#### 1. npm 依赖安装 ✅
+pinia 已安装并在 main.js 注册（app.use(pinia)）。
 
-#### 2. App.vue 迁移
-- 将 1279 行 App.vue 逐步迁移到新架构
-- 状态替换: `loading`, `loadingMsg`, `enableNews`, `groupList`, `realtimeProfit` 等 → Pinia Stores
-- 事件监听替换 → `useWailsEvents()`
-- 市场状态更新替换 → `useMarketStatus()`
-- 菜单配置替换 → `useNavigation()`
-- 保留原有功能不变，仅做架构迁移
+#### 2. App.vue 迁移 ✅
+App.vue 已迁移至 165 行（原 1,279 行），状态/事件/菜单经 Pinia Stores 与
+useWailsEvents/useMarketStatus/useNavigation 组合。
 
-#### 3. 现有组件逐步接入 API 层
-- `components/stock.vue` - 替换直接 Wails 调用为 `api.stock.*`
-- `components/market.vue` - 替换直接 Wails 调用为 `api.market.*`
-- 其他页面组件同理
+#### 3. 现有组件逐步接入 API 层 ✅（2026-08-28）
+- `components/stock.vue` / `components/market.vue`：数据调用全部经 api 层
+- 新增 `api/backtest.ts`（backtest.Service + DailyPickBacktestService）与
+  `api/dailyPick.ts`（DailyPickHandler）
+- BacktestPanel / DataManager / DailyPickPanel 迁移至上述 api 封装
+- OpenURL/RestartAsAdmin 收口至 `api.system.openURL/restartAsAdmin`，
+  6 处直连（stock/FundFollow/FundRanking/HotTopics/SelectStock/useStockEvents）清除
+- 验收：`grep -r "wailsjs/go" src/components/ src/views/`（豁免 OpenURL/
+  RestartAsAdmin/models 类型外）= 0；计划 Step8 验收命令 = 0
 
 ### P1 - 架构优化
 

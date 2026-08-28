@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {onBeforeMount, onUnmounted, ref} from 'vue'
-import {OpenURL} from "../../wailsjs/go/handler/SystemHandler";
+import * as systemApi from '../api/system'
+
 import * as marketApi from "../api/market";
 import {Environment} from "../../wailsjs/runtime";
 const list  = ref([])
@@ -30,7 +31,7 @@ function openCenteredWindow(url, width, height) {
         )
         break
       default:
-        OpenURL(url)
+        systemApi.openURL(url)
         break
     }
   })

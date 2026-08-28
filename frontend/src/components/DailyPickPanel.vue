@@ -109,10 +109,9 @@ import RadarChart from './charts/RadarChart.vue'
 import FactorBar from './charts/FactorBar.vue'
 
 import {
-  RunDailyPickAsync, GetDailyPicks, GetDailyPickStats,
-  UpdateDailyPickRemarks, RunDailyReview,
-  GetReviewTrend,
-} from '../../wailsjs/go/handler/DailyPickHandler'
+  runDailyPickAsync, getDailyPicks, getDailyPickStats,
+  updateDailyPickRemarks, runDailyReview, getReviewTrend,
+} from '../api/dailyPick'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 
 const message = useMessage()
@@ -299,7 +298,7 @@ async function loadWinRate() {
   const limit = trendDays.value || 0
   winRateLoading.value = true
   try {
-    const data = await GetReviewTrend(limit)
+    const data = await getReviewTrend(limit)
     winRateData.value = (data || []).map((d: any) => ({
       date: d.date || d.Date,
       value: d.winRate ?? d.WinRate ?? 0,
@@ -337,14 +336,14 @@ async function loadPicks() {
   loading.value = true
   try {
     const q = { page: pagination.page, pageSize: pagination.pageSize, tradeDate: query.tradeDate, reviewed: query.reviewed }
-    const res = await GetDailyPicks(q)
+    const res = await getDailyPicks(q)
     if (res) { picks.value = res.list || []; pagination.total = res.total || 0; pagination.pageCount = res.totalPages || 0 }
   } catch (e) { message.error('加载失败: ' + e)
   } finally { loading.value = false }
 }
 
 async function loadStats() {
-  try { const s = await GetDailyPickStats(); if (s) stats.value = s }
+  try { const s = await getDailyPickStats(); if (s) stats.value = s }
   catch (e) { console.error('loadStats failed', e); message.error('加载统计信息失败') }
 }
 
@@ -390,7 +389,7 @@ async function runPick() {
   try {
     const date = queryDate.value ? format(new Date(queryDate.value), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')
     // Fire-and-forget: progress and completion arrive via dailyPickProgress events.
-    await RunDailyPickAsync(date, 5)
+    await runDailyPickAsync(date, 5)
   } catch (e) {
     running.value = false
     progressText.value = ''
@@ -401,7 +400,7 @@ async function runPick() {
 async function runReview() {
   reviewing.value = true
   try {
-    await RunDailyReview(format(new Date(), 'yyyy-MM-dd'), '')
+    await runDailyReview(format(new Date(), 'yyyy-MM-dd'), '')
     message.success('复盘完成')
     await loadPicks(); await loadStats(); await loadWinRate()
   } catch (e) { message.error('复盘失败: ' + e)
@@ -420,7 +419,7 @@ function editRemarks(row: any) {
     content: () => h(NInput, { value: remarksRef.value, type: 'textarea', placeholder: '输入备注内容...', autosize: { minRows: 3, maxRows: 8 }, onUpdateValue: (val: string) => { remarksRef.value = val } }),
     positiveText: '保存', negativeText: '取消',
     onPositiveHandle: async () => {
-      try { await UpdateDailyPickRemarks(row.id, remarksRef.value); message.success('保存成功'); d.destroy() }
+      try { await updateDailyPickRemarks(row.id, remarksRef.value); message.success('保存成功'); d.destroy() }
       catch (e) { message.error('保存失败: ' + e) }
     },
   })

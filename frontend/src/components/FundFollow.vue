@@ -4,7 +4,7 @@ import {Add, ChatboxOutline, RefreshOutline} from "@vicons/ionicons5";
 import {NButton, NEllipsis, NText, useMessage, NTag, NModal, NDataTable, NPopover, NIcon} from "naive-ui";
 import * as fundApi from "../api/fund";
 import * as systemApi from "../api/system";
-import {OpenURL} from "../../wailsjs/go/handler/SystemHandler";
+
 import {Environment} from "../../wailsjs/runtime";
 import vueDanmaku from 'vue3-danmaku'
 import FundKlineChart from "./FundKlineChart.vue";
@@ -223,7 +223,7 @@ function search(code) {
           window.open("https://fund.eastmoney.com/" + code + ".html", "_blank", "noreferrer,width=1000,top=100,left=100,status=no,toolbar=no,location=no,scrollbars=no")
           break
         default:
-          OpenURL("https://fund.eastmoney.com/" + code + ".html")
+          systemApi.openURL("https://fund.eastmoney.com/" + code + ".html")
       }
     })
   }, 300)

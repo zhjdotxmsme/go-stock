@@ -1,7 +1,9 @@
 <script setup>
 import { computed, ref, reactive, h, onMounted } from 'vue'
-import { RunSingleBacktest, RunBatchBacktest, GetBacktestResults, RunOptimization, GetOptimizationPresets } from '../../wailsjs/go/backtest/Service'
-import { RunBacktestForDailyPicks } from '../../wailsjs/go/service/DailyPickBacktestService'
+import {
+  runSingleBacktest, runBatchBacktest, getBacktestResults,
+  runOptimization as runOptimizationApi, getOptimizationPresets, runBacktestForDailyPicks,
+} from '../api/backtest'
 import * as stockApi from '../api/stock'
 import {
   NAutoComplete, NAlert, NButton, NCard, NDataTable, NDatePicker, NDivider,
@@ -176,7 +178,7 @@ async function runSingle() {
   singleError.value = ''
   singleResult.value = null
   try {
-    const res = await RunSingleBacktest(
+    const res = await runSingleBacktest(
       singleForm.stockCode,
       fmtDate(singleForm.signalDate),
       singleForm.entryPrice,
@@ -200,7 +202,7 @@ async function runBatch() {
   batchError.value = ''
   batchResult.value = null
   try {
-    const res = await RunBatchBacktest(
+    const res = await runBatchBacktest(
       batchForm.stockCode,
       fmtDate(batchForm.startDate),
       fmtDate(batchForm.endDate),
@@ -283,7 +285,7 @@ async function runOptimization() {
       },
       topN: optForm.topN,
     }
-    const res = await RunOptimization(input)
+    const res = await runOptimizationApi(input)
     optResults.value = res
     message.success(`优化完成，返回 ${res.length} 组结果`)
   } catch (e) {
@@ -296,7 +298,7 @@ async function runOptimization() {
 
 async function applyOptPreset(name) {
   try {
-    const data = await GetOptimizationPresets()
+    const data = await getOptimizationPresets()
     const presets = data.presets
     if (presets && presets[name]) {
       const ps = presets[name]
@@ -388,7 +390,7 @@ async function runStrategyPick() {
   strategyError.value = ''
   strategyResults.value = null
   try {
-    const res = await RunBacktestForDailyPicks(
+    const res = await runBacktestForDailyPicks(
       fmtDate(strategyForm.tradeDate),
       strategyForm.topN,
       strategyForm.holdingDays,
@@ -441,7 +443,7 @@ async function loadHistory(page = 1) {
   historyLoading.value = true
   historyPage.value = page
   try {
-    const res = await GetBacktestResults(historySearchCode.value || '', page, historyPageSize.value)
+    const res = await getBacktestResults(historySearchCode.value || '', page, historyPageSize.value)
     historyData.value = res
   } catch (e) {
     message.error('加载回测历史失败: ' + String(e))
