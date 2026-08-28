@@ -1,6 +1,9 @@
 package data
 
-import "strings"
+import (
+	"go-stock/backend/logger"
+	"strings"
+)
 
 // @Author spark
 // @Date 2026/3/7 18:48
@@ -29,6 +32,23 @@ func Tools(tools []Tool) []Tool {
 	tools = appendSentimentTools(tools)
 
 	tools = appendAgentParityTools(tools)
+
+	// 定义中心化注册的工具（schema+executor 一体，A1 step 2）
+	tools = append(tools, definitionsAsTools()...)
+
+	// 装配门禁（在 API-Key 过滤前执行——一致性是全注册表的属性，不是过滤后
+	// 视图的属性）：任何 schema 无 handler / handler 无 schema 都在此刻大声
+	// 记录，而不是等到 LLM 真正调用该工具时才报"未知工具"。
+	lastSchemaHandlerDrift = bindDefinitionsToSchemas(tools)
+	if len(lastSchemaHandlerDrift) > 0 {
+		logger.SugaredLogger.Errorf("tool registry drift: schemas without handlers (%d): %s",
+			len(lastSchemaHandlerDrift), strings.Join(lastSchemaHandlerDrift, ", "))
+	}
+	lastHandlerSchemaDrift = handlerNamesWithoutSchema(tools)
+	if len(lastHandlerSchemaDrift) > 0 {
+		logger.SugaredLogger.Errorf("tool registry drift: handlers without schemas (%d): %s",
+			len(lastHandlerSchemaDrift), strings.Join(lastHandlerSchemaDrift, ", "))
+	}
 
 	// 根据 API Key 配置过滤工具，未配置对应 Key 的工具不注册
 	tools = FilterToolsByApiKey(tools)

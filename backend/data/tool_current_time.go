@@ -3,7 +3,19 @@ package data
 import "time"
 
 func init() {
-	registerToolHandler("GetCurrentTime", handleGetCurrentTime)
+	// A1 step 2 参考迁移：schema 与 executor 一体注册。
+	// 其余 tool_*.go 仍用 registerToolHandler + tools_*.go 组装 schema，
+	// 由 Tools() 的装配门禁兜底一致性。
+	registerToolDefinition(ToolDefinition{
+		Schema: Tool{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        "GetCurrentTime",
+				Description: "获取当前本地时间（格式：YYYY-MM-DD HH:mm:ss）及星期几",
+			},
+		},
+		Handler: handleGetCurrentTime,
+	})
 }
 
 func handleGetCurrentTime(o *OpenAi, funcArguments string, ctx *ToolContext) error {

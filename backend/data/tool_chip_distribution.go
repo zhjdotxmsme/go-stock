@@ -9,7 +9,11 @@ import (
 )
 
 func init() {
-	registerToolHandler("GetChipDistribution", handleGetChipDistribution)
+	// 注册已移除（A1 step 2 门禁发现的孤儿 handler）：旧链装配表中从未有过
+	// GetChipDistribution 的 schema，LLM 永远无法调用它；筹码分布实际由
+	// StockHandler.GetChipDistribution（Wails 直连）提供。handler 保留以备
+	// 后续补 schema，但不再注册。
+	_ = handleGetChipDistribution
 }
 
 func handleGetChipDistribution(o *OpenAi, funcArguments string, ctx *ToolContext) error {

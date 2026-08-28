@@ -332,12 +332,5 @@ func appendNewsTools(tools []Tool) []Tool {
 		},
 	})
 
-	tools = append(tools, Tool{
-		Type: "function",
-		Function: ToolFunction{
-			Name:        "GetCurrentTime",
-			Description: "获取当前本地时间（格式：YYYY-MM-DD HH:mm:ss）及星期几",
-		},
-	})
 	return tools
 }

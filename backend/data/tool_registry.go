@@ -30,6 +30,84 @@ func registerToolHandler(name string, handler ToolHandler) {
 	toolHandlers[name] = handler
 }
 
+// ToolDefinition 将 schema 与 executor 绑定为一体（A1 step 2）：
+// 旧链此前靠 "schema 名 ↔ handler 名" 的字符串约定在两个文件树之间弱耦合，
+// 漂移只会在 LLM 调用时才暴露。经 registerToolDefinition 注册的定义在
+// 装配时即完成绑定，Tools() 的装配门禁会对整表做双向一致性校验。
+type ToolDefinition struct {
+	Schema      Tool
+	Handler     ToolHandler
+	RequiredKey string // 空 = 无 API Key 要求
+}
+
+var (
+	toolDefinitions      = map[string]ToolDefinition{}
+	toolDefinitionOrder  []string
+	toolDefinitionsBound bool
+
+	// 最近一次 Tools() 装配门禁的结果（测试与诊断用；过滤前视图）。
+	lastSchemaHandlerDrift []string
+	lastHandlerSchemaDrift []string
+)
+
+// registerToolDefinition 注册一个 schema+executor 一体的工具定义。
+func registerToolDefinition(def ToolDefinition) {
+	name := def.Schema.Function.Name
+	if name == "" {
+		panic("registerToolDefinition: schema function name is empty")
+	}
+	if _, exists := toolDefinitions[name]; !exists {
+		toolDefinitionOrder = append(toolDefinitionOrder, name)
+	}
+	toolDefinitions[name] = def
+	toolHandlers[name] = def.Handler
+}
+
+// definitionsAsTools returns registered definitions in registration order,
+// applying the API-key filter.
+func definitionsAsTools() []Tool {
+	tools := make([]Tool, 0, len(toolDefinitionOrder))
+	for _, name := range toolDefinitionOrder {
+		def := toolDefinitions[name]
+		if def.RequiredKey != "" && !isApiKeyConfigured(def.RequiredKey) {
+			continue
+		}
+		tools = append(tools, def.Schema)
+	}
+	return tools
+}
+
+// bindDefinitionsToSchemas binds assembled schemas to their registered
+// handlers, producing the definition table for the whole legacy chain.
+// Returns the list of schema names that have NO handler (drift).
+func bindDefinitionsToSchemas(tools []Tool) []string {
+	toolDefinitionsBound = true
+	var drift []string
+	for _, t := range tools {
+		name := t.Function.Name
+		if _, ok := toolHandlers[name]; !ok {
+			drift = append(drift, name)
+		}
+	}
+	return drift
+}
+
+// handlerNamesWithoutSchema lists registered handlers that no assembled
+// schema references (the other direction of drift).
+func handlerNamesWithoutSchema(tools []Tool) []string {
+	schemaNames := map[string]bool{}
+	for _, t := range tools {
+		schemaNames[t.Function.Name] = true
+	}
+	var orphan []string
+	for name := range toolHandlers {
+		if !schemaNames[name] {
+			orphan = append(orphan, name)
+		}
+	}
+	return orphan
+}
+
 // toolRequiredKey 工具名与所需 API Key 类型的映射
 // key 为工具名，value 为所需的 API Key 类型标识
 var toolRequiredKey = map[string]string{
