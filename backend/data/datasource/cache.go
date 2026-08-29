@@ -3,12 +3,14 @@ package datasource
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"time"
 
 	"github.com/coocood/freecache"
+	"gorm.io/gorm"
 )
 
 // CacheEntry represents a cached data row in SQLite.
@@ -95,13 +97,19 @@ func (c *CacheLayer) GetInto(ctx context.Context, key string, target interface{}
 }
 
 // getL2 loads a non-expired entry from SQLite. Returns false on miss or when
-// the DB is not initialized.
+// the DB is not initialized; unexpected read failures are logged as errors.
 func (c *CacheLayer) getL2(key string, entry *CacheEntry) bool {
 	if db.Dao == nil {
 		return false
 	}
 	err := db.Dao.Where("cache_key = ? AND expires_at > ?", key, time.Now()).First(entry).Error
-	return err == nil
+	if err == nil {
+		return true
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.SugaredLogger.Errorf("cache L2 read failed for %s: %v", key, err)
+	}
+	return false
 }
 
 // l1TTLFor computes the remaining L1 TTL when promoting an L2 entry, clamped
@@ -137,7 +145,9 @@ func (c *CacheLayer) Set(ctx context.Context, key string, dataType string, data 
 		Data:      string(raw),
 		ExpiresAt: time.Now().Add(ttl),
 	}
-	db.Dao.Where("cache_key = ?", key).Assign(entry).FirstOrCreate(&entry)
+	if err := db.Dao.Where("cache_key = ?", key).Assign(entry).FirstOrCreate(&entry).Error; err != nil {
+		logger.SugaredLogger.Errorf("cache L2 write failed for %s: %v", key, err)
+	}
 
 	return nil
 }
@@ -148,7 +158,9 @@ func (c *CacheLayer) Invalidate(dataType string) {
 		c.l1Cache.Clear()
 		return
 	}
-	db.Dao.Where("data_type = ?", dataType).Delete(&CacheEntry{})
+	if err := db.Dao.Where("data_type = ?", dataType).Delete(&CacheEntry{}).Error; err != nil {
+		logger.SugaredLogger.Errorf("cache invalidate failed for %s: %v", dataType, err)
+	}
 	c.l1Cache.Clear()
 	logger.SugaredLogger.Infof("cache invalidated for data type: %s", dataType)
 }

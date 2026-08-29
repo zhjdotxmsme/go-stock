@@ -2,9 +2,11 @@ package data
 
 import (
 	"go-stock/backend/db"
+	"go-stock/backend/logger"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,12 +15,59 @@ import (
 
 var (
 	sharedTransport     *http.Transport
+	sharedLoggingRT     http.RoundTripper // 全部出站 HTTP 的 info/error 日志出口
 	sharedHTTPClient    *http.Client
 	SharedHTTPClient    *resty.Client
 	httpConfigMutex     sync.RWMutex
 	currentProxyEnabled bool
 	currentProxyURL     string
 )
+
+// loggingTransport 为所有经过共享连接池的出站 HTTP 请求记录日志：
+// 成功（<400）记 info，失败（网络错误或 >=400）记 error，均含耗时。
+// 查询串中的 token/key/secret/password 参数值会被脱敏。
+type loggingTransport struct {
+	inner http.RoundTripper
+}
+
+func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	start := time.Now()
+	resp, err := t.inner.RoundTrip(req)
+	elapsed := time.Since(start).Round(time.Millisecond)
+	target := redactURL(req.URL)
+	if err != nil {
+		logger.SugaredLogger.Errorf("[HTTP] %s %s failed after %s: %v", req.Method, target, elapsed, err)
+		return resp, err
+	}
+	if resp.StatusCode >= http.StatusBadRequest {
+		logger.SugaredLogger.Errorf("[HTTP] %s %s -> %d after %s", req.Method, target, resp.StatusCode, elapsed)
+	} else {
+		logger.SugaredLogger.Infof("[HTTP] %s %s -> %d after %s", req.Method, target, resp.StatusCode, elapsed)
+	}
+	return resp, err
+}
+
+// redactURL 返回脱敏后的请求 URL（敏感查询参数值替换为 ***）。
+func redactURL(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+	q := u.Query()
+	changed := false
+	for k := range q {
+		lk := strings.ToLower(k)
+		if strings.Contains(lk, "token") || strings.Contains(lk, "key") ||
+			strings.Contains(lk, "secret") || strings.Contains(lk, "password") {
+			q.Set(k, "***")
+			changed = true
+		}
+	}
+	cp := *u
+	if changed {
+		cp.RawQuery = q.Encode()
+	}
+	return cp.String()
+}
 
 func init() {
 	sharedTransport = &http.Transport{
@@ -37,8 +86,9 @@ func init() {
 		Proxy:                 nil,
 	}
 
+	sharedLoggingRT = &loggingTransport{inner: sharedTransport}
 	sharedHTTPClient = &http.Client{
-		Transport: sharedTransport,
+		Transport: sharedLoggingRT,
 		Timeout:   300 * time.Second,
 	}
 
@@ -102,11 +152,11 @@ func ConfigureFromSettings(config *SettingConfig) {
 
 func CreateHTTPClientWithTimeout(timeout time.Duration) *resty.Client {
 	httpConfigMutex.RLock()
-	transport := sharedTransport
+	rt := sharedLoggingRT
 	httpConfigMutex.RUnlock()
 
 	httpClient := &http.Client{
-		Transport: transport,
+		Transport: rt,
 		Timeout:   timeout,
 	}
 
@@ -162,6 +212,7 @@ func CreateDownloadClient() *resty.Client {
 
 	return resty.NewWithClient(downloadHTTPClient).
 		SetTimeout(0).
+		SetTransport(&loggingTransport{inner: downloadTransport}).
 		SetRetryCount(2).
 		SetRetryWaitTime(5 * time.Second).
 		SetRetryMaxWaitTime(30 * time.Second)

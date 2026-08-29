@@ -32,7 +32,7 @@ export async function callApi<T = any>(
   ...args: any[]
 ): Promise<ApiResult<T>> {
   try {
-    // logger.debug(`[API] Calling ${method.name}`, ...args)
+    logger.info(`[API] ${method?.name || 'unknown'} requested`)
     const result = await method(...args)
     // logger.debug(`[API] ${method.name} success`, result)
     return createResult<T>(result)
