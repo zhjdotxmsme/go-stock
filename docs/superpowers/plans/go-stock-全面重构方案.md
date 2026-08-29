@@ -1614,7 +1614,7 @@ main.go NewApp()
 - [x] 引入 Pinia，建立 stores/
 - [x] 建立 api/ 层（已迁移 TypeScript，并切换到 handler 命名空间）
 - [x] 拆分超大组件（StockLightweightKlineChart 4,832→1,372 / stock.vue 3,121→1,442 / FloatingAgentAssistant 1,954→862；删除弹幕功能）
-- [x] 前端导航重构（配置与 composable 已建；研究中心拆分未完全落地）
+- [x] 前端导航重构（配置与 composable 已建；研究中心 11 子 Tab 已拆分为 /research、/analysis、/system 独立路由，2026-08-28 落地）
 - [x] 渐进 TypeScript
 - [ ] **验收**: 所有页面功能正常（待 Wails 实测）
 
