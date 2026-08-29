@@ -1394,6 +1394,7 @@ export namespace data {
 	    emApiKey: string;
 	    windowWidth: number;
 	    windowHeight: number;
+	    enableLlmRanking?: boolean;
 	    aiConfigs: AIConfig[];
 	
 	    static createFrom(source: any = {}) {
@@ -1449,6 +1450,7 @@ export namespace data {
 	        this.emApiKey = source["emApiKey"];
 	        this.windowWidth = source["windowWidth"];
 	        this.windowHeight = source["windowHeight"];
+	        this.enableLlmRanking = source["enableLlmRanking"];
 	        this.aiConfigs = this.convertValues(source["aiConfigs"], AIConfig);
 	    }
 	
