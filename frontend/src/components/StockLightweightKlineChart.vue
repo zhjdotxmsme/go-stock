@@ -11,6 +11,7 @@ import {
   eastMoneyDayToUnixSeconds, eastMoneyKlineFieldToUnixSeconds,
   formatTickTime, mergeKlineRows, mergeRefreshWithLatest,
   extractYmdDatePart, barSecondsForMinuteKlt,
+  formatYmdCompactShanghai, formatYmdHmsCompactShanghai,
 } from './kline/time'
 
 import {

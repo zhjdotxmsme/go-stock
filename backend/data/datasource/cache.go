@@ -39,6 +39,18 @@ func NewCacheLayer(memSizeMB int) *CacheLayer {
 	}
 }
 
+// AutoMigrate creates the L2 SQLite table if missing. Fresh data
+// directories otherwise fail every L2 read/write with
+// "no such table: datasource_cache".
+func (c *CacheLayer) AutoMigrate() {
+	if db.Dao == nil {
+		return
+	}
+	if err := db.Dao.AutoMigrate(&CacheEntry{}); err != nil {
+		logger.SugaredLogger.Errorf("cache L2 AutoMigrate failed: %v", err)
+	}
+}
+
 // Get retrieves data from cache (L1 → L2) as a generic decoded value.
 // Prefer GetInto for typed reads; this method cannot satisfy concrete-type
 // assertions because JSON decoding into interface{} yields maps/slices.

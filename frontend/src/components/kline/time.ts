@@ -150,3 +150,18 @@ export function barSecondsForMinuteKlt(klt) {
   if (Number.isFinite(n) && n > 0) return n * 60
   return 60
 }
+
+/** 东财日K end 参数：上海时区 YYYYMMDD（紧凑无分隔符） */
+export function formatYmdCompactShanghai(ms) {
+  if (!Number.isFinite(ms)) return ''
+  const d = new Date(ms + 8 * 3600 * 1000)
+  return d.toISOString().slice(0, 10).replace(/-/g, '')
+}
+
+/** 东财分钟K end 参数：上海时区 YYYYMMDDHHMMSS（紧凑无分隔符） */
+export function formatYmdHmsCompactShanghai(ms) {
+  if (!Number.isFinite(ms)) return ''
+  const d = new Date(ms + 8 * 3600 * 1000)
+  return d.toISOString().slice(0, 10).replace(/-/g, '') +
+    d.toISOString().slice(11, 19).replace(/:/g, '')
+}

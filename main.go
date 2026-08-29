@@ -75,6 +75,7 @@ var freestockdbManager *freestockdb.Manager
 func initDataSources() {
 	router := datasource.GetRouter()
 	cache := datasource.NewCacheLayer(256)
+	cache.AutoMigrate()
 	router.SetCache(cache)
 
 	cfg := data.GetSettingConfig()
