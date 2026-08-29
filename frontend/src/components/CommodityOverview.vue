@@ -30,9 +30,11 @@ async function loadRegistry() {
 }
 
 async function loadQuotes() {
-  // 只加载可交易标的的报价
+  // 只加载可交易标的的报价。
+  // 并行加载：串行时任何一个慢源（如 Yahoo 限流后的 PowerShell 降级，
+  // 单次可达 15~30s）都会把后续所有品种的报价卡住，页面长时间无值。
   const tradable = registry.value.filter(a => a.isTradable)
-  for (const asset of tradable) {
+  await Promise.all(tradable.map(async (asset) => {
     try {
       const q = (await commodityApi.getCommodityQuote(asset.code)).data
       if (q) {
@@ -41,9 +43,9 @@ async function loadQuotes() {
       }
     } catch (e) {
       console.error('quote error', asset.code, e)
-      errors.value[asset.code] = e.message || e
+      errors.value[asset.code] = (e && e.message) || e
     }
-  }
+  }))
 }
 
 async function loadMacro() {

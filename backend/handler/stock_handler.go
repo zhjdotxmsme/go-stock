@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"go-stock/backend/data"
+	"go-stock/backend/data/backtest"
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
@@ -288,6 +289,7 @@ func (h *StockHandler) GetStockKLineWithFallback(stockCode, stockName string, kl
 			return result
 		}
 	}
+	stockCode = backtest.SanitizeStockCodeInput(stockCode)
 	return data.FetchKLineWithFallback(stockCode, stockName, klt, limit, "")
 }
 
@@ -295,6 +297,7 @@ func (h *StockHandler) GetStockKLineWithFallback(stockCode, stockName string, kl
 // to the legacy wire format. Returns nil on failure so callers can fall back
 // to the legacy chain.
 func (h *StockHandler) getKLineViaRouter(stockCode, klt string, limit int) *data.KLineSourceResult {
+	stockCode = backtest.SanitizeStockCodeInput(stockCode)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	k, err := datasource.GetRouter().GetKLine(ctx, stockCode, "day", limit)
