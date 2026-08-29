@@ -210,7 +210,7 @@ func (e *DailyPickEngine) RunDailyPick(ctx context.Context, tradeDate string, to
 
 	// Step 4: Persist to database
 	for i := range picks {
-		if err := e.repo.CreatePick(ctx, &picks[i]); err != nil {
+		if err := e.repo.UpsertPick(ctx, &picks[i]); err != nil {
 			logger.SugaredLogger.Errorf("daily_pick: failed to save pick %s: %v", picks[i].StockCode, err)
 		}
 	}
@@ -1027,7 +1027,7 @@ func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, c
 
 	// Step 6: Persist
 	for i := range picks {
-		if err := e.repo.CreatePick(ctx, &picks[i]); err != nil {
+		if err := e.repo.UpsertPick(ctx, &picks[i]); err != nil {
 			logger.SugaredLogger.Errorf("daily_pick: failed to save pick %s: %v", picks[i].StockCode, err)
 		}
 	}

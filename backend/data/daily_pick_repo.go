@@ -7,6 +7,7 @@ import (
 	"go-stock/backend/models"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // DailyPickRepository owns all persistence for the daily-pick feature
@@ -187,6 +188,16 @@ func (r *DailyPickRepository) ReviewedPicks(ctx context.Context, tradeDate strin
 // CreatePick persists a newly generated pick.
 func (r *DailyPickRepository) CreatePick(ctx context.Context, pick *models.DailyPick) error {
 	return r.db.WithContext(ctx).Create(pick).Error
+}
+
+// UpsertPick persists a pick, replacing an existing row for the same
+// (stock_code, trade_date) — re-running the daily pick on the same day must
+// update rather than silently drop every pick on the unique constraint.
+func (r *DailyPickRepository) UpsertPick(ctx context.Context, pick *models.DailyPick) error {
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "stock_code"}, {Name: "trade_date"}},
+		UpdateAll: true,
+	}).Create(pick).Error
 }
 
 // IndustryConceptRow is a projection of AllStockInfo for the industry/concept map.

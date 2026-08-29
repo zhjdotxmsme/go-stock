@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"bytes"
+	"regexp"
 	"context"
 	"fmt"
 	"os"
@@ -31,8 +32,29 @@ func NewService() *Service {
 	return &Service{}
 }
 
+// SanitizeStockCodeInput 从展示串中恢复标准代码。
+// 前端可能传入 "兴业银锡 - 000426.SZ" 这类 名字+代码 的展示串，
+// 先尝试标准解析，失败则提取串中最后一组 6 位数字并推断交易所。
+func SanitizeStockCodeInput(input string) string {
+	if c := NormalizeStockCode(input); c != "" {
+		return c
+	}
+	runs := sixDigitRuns.FindAllString(input, -1)
+	if len(runs) == 0 {
+		return input
+	}
+	digits := runs[len(runs)-1]
+	if ex := inferExchange(digits); ex != "" {
+		return ex + digits
+	}
+	return input
+}
+
+var sixDigitRuns = regexp.MustCompile(`\d{6}`)
+
 // RunSingleBacktest runs a single backtest for a stock on a given signal date.
 func (s *Service) RunSingleBacktest(stockCode, signalDate string, entryPrice float64, holdingDays int, stopLoss, stopProfit float64, adjusted bool) (*Result, error) {
+	stockCode = SanitizeStockCodeInput(stockCode)
 	ctx := context.Background()
 	engine := NewEngine()
 	result, err := engine.Run(ctx, Input{
@@ -54,6 +76,7 @@ func (s *Service) RunSingleBacktest(stockCode, signalDate string, entryPrice flo
 
 // RunBatchBacktest runs batch backtests for all trading days in a date range.
 func (s *Service) RunBatchBacktest(stockCode, startDate, endDate, period string, adjusted bool, entryPrice float64, holdingDays int, stopLoss, stopProfit float64) (*BatchResult, error) {
+	stockCode = SanitizeStockCodeInput(stockCode)
 	ctx := context.Background()
 	if period == "" {
 		period = "day"
@@ -320,12 +343,23 @@ func (s *Service) GetSeedImportStatus() (map[string]any, error) {
 		}
 	}
 
-	// Try to find Python
-	for _, name := range []string{"python3", "python"} {
+	// Try to find Python. Wails GUI 进程的 PATH 可能不含 Python
+	// （或命中 WindowsApps 占位别名，运行脚本时报 exit 9009），
+	// 因此额外探测 py 启动器与常见安装路径。
+	for _, name := range []string{"python3", "python", "py"} {
 		if path, err := exec.LookPath(name); err == nil {
 			result["pythonFound"] = true
 			result["pythonPath"] = path
 			break
+		}
+	}
+	if !result["pythonFound"].(bool) {
+		if matches, _ := filepath.Glob(`C:\Program Files\Python3*\python.exe`); len(matches) > 0 {
+			result["pythonFound"] = true
+			result["pythonPath"] = matches[0]
+		} else if matches, _ := filepath.Glob(os.Getenv("LOCALAPPDATA") + `\Programs\Python\Python3*\python.exe`); len(matches) > 0 {
+			result["pythonFound"] = true
+			result["pythonPath"] = matches[0]
 		}
 	}
 

@@ -1394,10 +1394,6 @@ export namespace data {
 	    emApiKey: string;
 	    windowWidth: number;
 	    windowHeight: number;
-	    freeStockDBEnable: boolean;
-	    freeStockDBPath: string;
-	    freeStockDBAddr: string;
-	    freeStockDBAutoStart: boolean;
 	    aiConfigs: AIConfig[];
 	
 	    static createFrom(source: any = {}) {
@@ -1453,10 +1449,6 @@ export namespace data {
 	        this.emApiKey = source["emApiKey"];
 	        this.windowWidth = source["windowWidth"];
 	        this.windowHeight = source["windowHeight"];
-	        this.freeStockDBEnable = source["freeStockDBEnable"];
-	        this.freeStockDBPath = source["freeStockDBPath"];
-	        this.freeStockDBAddr = source["freeStockDBAddr"];
-	        this.freeStockDBAutoStart = source["freeStockDBAutoStart"];
 	        this.aiConfigs = this.convertValues(source["aiConfigs"], AIConfig);
 	    }
 	
