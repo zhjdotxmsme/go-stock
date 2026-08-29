@@ -129,9 +129,6 @@ func (a *App) domReady(ctx context.Context) {
 // shutdown is called at application termination
 func (a *App) shutdown(ctx context.Context) {
 	defer PanicHandler()
-	if freestockdbManager != nil {
-		freestockdbManager.Stop()
-	}
 	// 记录当前窗口大小，供下次启动时还原
 	if a.ctx != nil {
 		if w, h := runtime.WindowGetSize(a.ctx); w > 0 && h > 0 {

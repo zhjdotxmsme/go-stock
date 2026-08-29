@@ -9,7 +9,6 @@ import (
 	"go-stock/backend/data"
 	backtestService "go-stock/backend/data/backtest"
 	"go-stock/backend/data/datasource"
-	"go-stock/backend/data/datasource/freestockdb"
 	dailyPickBacktestService "go-stock/backend/service"
 	"go-stock/backend/data/datasource/fallback"
 	"go-stock/backend/db"
@@ -69,22 +68,12 @@ var VersionCommit string
 var OFFICIAL_STATEMENT string
 var BuildKey string
 
-// freestockdbManager 持有本地行情引擎句柄，供退出时回收子进程。
-var freestockdbManager *freestockdb.Manager
 
 func initDataSources() {
 	router := datasource.GetRouter()
 	cache := datasource.NewCacheLayer(256)
 	cache.AutoMigrate()
 	router.SetCache(cache)
-
-	cfg := data.GetSettingConfig()
-	freestockdbManager = freestockdb.Setup(router, freestockdb.Config{
-		Enabled:   cfg.FreeStockDBEnable,
-		ExePath:   cfg.FreeStockDBPath,
-		Addr:      cfg.FreeStockDBAddr,
-		AutoStart: cfg.FreeStockDBAutoStart,
-	})
 
 	fallback.RegisterQuoteChain(router)
 	fallback.RegisterKLineChain(router)

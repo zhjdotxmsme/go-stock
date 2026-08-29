@@ -56,10 +56,6 @@ const formValue = ref({
     httpProxyEnabled:false,
   },
   enableDanmu: false,
-  freeStockDBEnable: false,
-  freeStockDBPath: '',
-  freeStockDBAddr: '127.0.0.1:7899',
-  freeStockDBAutoStart: false,
   browserPath: '',
   enableNews: false,
   darkTheme: true,
@@ -272,10 +268,6 @@ onMounted(() => {
 
     formValue.value.enableDanmu = res.enableDanmu
     formValue.value.browserPath = res.browserPath
-    formValue.value.freeStockDBEnable = res.freeStockDBEnable
-    formValue.value.freeStockDBPath = res.freeStockDBPath
-    formValue.value.freeStockDBAddr = res.freeStockDBAddr || '127.0.0.1:7899'
-    formValue.value.freeStockDBAutoStart = res.freeStockDBAutoStart
     formValue.value.enableNews = res.enableNews
     formValue.value.darkTheme = res.darkTheme
     formValue.value.enableFund = res.enableFund
@@ -334,10 +326,6 @@ function saveConfig() {
     kDays: formValue.value.openAI.kDays,
     enableDanmu: formValue.value.enableDanmu,
     browserPath: formValue.value.browserPath,
-    freeStockDBEnable: formValue.value.freeStockDBEnable,
-    freeStockDBPath: formValue.value.freeStockDBPath,
-    freeStockDBAddr: formValue.value.freeStockDBAddr,
-    freeStockDBAutoStart: formValue.value.freeStockDBAutoStart,
     enableNews: formValue.value.enableNews,
     darkTheme: formValue.value.darkTheme,
     enableFund: formValue.value.enableFund,
@@ -458,10 +446,6 @@ function importConfig() {
       }
       formValue.value.enableDanmu = config.enableDanmu
       formValue.value.browserPath = config.browserPath
-      formValue.value.freeStockDBEnable = config.freeStockDBEnable
-      formValue.value.freeStockDBPath = config.freeStockDBPath
-      formValue.value.freeStockDBAddr = config.freeStockDBAddr || '127.0.0.1:7899'
-      formValue.value.freeStockDBAutoStart = config.freeStockDBAutoStart
       formValue.value.enableNews = config.enableNews
       formValue.value.darkTheme = config.darkTheme
       formValue.value.enableFund = config.enableFund
@@ -639,18 +623,6 @@ function saveMultiAgentPrompt() {
             </n-form-item-gi> -->
             <n-form-item-gi :span="10" label="浏览器安装路径：" path="browserPath">
               <n-input type="text" placeholder="浏览器安装路径" v-model:value="formValue.browserPath" clearable/>
-            </n-form-item-gi>
-            <n-form-item-gi :span="3" label="本地数据引擎：" path="freeStockDBEnable">
-              <n-switch v-model:value="formValue.freeStockDBEnable"/>
-            </n-form-item-gi>
-            <n-form-item-gi :span="6" label="引擎程序路径：" path="freeStockDBPath">
-              <n-input type="text" placeholder="stockdb.exe 完整路径" v-model:value="formValue.freeStockDBPath" clearable/>
-            </n-form-item-gi>
-            <n-form-item-gi :span="4" label="引擎地址：" path="freeStockDBAddr">
-              <n-input type="text" placeholder="127.0.0.1:7899" v-model:value="formValue.freeStockDBAddr" clearable/>
-            </n-form-item-gi>
-            <n-form-item-gi :span="3" label="自动拉起：" path="freeStockDBAutoStart">
-              <n-switch v-model:value="formValue.freeStockDBAutoStart"/>
             </n-form-item-gi>
            <n-form-item-gi :span="3" label="指数基金：" path="enableFund">
               <n-switch v-model:value="formValue.enableFund"/>

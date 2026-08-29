@@ -60,11 +60,6 @@ type Settings struct {
 	EmApiKey               string `json:"emApiKey" gorm:"column:em_api_key"`
 	WindowWidth            int    `json:"windowWidth"`
 	WindowHeight           int    `json:"windowHeight"`
-	// free-stockdb 本地数据引擎
-	FreeStockDBEnable    bool   `json:"freeStockDBEnable" gorm:"column:free_stock_db_enable"`
-	FreeStockDBPath      string `json:"freeStockDBPath" gorm:"column:free_stock_db_path"`
-	FreeStockDBAddr      string `json:"freeStockDBAddr" gorm:"column:free_stock_db_addr"`
-	FreeStockDBAutoStart bool   `json:"freeStockDBAutoStart" gorm:"column:free_stock_db_auto_start"`
 }
 
 func (receiver Settings) TableName() string {
@@ -179,11 +174,6 @@ func UpdateConfig(s *SettingConfig) string {
 			"em_api_key":                 s.EmApiKey,
 			"window_width":               s.WindowWidth,
 			"window_height":              s.WindowHeight,
-			// 本地数据引擎 (freestockdb)
-			"free_stock_db_enable":     s.FreeStockDBEnable,
-			"free_stock_db_path":       s.FreeStockDBPath,
-			"free_stock_db_addr":       s.FreeStockDBAddr,
-			"free_stock_db_auto_start": s.FreeStockDBAutoStart,
 		})
 		if result.Error != nil {
 			logger.SugaredLogger.Errorf("更新配置失败: %v", result.Error)
