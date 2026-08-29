@@ -76,9 +76,8 @@ def baostock_code(db_code: str) -> str:
 
 
 def go_stock_code(bs_code: str) -> str:
-    """bs_code 'sh.601916' → go-stock '601916'"""
-    if "." in bs_code:
-        return bs_code.split(".")[1]
+    """bs_code 'sh.601916' → go-stock 标准格式 'sh601916'"""
+    return bs_code.replace(".", "")
     return bs_code.replace(".", "")
 
 

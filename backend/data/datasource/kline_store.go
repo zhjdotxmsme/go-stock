@@ -74,7 +74,7 @@ func (s *KLineStore) UpsertKLines(ctx context.Context, bars []models.KLineBar) e
 func deduplicateBars(bars []models.KLineBar) []models.KLineBar {
 	seen := make(map[string]struct{}, len(bars))
 	deduped := make([]models.KLineBar, 0, len(bars))
-	
+
 	for _, bar := range bars {
 		key := fmt.Sprintf("%s|%s|%s|%t", bar.StockCode, bar.Period, bar.TradeDate, bar.Adjusted)
 		if _, ok := seen[key]; !ok {
@@ -223,7 +223,7 @@ func isHoliday(date time.Time) bool {
 		} `json:"holiday"`
 	}
 
-	resp, err := resty.New().SetTimeout(10*time.Second).R().
+	resp, err := resty.New().SetTimeout(10 * time.Second).R().
 		SetResult(&result).
 		Get(apiURL)
 
@@ -242,6 +242,10 @@ func BarsFromKLineData(code, period, source string, adjusted bool, data *KLineDa
 	}
 	bars := make([]models.KLineBar, 0, len(data.Bars))
 	for _, b := range data.Bars {
+		// 丢弃解析失败的垃圾日期（零值/越界年份），防止污染本地历史库
+		if b.Time.Year() < 1990 || b.Time.Year() > 2100 {
+			continue
+		}
 		bars = append(bars, models.KLineBar{
 			StockCode: code,
 			Period:    period,

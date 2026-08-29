@@ -11,6 +11,8 @@ import (
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"math"
+	"regexp"
 )
 
 var (
@@ -22,9 +24,9 @@ var (
 
 // CommodityApi 商品数据统一入口
 type CommodityApi struct {
-	wsClient        WallstreetcnApi      // 国际现货数据源（值接收器）
-	emClient        *EastMoneyKLineApi   // ETF K 线数据源
-	emFuturesClient EastMoneyFuturesApi  // 国内期货行情+K 线数据源
+	wsClient        WallstreetcnApi     // 国际现货数据源（值接收器）
+	emClient        *EastMoneyKLineApi  // ETF K 线数据源
+	emFuturesClient EastMoneyFuturesApi // 国内期货行情+K 线数据源
 }
 
 // NewCommodityApi 创建 CommodityApi 实例
@@ -66,7 +68,7 @@ func (c *CommodityApi) GetQuoteIntl(code string) (*datasource.QuoteData, error) 
 		return nil, fmt.Errorf("%s 无国际参考代码", asset.Code)
 	}
 
-		yahoo := NewYahooFinanceApi()
+	yahoo := NewYahooFinanceApi()
 	quote, err := yahoo.GetQuoteNoCtx(asset.Code)
 	if err != nil {
 		return nil, fmt.Errorf("国际参考行情获取失败: %w", err)
@@ -88,7 +90,7 @@ func (c *CommodityApi) getSpotQuote(asset *models.CommodityAsset) (*datasource.Q
 	}
 
 	// 其他现货: Yahoo 优先
-		yahoo := NewYahooFinanceApi()
+	yahoo := NewYahooFinanceApi()
 	quote, err := yahoo.GetQuoteNoCtx(asset.Code)
 	if err == nil {
 		quote.Name = asset.Name
@@ -122,6 +124,13 @@ func (c *CommodityApi) getSpotQuote(asset *models.CommodityAsset) (*datasource.Q
 		}
 	}
 
+	// 最后兜底：新浪外盘期货 hf_ 行情（Yahoo 被限流时布伦特/WTI 的可靠来源）
+	if hf, ok := sinaIntlSpotSymbol[asset.Code]; ok {
+		if quote, err := c.getSinaIntlQuote(hf, asset.Name); err == nil {
+			return quote, nil
+		}
+	}
+
 	logger.SugaredLogger.Errorf("All spot quote sources failed for %s", asset.Code)
 	return nil, fmt.Errorf("%w: %s (%s)", ErrSpotDataUnavailable, asset.Name, asset.Symbol)
 }
@@ -148,7 +157,7 @@ func (c *CommodityApi) getFuturesQuote(asset *models.CommodityAsset) (*datasourc
 }
 
 func (c *CommodityApi) getFuturesQuoteFromYahoo(asset *models.CommodityAsset) (*datasource.QuoteData, error) {
-		yahoo := NewYahooFinanceApi()
+	yahoo := NewYahooFinanceApi()
 	quote, err := yahoo.GetQuoteNoCtx(asset.Code)
 	if err != nil {
 		return nil, err
@@ -389,12 +398,12 @@ func (c *CommodityApi) GetKLineIntl(code string, period string, count int) ([]da
 		return nil, fmt.Errorf("%s 无国际参考代码", asset.Code)
 	}
 
-		yahoo := NewYahooFinanceApi()
+	yahoo := NewYahooFinanceApi()
 	return yahoo.GetKLineNoCtx(asset.Code, period, count)
 }
 
 func (c *CommodityApi) getSpotKLine(asset *models.CommodityAsset, period string, count int) ([]datasource.KLineBar, error) {
-		yahoo := NewYahooFinanceApi()
+	yahoo := NewYahooFinanceApi()
 	// YahooFinanceApi 内部有 Code→Yahoo符号映射表(yahooCommoditySymbols)，传 Code 即可
 	bars, err := yahoo.GetKLineNoCtx(asset.Code, period, count)
 	if err == nil {
@@ -470,7 +479,7 @@ func (c *CommodityApi) getFuturesKLine(asset *models.CommodityAsset, period stri
 }
 
 func (c *CommodityApi) getFuturesKLineFromYahoo(asset *models.CommodityAsset, period string, count int) ([]datasource.KLineBar, error) {
-		yahoo := NewYahooFinanceApi()
+	yahoo := NewYahooFinanceApi()
 	// YahooFinanceApi 内部有 Code→Yahoo符号映射表，直接传 Code
 	return yahoo.GetKLineNoCtx(asset.Code, period, count)
 }
@@ -732,7 +741,7 @@ func (c *CommodityApi) GetMacroIndicatorsEnhanced() (*MacroSnapshotEnhanced, err
 	}
 
 	// 2. Yahoo Finance: TLT + TIP ETF 实时价格
-		yahoo := NewYahooFinanceApi()
+	yahoo := NewYahooFinanceApi()
 	if tltQuote, err := yahoo.GetQuoteNoCtx("TLT"); err == nil {
 		enhanced.TLTPrice = tltQuote.Price
 		enhanced.TLTChangePct = tltQuote.ChangePct
@@ -768,4 +777,60 @@ func (c *CommodityApi) GetMacroIndicatorsEnhanced() (*MacroSnapshotEnhanced, err
 	}
 
 	return enhanced, nil
+}
+
+// sinaIntlSpotSymbol 将 go-stock 国际现货代码映射到新浪外盘 hf_ 行情代码。
+// 仅覆盖 WallStreetCN/WSCN 缺失或 Yahoo 高频限流的品种。
+var sinaIntlSpotSymbol = map[string]string{
+	"USCO": "hf_OIL", // 布伦特原油
+	"USCL": "hf_CL",  // WTI 原油
+}
+
+// getSinaIntlQuote 通过新浪外盘 hf_ 接口获取国际现货最新价。
+// 字段布局（0 起）：0 最新价，4 最高，5 最低，7 昨结算，8 开盘，12 日期，13 名称。
+func (c *CommodityApi) getSinaIntlQuote(hfSymbol, name string) (*datasource.QuoteData, error) {
+	url := "https://hq.sinajs.cn/list=" + hfSymbol
+	resp, err := CreateHTTPClientWithTimeout(10*time.Second).R().
+		SetHeader("Referer", "https://finance.sina.com.cn").
+		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
+		Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("sina intl quote %s: %w", hfSymbol, err)
+	}
+	body := GB18030ToUTF8(resp.Body())
+	m := regexp.MustCompile(`"([^"]*)"`)
+	fields := strings.Split(m.FindStringSubmatch(body)[1], ",")
+	if len(fields) < 14 {
+		return nil, fmt.Errorf("sina intl quote %s: unexpected fields (%d)", hfSymbol, len(fields))
+	}
+	price, err1 := strconv.ParseFloat(strings.TrimSpace(fields[0]), 64)
+	prevSettle, err2 := strconv.ParseFloat(strings.TrimSpace(fields[7]), 64)
+	if err1 != nil || err2 != nil || price <= 0 {
+		return nil, fmt.Errorf("sina intl quote %s: unusable values price=%q prevSettle=%q", hfSymbol, fields[0], fields[7])
+	}
+	change := price - prevSettle
+	changePct := 0.0
+	if prevSettle > 0 {
+		changePct = math.Round(change/prevSettle*10000) / 100
+	}
+	tradeDate := strings.TrimSpace(fields[12])
+	tradeTime := strings.TrimSpace(fields[6])
+	t, _ := time.ParseInLocation("2006-01-02 15:04:05", tradeDate+" "+tradeTime+":00", time.Local)
+	logger.SugaredLogger.Infof("sina intl spot %s (%s): price=%.3f change=%.3f (%.2f%%)", hfSymbol, name, price, change, changePct)
+	return &datasource.QuoteData{
+		Code:      name,
+		Name:      name,
+		Price:     price,
+		Change:    change,
+		ChangePct: changePct,
+		High:      toF(fields[4]),
+		Low:       toF(fields[5]),
+		Open:      toF(fields[8]),
+		Time:      t,
+	}, nil
+}
+
+func toF(s string) float64 {
+	v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	return v
 }

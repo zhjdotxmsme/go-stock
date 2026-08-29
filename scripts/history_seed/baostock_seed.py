@@ -65,9 +65,8 @@ def baostock_code(db_code: str) -> str:
 
 
 def go_stock_code(bs_code: str) -> str:
-    # bs_code is "sh.601916" → go-stock wants "601916"
-    if "." in bs_code:
-        return bs_code.split(".")[1]
+    # bs_code is "sh.601916" → go-stock 标准格式 "sh601916"
+    # （与 backtest.NormalizeStockCode / kline_bars 其他来源一致）
     return bs_code.replace(".", "")
 
 
