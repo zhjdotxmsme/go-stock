@@ -1259,11 +1259,11 @@ func (h *SystemHandler) TrackEvent(level, source, action, detail string) {
 		level = "info"
 	}
 	if level == "error" {
-		logger.SugaredLogger.Errorf("[FRONTEND][%s][%s] %s | %s",
+		logger.SugaredLogger.Errorf("[FRONTEND][%s][%s] %s",
 			truncateRunes(source, 64), truncateRunes(action, 128), truncateRunes(detail, 800))
 		return
 	}
-	logger.SugaredLogger.Infof("[FRONTEND][%s][%s] %s | %s",
+	logger.SugaredLogger.Infof("[FRONTEND][%s][%s] %s",
 		truncateRunes(source, 64), truncateRunes(action, 128), truncateRunes(detail, 800))
 }
 

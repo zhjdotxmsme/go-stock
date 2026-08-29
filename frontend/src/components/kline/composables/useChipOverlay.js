@@ -77,6 +77,7 @@ export function useChipOverlay(ctx) {
   }
   
   function updateChipFromHover() {
+    const mergedRawRows = getMergedRawRows()
     if (!showChip.value || !mergedRawRows.length) {
       chipItems.value = []
       return
@@ -89,6 +90,7 @@ export function useChipOverlay(ctx) {
   }
   
   function doUpdateChip() {
+    const mergedRawRows = getMergedRawRows()
     if (!showChip.value || !mergedRawRows.length) {
       chipItems.value = []
       return

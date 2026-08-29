@@ -64,6 +64,7 @@ export function useLongPosition(ctx) {
   }
   
   function syncLongPositionPriceLines() {
+    const candleSeries = getCandleSeries()
     console.log('[DEBUG syncLongPositionPriceLines] called, showLongPosition:', showLongPosition.value, 'candleSeries:', !!candleSeries)
     clearLongPositionPriceLines()
     if (!showLongPosition.value || !candleSeries) {
@@ -124,6 +125,7 @@ export function useLongPosition(ctx) {
   }
   
   function getLongDragPaneElement() {
+    const chart = getChart()
     if (!chart) return chartContainerRef.value
     return chart.panes()[0]?.getHTMLElement() ?? chartContainerRef.value
   }
@@ -164,6 +166,7 @@ export function useLongPosition(ctx) {
   
   /** @returns {'entry'|'stop'|'takeProfit'|null} */
   function hitTestLongPriceLineKind(localY) {
+    const candleSeries = getCandleSeries()
     if (!candleSeries || !showLongPosition.value || localY == null) return null
     let best = null
     let bestDist = LONG_PRICE_LINE_HIT_PX + 1
@@ -194,6 +197,7 @@ export function useLongPosition(ctx) {
   }
   
   function onLongDragWindowMove(e) {
+    const candleSeries = getCandleSeries()
     if (!longPositionDragActive || !longDragKind || !candleSeries) return
     longLastPointerClientY = e.clientY
     const y = longPaneLocalYFromClient(e.clientY)
@@ -243,6 +247,7 @@ export function useLongPosition(ctx) {
   }
   
   function onLongPriceLinePointerDownCapture(e) {
+    const candleSeries = getCandleSeries()
     if (!showLongPosition.value || !candleSeries) return
     if (e.pointerType === 'mouse' && e.button !== 0) return
     const y = longPaneLocalYFromClient(e.clientY)
