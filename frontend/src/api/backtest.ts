@@ -13,42 +13,54 @@ import * as DailyPickBacktestService from '../../wailsjs/go/service/DailyPickBac
  * 运行单次回测
  */
 export async function runSingleBacktest(...args: any[]): Promise<any> {
-  return callApi(BacktestService.RunSingleBacktest, ...args)
+  const r = await callApi(BacktestService.RunSingleBacktest, ...args)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
 }
 
 /**
  * 运行批量回测
  */
 export async function runBatchBacktest(...args: any[]): Promise<any> {
-  return callApi(BacktestService.RunBatchBacktest, ...args)
+  const r = await callApi(BacktestService.RunBatchBacktest, ...args)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
 }
 
 /**
  * 分页获取回测结果
  */
 export async function getBacktestResults(...args: any[]): Promise<any> {
-  return callApi(BacktestService.GetBacktestResults, ...args)
+  const r = await callApi(BacktestService.GetBacktestResults, ...args)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
 }
 
 /**
  * 运行参数优化
  */
 export async function runOptimization(...args: any[]): Promise<any> {
-  return callApi(BacktestService.RunOptimization, ...args)
+  const r = await callApi(BacktestService.RunOptimization, ...args)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
 }
 
 /**
  * 获取优化预设
  */
 export async function getOptimizationPresets(): Promise<any> {
-  return callApi(BacktestService.GetOptimizationPresets)
+  const r = await callApi(BacktestService.GetOptimizationPresets)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
 }
 
 /**
  * 为每日选股运行回测
  */
 export async function runBacktestForDailyPicks(...args: any[]): Promise<any> {
-  return callApi(DailyPickBacktestService.RunBacktestForDailyPicks, ...args)
+  const r = await callApi(DailyPickBacktestService.RunBacktestForDailyPicks, ...args)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
 }
 
 // ========== 历史数据同步 ==========
@@ -57,42 +69,54 @@ export async function runBacktestForDailyPicks(...args: any[]): Promise<any> {
  * 获取 K 线缓存统计
  */
 export async function getKLineCacheStats(): Promise<any> {
-  return callApi(BacktestService.GetKLineCacheStats)
+  const r = await callApi(BacktestService.GetKLineCacheStats)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
 }
 
 /**
  * 启动历史数据同步
  */
 export async function startHistoricalSync(...args: any[]): Promise<any> {
-  return callApi(BacktestService.StartHistoricalSync, ...args)
+  const r = await callApi(BacktestService.StartHistoricalSync, ...args)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
 }
 
 /**
  * 获取同步进度
  */
 export async function getSyncProgress(): Promise<any> {
-  return callApi(BacktestService.GetSyncProgress)
+  const r = await callApi(BacktestService.GetSyncProgress)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
 }
 
 /**
  * 获取种子导入状态
  */
 export async function getSeedImportStatus(): Promise<any> {
-  return callApi(BacktestService.GetSeedImportStatus)
+  const r = await callApi(BacktestService.GetSeedImportStatus)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
 }
 
 /**
  * 运行种子导入
  */
 export async function runSeedImport(...args: any[]): Promise<any> {
-  return callApi(BacktestService.RunSeedImport, ...args)
+  const r = await callApi(BacktestService.RunSeedImport, ...args)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
 }
 
 /**
  * 获取最近一次种子导入输出
  */
 export async function getLastSeedImportOutput(): Promise<any> {
-  return callApi(BacktestService.GetLastSeedImportOutput)
+  const r = await callApi(BacktestService.GetLastSeedImportOutput)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
 }
 
 export default {

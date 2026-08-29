@@ -353,7 +353,7 @@ func (s *Service) GetSeedImportStatus() (map[string]any, error) {
 			break
 		}
 	}
-	if !result["pythonFound"].(bool) {
+	if found, _ := result["pythonFound"].(bool); !found {
 		if matches, _ := filepath.Glob(`C:\Program Files\Python3*\python.exe`); len(matches) > 0 {
 			result["pythonFound"] = true
 			result["pythonPath"] = matches[0]
