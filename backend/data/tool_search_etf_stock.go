@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"go-stock/backend/logger"
 	"go-stock/backend/models"
 	"go-stock/backend/util"
 
@@ -147,7 +148,7 @@ func handleCreateAiRecommendStocks(o *OpenAi, funcArguments string, ctx *ToolCon
 
 	recommend := models.AiRecommendStocks{}
 	if err := json.Unmarshal([]byte(funcArguments), &recommend); err != nil {
-		//logger.SugaredLogger.Infof("CreateAiRecommendStocks error : %s", err.Error())
+		logger.SugaredLogger.Errorf("CreateAiRecommendStocks parse args error: %s", err.Error())
 		return err
 	}
 
@@ -162,7 +163,7 @@ func handleCreateAiRecommendStocks(o *OpenAi, funcArguments string, ctx *ToolCon
 		funcArguments,
 		func() string {
 			if svcErr != nil {
-				//logger.SugaredLogger.Infof("CreateAiRecommendStocks error : %s", svcErr.Error())
+				logger.SugaredLogger.Errorf("CreateAiRecommendStocks save error: %s (code=%s name=%s)", svcErr.Error(), recommend.StockCode, recommend.StockName)
 				ctx.Ch <- map[string]any{
 					"code":     0,
 					"question": ctx.Question,
@@ -170,6 +171,8 @@ func handleCreateAiRecommendStocks(o *OpenAi, funcArguments string, ctx *ToolCon
 				}
 				return "保存股票推荐失败:" + svcErr.Error()
 			}
+			logger.SugaredLogger.Infof("CreateAiRecommendStocks saved: code=%s name=%s rating=%s model=%s",
+				recommend.StockCode, recommend.StockName, recommend.Rating, recommend.ModelName)
 			return "保存股票推荐成功"
 		}(),
 	)
@@ -191,7 +194,7 @@ func handleBatchCreateAiRecommendStocks(o *OpenAi, funcArguments string, ctx *To
 	stocks := gjson.Get(funcArguments, "stocks").String()
 	var recommends []*models.AiRecommendStocks
 	if err := json.Unmarshal([]byte(stocks), &recommends); err != nil {
-		//logger.SugaredLogger.Infof("BatchCreateAiRecommendStocks error : %s", err.Error())
+		logger.SugaredLogger.Errorf("BatchCreateAiRecommendStocks parse args error: %s", err.Error())
 		return err
 	}
 
@@ -206,7 +209,7 @@ func handleBatchCreateAiRecommendStocks(o *OpenAi, funcArguments string, ctx *To
 		funcArguments,
 		func() string {
 			if svcErr != nil {
-				//logger.SugaredLogger.Infof("BatchCreateAiRecommendStocks error : %s", svcErr.Error())
+				logger.SugaredLogger.Errorf("BatchCreateAiRecommendStocks save error: %s (count=%d)", svcErr.Error(), len(recommends))
 				ctx.Ch <- map[string]any{
 					"code":     0,
 					"question": ctx.Question,
@@ -214,6 +217,7 @@ func handleBatchCreateAiRecommendStocks(o *OpenAi, funcArguments string, ctx *To
 				}
 				return "批量保存股票推荐失败:" + svcErr.Error()
 			}
+			logger.SugaredLogger.Infof("BatchCreateAiRecommendStocks saved: count=%d model=%s", len(recommends), ctx.Model)
 			return "批量保存股票推荐成功"
 		}(),
 	)

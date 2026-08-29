@@ -1,6 +1,9 @@
 <script setup>
-import {computed, h, onBeforeMount, onBeforeUnmount, onMounted,onUnmounted, ref,reactive} from 'vue'
+import {computed, h, nextTick, onBeforeMount, onBeforeUnmount, onMounted,onUnmounted, ref,reactive} from 'vue'
 import * as systemApi from "../api/system";
+import * as marketApi from "../api/market";
+import {EventsOn, EventsOff} from "../../wailsjs/runtime";
+import {FlashOutline} from "@vicons/ionicons5";
 import {NAvatar, NButton, NCard, NEllipsis, NGi, NGrid, NGridItem, NNumberAnimation, NSpace, NSwitch, NTag, NText, useMessage, useNotification} from "naive-ui";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
 import sparkLine from "./stockSparkLine.vue"
@@ -23,6 +26,11 @@ onBeforeMount(()=> {
 onMounted(() => {
   systemApi.getAiRecommendStats().then(({data: s}) => statsRef.value = s)
 
+  systemApi.getAiConfigs().then(({data: res}) => {
+    aiConfigs.value = res
+    recommendConfigId.value = res?.[0]?.ID ?? null
+  })
+
   query({
     page: 1,
     pageSize: paginationReactive.pageSize,
@@ -38,6 +46,61 @@ onMounted(() => {
     paginationReactive.itemCount = data.total
     loadingRef.value = false
   })
+})
+
+// ── AI 推荐（LLM 聊天工具调用写入 ai_recommend_stocks）──
+const aiConfigs = ref([])
+const recommendConfigId = ref(null)
+const recommendCount = ref(5)
+const recommendRunning = ref(false)
+const recommendOutput = ref('')
+const recommendScrollRef = ref(null)
+
+function startAiRecommend() {
+  if (recommendRunning.value) return
+  if (!recommendConfigId.value) {
+    message.warning('请先选择AI模型服务配置')
+    return
+  }
+  recommendRunning.value = true
+  recommendOutput.value = ''
+  // 复用 SummaryStockNews 带工具链路：后端系统提示会强制 LLM 最后调用
+  // CreateAiRecommendStocks 工具把推荐结果写入本页列表。
+  const question = `请根据当前时间，结合市场新闻、板块热点和资金流向，推荐 ${recommendCount.value} 只值得关注的股票，逐只说明推荐理由（基本面/消息面/技术面），并调用 CreateAiRecommendStocks 工具保存推荐记录。`
+  marketApi.summaryStockNews(question, recommendConfigId.value, null, true, false, "aiRecommendStocks", "")
+}
+
+function stopAiRecommend() {
+  marketApi.abortSummaryStockNews()
+}
+
+function scrollRecommendBottom() {
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      const el = recommendScrollRef.value
+      if (el) el.scrollTop = el.scrollHeight
+    })
+  })
+}
+
+EventsOn("aiRecommendStocks", async (msg) => {
+  if (msg === "DONE") {
+    recommendRunning.value = false
+    message.success('AI 推荐完成，列表已刷新')
+    handleSearch()
+    systemApi.getAiRecommendStats().then(({data: s}) => statsRef.value = s)
+    return
+  }
+  if (msg.content || msg.reasoning_content || msg.extraContent) {
+    if (msg.content) recommendOutput.value += msg.content
+    if (msg.reasoning_content) recommendOutput.value += msg.reasoning_content
+    if (msg.extraContent) recommendOutput.value += msg.extraContent
+    scrollRecommendBottom()
+  }
+})
+
+onUnmounted(() => {
+  EventsOff("aiRecommendStocks")
 })
 const message = useMessage()
 const mdPreviewRef = ref(null)
@@ -514,6 +577,33 @@ function toggleAlert(row, newEnableAlert) {
 </script>
 
 <template>
+  <!-- AI 推荐：LLM 聊天工具调用写入 -->
+  <n-card size="small" class="ai-recommend-card">
+    <template #header>
+      <n-space align="center">
+        <n-text strong>AI 推荐股票</n-text>
+        <n-text depth="3" style="font-size:12px">由 LLM 分析市场新闻后，通过工具调用把推荐写入下方列表</n-text>
+      </n-space>
+    </template>
+    <n-space vertical>
+      <n-space align="center">
+        <n-select v-model:value="recommendConfigId" label-field="name" value-field="ID"
+                  :options="aiConfigs" placeholder="选择AI模型服务配置" style="width:280px" />
+        <n-text depth="3" style="font-size:12px">推荐数量</n-text>
+        <n-input-number v-model:value="recommendCount" :min="1" :max="20" style="width:90px" />
+        <n-button type="primary" :loading="recommendRunning" @click="startAiRecommend">
+          <template #icon><n-icon><FlashOutline /></n-icon></template>开始推荐
+        </n-button>
+        <n-button :disabled="!recommendRunning" @click="stopAiRecommend">停止</n-button>
+      </n-space>
+      <n-alert type="info" :bordered="false" style="font-size:12px">
+        点击「开始推荐」后，AI 会分析当前市场新闻并生成推荐；后端系统提示会强制 LLM 最后调用
+        <n-text code>CreateAiRecommendStocks</n-text> 工具，把推荐结果保存到本页列表，生成完成后自动刷新。
+      </n-alert>
+      <div v-if="recommendOutput" ref="recommendScrollRef" class="recommend-output">{{ recommendOutput }}</div>
+    </n-space>
+  </n-card>
+
   <!-- L1 Overview Dashboard -->
   <n-space vertical v-if="statsRef" class="l1-dashboard">
     <n-grid :cols="4" :x-gap="12">
@@ -613,6 +703,21 @@ function toggleAlert(row, newEnableAlert) {
 </template>
 
 <style scoped>
+.ai-recommend-card {
+  margin-bottom: 12px;
+}
+.recommend-output {
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #606266;
+  background: rgba(128, 128, 128, 0.06);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
 .l1-dashboard {
   margin-bottom: 12px;
 }
