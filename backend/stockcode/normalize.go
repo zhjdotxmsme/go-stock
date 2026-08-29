@@ -120,7 +120,7 @@ func PureCode(code string) string {
 // StockCodeCandidates returns the normalized code plus legacy format candidates
 // for database queries where historical data may use mixed formats.
 //
-// Example: input "sh600519" → ["sh600519", "600519.SH", "sh600519"]
+// Example: input "sh600519" → ["sh600519", "600519.SH", "600519"]
 func StockCodeCandidates(code string) []string {
 	normalized := Normalize(code)
 	if normalized == "" {
@@ -131,7 +131,9 @@ func StockCodeCandidates(code string) []string {
 	candidates := make([]string, 0, 4)
 	candidates = append(candidates, normalized)       // canonical: sh600519
 	candidates = append(candidates, ToTushare(code))   // tushare:  600519.SH
-	if prefix == "us" {
+	if prefix != "us" {
+		candidates = append(candidates, pure)           // bare: 600519（种子脚本写入格式）
+	} else {
 		candidates = append(candidates, "gb_"+pure)     // legacy sina US variant
 	}
 

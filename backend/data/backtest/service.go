@@ -36,8 +36,10 @@ func NewService() *Service {
 // 前端可能传入 "兴业银锡 - 000426.SZ" 这类 名字+代码 的展示串，
 // 先尝试标准解析，失败则提取串中最后一组 6 位数字并推断交易所。
 func SanitizeStockCodeInput(input string) string {
-	if c := NormalizeStockCode(input); c != "" {
-		return c
+	// 注意：NormalizeStockCode 对无法识别的输入会“原样返回”（非空），
+	// 不能以非空判断成功——必须先显式 ParseStockCode。
+	if digits, exchange, ok := ParseStockCode(input); ok && exchange != "" {
+		return exchange + digits
 	}
 	runs := sixDigitRuns.FindAllString(input, -1)
 	if len(runs) == 0 {

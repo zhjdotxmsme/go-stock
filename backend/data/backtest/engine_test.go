@@ -14,6 +14,7 @@ import (
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
+	"go-stock/backend/stockcode"
 )
 
 var (
@@ -37,7 +38,11 @@ func registerEngineMock(code string, bars []datasource.KLineBar) {
 	mockOnce.Do(func() {
 		datasource.GetRouter().RegisterKLineProvider(engineMockProvider{})
 	})
-	globalMockData.Store(code, &datasource.KLineData{Bars: bars})
+	data := &datasource.KLineData{Bars: bars}
+	globalMockData.Store(code, data)
+	// Router 在调用 provider 前会把代码规范成 stockcode 内部格式
+	//（mock 码如 test_tplus1 → ustest_tplus1），需按两种形式注册。
+	globalMockData.Store(stockcode.Normalize(code), data)
 }
 
 type price struct {

@@ -61,6 +61,14 @@
         <n-text depth="3" style="font-size:12px">显示更多指标</n-text>
       </n-space>
     </n-space>
+    <n-alert type="info" :bordered="false" style="margin-bottom: 8px" collapsible>
+      <b>功能说明：</b>
+      「运行选股」按当日收盘数据跑完整管线（K线初筛 → 研报抓取 → 综合打分），结果按评分排名落库；
+      「复盘」用次日行情回填每只入选股的实际开收高低与收益（次日收益 = 次日开盘买入→收盘卖出）；
+      「胜率趋势」展示历史复盘的每日胜率走势。
+      <b>短期买卖建议</b>规则：以信号日收盘价为参考——参考买入价 = 收盘价；目标一 = +5%、目标二 = +10%；
+      止损 = -3%。建议仅为按固定比例生成的参考，请结合大盘与个股基本面自行决策，不构成投资建议。
+    </n-alert>
     <n-data-table remote :columns="visibleColumns" :data="picks" :loading="loading" :bordered="true" :single-line="false" :max-height="520" :pagination="tablePagination" striped @update:sorter="onSorterChange" />
     <n-drawer v-model:show="showDetail" placement="bottom" :height="'55vh'">
       <n-drawer-content :title="detailTitle" closable>
@@ -233,6 +241,26 @@ function renderStockName(row: any) {
     onClick: (e: Event) => { e.preventDefault(); showPickDetail(row) } }, `${row.stockName} (${row.stockCode})`)
 }
 
+// 短期买卖建议（仅供参考，非投资建议）：以信号日收盘价为基准，
+// 目标一 +5%、目标二 +10%、止损 -3%，可按个人风险偏好调整。
+function tradeAdvice(r: any) {
+  if (!r?.closePrice || r.closePrice <= 0) return null
+  const p = r.closePrice
+  const f = (v: number) => v.toFixed(2)
+  return {
+    buy: f(p),
+    target1: f(p * 1.05),
+    target2: f(p * 1.1),
+    stop: f(p * 0.97),
+  }
+}
+
+function renderAdvice(r: any) {
+  const a = tradeAdvice(r)
+  if (!a) return '-'
+  return `${a.buy} → 目标 ${a.target1}/${a.target2}，止损 ${a.stop}`
+}
+
 const baseColumns: any[] = [
   { title: '排名', key: 'rank', width: 60, align: 'center' },
   { title: '日期', key: 'tradeDate', width: 100 },
@@ -241,6 +269,7 @@ const baseColumns: any[] = [
   { title: '涨跌幅', key: 'changePercent', width: 85, align: 'right', render: renderChange },
   { title: '次日收益', key: 'nextReturn', width: 95, align: 'center', render: renderReturn, sorter: (a: any, b: any) => (a.nextReturn || 0) - (b.nextReturn || 0) },
   { title: '潜在盈亏', key: 'nextMaxReturn', width: 110, align: 'center', render: renderPnL },
+  { title: '短期买卖建议', key: 'advice', width: 240, render: renderAdvice },
   { title: '选股理由', key: 'reason', ellipsis: { tooltip: true }, render: renderReason },
   { title: '备注', key: 'remarks', width: 80, align: 'center', render: renderActions },
 ]

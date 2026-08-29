@@ -211,3 +211,21 @@ func TestEngineRun_PrevCloseBackfillAcrossFormats(t *testing.T) {
 	})
 	assert.ErrorContains(t, err, "price limit")
 }
+
+// ----- SanitizeStockCodeInput：展示串（名字+代码）必须能恢复标准码 -----
+
+func TestSanitizeStockCodeInput(t *testing.T) {
+	cases := map[string]string{
+		"兴业银锡 - 000426.SZ": "sz000426",
+		"兴业银锡 - 000426":    "sz000426",
+		"600519.SH":          "sh600519",
+		"sh600519":           "sh600519",
+		"600519":             "sh600519",
+		"贵州茅台 600519":        "sh600519",
+	}
+	for input, want := range cases {
+		if got := SanitizeStockCodeInput(input); got != want {
+			t.Errorf("SanitizeStockCodeInput(%q) = %q, want %q", input, got, want)
+		}
+	}
+}

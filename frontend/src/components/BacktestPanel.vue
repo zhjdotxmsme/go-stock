@@ -12,7 +12,7 @@ import {
   NSwitch, NTabPane, NTabs, NTag, NText, NPagination
 } from 'naive-ui'
 import { useMessage } from 'naive-ui'
-import { SearchOutline, TrendingUpOutline, TrendingDownOutline } from '@vicons/ionicons5'
+import { SearchOutline, TrendingUpOutline, TrendingDownOutline, HelpCircleOutline } from '@vicons/ionicons5'
 
 import EquityCurve from './charts/EquityCurve.vue'
 import MonthlyHeatmap from './charts/MonthlyHeatmap.vue'
@@ -224,6 +224,7 @@ async function runBatch() {
 }
 
 function parseNumList(str) {
+  if (!str) return []
   return str.split(',').map(s => parseFloat(s.trim())).filter(v => !isNaN(v))
 }
 
@@ -489,6 +490,18 @@ const historyPagination = computed(() => {
 
 <template>
   <div class="backtest-panel">
+    <n-alert type="info" :bordered="false" style="margin-bottom: 8px" closable>
+      <b>回测验证说明：</b>
+      用历史行情验证买入策略的盈亏表现。
+      <b>单次回测</b>——输入股票、信号日期（出信号那天，T+1 才能按次日开盘买入）、
+      入场价格（留 0 = 信号日收盘价）、持有天数与止盈止损比例（0.05 = 5%），点击运行后
+      逐日模拟持仓直到触发止盈/止损或持有到期；
+      <b>批量回测</b>——对同一只股票在日期区间内的每个交易日重复上述回测并汇总胜率；
+      <b>策略回测</b>——对每日选股的入选股整体回测；
+      <b>历史记录</b>——保存过的回测结果查询。
+      <b>数据同步</b>页签从本地 kline_bars 库拉取/补齐历史 K 线（种子导入需要本机安装
+      Python 与 baostock 库，历史数据越全回测越准）。结果仅基于历史数据模拟，不构成投资建议。
+    </n-alert>
     <n-tabs v-model:value="activeTab" type="line" animated>
       <n-tab-pane name="single" tab="单次回测">
         <n-grid :cols="24" :x-gap="16">
@@ -508,12 +521,15 @@ const historyPagination = computed(() => {
                 </n-form-item>
                 <n-form-item label="信号日期">
                   <n-date-picker v-model:value="singleForm.signalDate" type="date" style="width: 100%" />
+                  <n-tooltip trigger="hover" placement="top"><template #trigger><n-icon size="16" class="ml-2"><HelpCircleOutline /></n-icon></template>策略发出买入信号的那一天；实际按 T+1 次日开盘价买入</n-tooltip>
                 </n-form-item>
                 <n-form-item label="入场价格">
                   <n-input-number v-model:value="singleForm.entryPrice" placeholder="0=信号日收盘价" style="width: 100%" :min="0" />
+                  <n-tooltip trigger="hover" placement="top"><template #trigger><n-icon size="16"><HelpCircleOutline /></n-icon></template>填 0 表示按信号日收盘价作为买入价</n-tooltip>
                 </n-form-item>
                 <n-form-item label="持仓天数">
                   <n-input-number v-model:value="singleForm.holdingDays" :min="1" style="width: 100%" />
+                  <n-tooltip trigger="hover" placement="top"><template #trigger><n-icon size="16"><HelpCircleOutline /></n-icon></template>从买入那天起最多持有的交易日数，到期按收盘价卖出</n-tooltip>
                 </n-form-item>
                 <n-form-item label="止损比例">
                   <n-input-number v-model:value="singleForm.stopLoss" :min="0" :step="0.01" placeholder="0.05 = 5%" style="width: 100%" />

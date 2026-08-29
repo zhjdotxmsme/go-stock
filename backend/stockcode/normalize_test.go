@@ -332,9 +332,9 @@ func TestStockCodeCandidates(t *testing.T) {
 		input string
 		want  []string
 	}{
-		{"sh600519", []string{"sh600519", "600519.SH"}},
+		{"sh600519", []string{"sh600519", "600519.SH", "600519"}},
 		{"usAAPL", []string{"usAAPL", "AAPL", "gb_AAPL"}},
-		{"hk00700", []string{"hk00700", "00700.HK"}},
+		{"hk00700", []string{"hk00700", "00700.HK", "00700"}},
 		{"", nil},
 	}
 
