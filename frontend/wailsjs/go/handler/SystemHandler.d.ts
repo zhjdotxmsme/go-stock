@@ -95,6 +95,8 @@ export function SearchCronTasks(arg1:string):Promise<Array<models.CronTask>>;
 
 export function TestMCPServer(arg1:number):Promise<string>;
 
+export function TrackEvent(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
 export function UpdateConfig(arg1:data.SettingConfig):Promise<string>;
 
 export function UpdateCronTask(arg1:models.CronTask):Promise<string>;
@@ -104,5 +106,3 @@ export function UpdateMCPServer(arg1:models.MCPServer):Promise<string>;
 export function UpdateSkill(arg1:models.Skill):Promise<string>;
 
 export function ValidateCronExpr(arg1:string):Promise<string>;
-
-export function TrackEvent(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;

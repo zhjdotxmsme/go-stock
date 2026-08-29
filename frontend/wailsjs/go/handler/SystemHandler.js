@@ -182,6 +182,10 @@ export function TestMCPServer(arg1) {
   return window['go']['handler']['SystemHandler']['TestMCPServer'](arg1);
 }
 
+export function TrackEvent(arg1, arg2, arg3, arg4) {
+  return window['go']['handler']['SystemHandler']['TrackEvent'](arg1, arg2, arg3, arg4);
+}
+
 export function UpdateConfig(arg1) {
   return window['go']['handler']['SystemHandler']['UpdateConfig'](arg1);
 }
@@ -200,8 +204,4 @@ export function UpdateSkill(arg1) {
 
 export function ValidateCronExpr(arg1) {
   return window['go']['handler']['SystemHandler']['ValidateCronExpr'](arg1);
-}
-
-export function TrackEvent(arg1, arg2, arg3, arg4) {
-  return window['go']['handler']['SystemHandler']['TrackEvent'](arg1, arg2, arg3, arg4);
 }
