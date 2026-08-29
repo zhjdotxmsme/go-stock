@@ -152,12 +152,18 @@ onBeforeUnmount(() => {
     <n-spin :show="macroLoading && !macro">
       <n-card size="small">
         <template v-if="macro">
-          <n-grid :cols="3" :x-gap="16" :y-gap="12">
-            <!-- 美元指数 + ETF -->
+          <n-grid :cols="4" :x-gap="16" :y-gap="12">
+            <!-- 美元指数 + 欧元/美元 + ETF -->
             <n-grid-item>
               <n-space vertical size="small">
                 <n-text depth="3" style="font-size: 12px">美元指数 DXY</n-text>
                 <n-text strong style="font-size: 18px">{{ formatPrice(macro.dxy) }}</n-text>
+              </n-space>
+            </n-grid-item>
+            <n-grid-item>
+              <n-space vertical size="small">
+                <n-text depth="3" style="font-size: 12px">欧元/美元 EURUSD</n-text>
+                <n-text strong style="font-size: 18px">{{ formatPrice(macro.eurusd) }}</n-text>
               </n-space>
             </n-grid-item>
             <n-grid-item>

@@ -635,6 +635,9 @@ type MacroSnapshotEnhanced struct {
 	// 美元指数
 	DXY float64 `json:"dxy"`
 
+	// 欧元/美元汇率（FRED DEXUSEU；DXY 缺失时的独立汇率参考）
+	EURUSD float64 `json:"eurusd"`
+
 	// 美债收益率
 	US2YR  float64 `json:"us2yr"`
 	US5YR  float64 `json:"us5yr"`
@@ -755,7 +758,7 @@ func (c *CommodityApi) GetMacroIndicatorsEnhanced() (*MacroSnapshotEnhanced, err
 		logger.SugaredLogger.Warnf("Yahoo TIP quote failed: %v", err)
 	}
 
-	// 3. FRED: TIPS 多期限 + 盈亏平衡通胀率
+	// 3. FRED: TIPS 多期限 + 盈亏平衡通胀率 + 美债/DXY 缺失回退
 	fred := NewFredApi()
 	if v, err := fred.GetTIPS5YRate(); err == nil {
 		enhanced.TIPS5Y = v
@@ -774,6 +777,45 @@ func (c *CommodityApi) GetMacroIndicatorsEnhanced() (*MacroSnapshotEnhanced, err
 	}
 	if v, err := fred.GetBreakEvenInflation10Y(); err == nil {
 		enhanced.BreakEven10Y = v
+	}
+
+	// FRED 官方系列补齐 WallstreetCN 缺失的美元指数/美债收益率：
+	// DXY 用贸易加权美元指数 DTWEXBGS（量级相近）；DEXUSEU 是欧元/美元汇率，
+	// 作为独立指标 EURUSD 返回，不可直接当 DXY 使用。
+	if v, err := fred.GetDXY(); err == nil {
+		enhanced.EURUSD = v
+	}
+	if enhanced.DXY <= 0 {
+		if v, err := fred.GetBroadDollarIndex(); err == nil {
+			enhanced.DXY = v
+		} else {
+			logger.SugaredLogger.Warnf("FRED dollar index fallback failed: %v", err)
+		}
+	}
+	if enhanced.US2YR <= 0 {
+		if v, err := fred.GetUS2YRate(); err == nil {
+			enhanced.US2YR = v
+		}
+	}
+	if enhanced.US5YR <= 0 {
+		if v, err := fred.GetUS5YRate(); err == nil {
+			enhanced.US5YR = v
+		}
+	}
+	if enhanced.US7YR <= 0 {
+		if v, err := fred.GetUS7YRate(); err == nil {
+			enhanced.US7YR = v
+		}
+	}
+	if enhanced.US10YR <= 0 {
+		if v, err := fred.GetUS10YRate(); err == nil {
+			enhanced.US10YR = v
+		}
+	}
+	if enhanced.US30YR <= 0 {
+		if v, err := fred.GetUS30YRate(); err == nil {
+			enhanced.US30YR = v
+		}
 	}
 
 	return enhanced, nil
