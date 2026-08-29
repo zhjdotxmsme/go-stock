@@ -69,6 +69,23 @@ export async function getReviewTrend(limit: number): Promise<any> {
   return r.data
 }
 
+/**
+ * 获取 AI 增强选股（LLM 二次排序）开关状态
+ */
+export async function getLLMRankingEnabled(): Promise<boolean> {
+  const r = await callApi(DailyPickHandler.GetLLMRankingEnabled)
+  if (!r?.success) throw new Error(r?.message || "获取 AI 增强选股开关失败")
+  return r.data
+}
+
+/**
+ * 设置 AI 增强选股开关
+ */
+export async function setLLMRankingEnabled(enabled: boolean): Promise<void> {
+  const r = await callApi(DailyPickHandler.SetLLMRankingEnabled, enabled)
+  if (!r?.success) throw new Error(r?.message || "保存 AI 增强选股开关失败")
+}
+
 export default {
   runDailyPick,
   runDailyPickAsync,
@@ -77,4 +94,6 @@ export default {
   getDailyPickStats,
   updateDailyPickRemarks,
   getReviewTrend,
+  getLLMRankingEnabled,
+  setLLMRankingEnabled,
 }

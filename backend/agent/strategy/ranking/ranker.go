@@ -114,6 +114,9 @@ type RankerConfig struct {
 	RankWeight        float64 `json:"rankWeight"`        // llm_score 混合权重，默认 0.40
 	CoverageThreshold float64 `json:"coverageThreshold"` // 覆盖率成功阈值，默认 0.60
 	MaxRetries        int     `json:"maxRetries"`        // 每模型最大重试次数，默认 1（即最多调用 2 次）
+	// PromptTemplate 排序 Prompt 模板（含 %s 候选池占位符）；空 = 使用内置默认模板。
+	// 实际运行时由调用方从 prompt_template 表（role_key=d2_ranking）注入。
+	PromptTemplate string `json:"-"`
 }
 
 // DefaultRankerConfig 返回方案 §8.1 D2 规格的默认配置。
@@ -189,7 +192,7 @@ func (r *Ranker) Rank(ctx context.Context, candidates []Candidate, modelChain []
 	if len(candidates) == 0 {
 		return RankedResult{Degraded: true}
 	}
-	prompt := BuildRankPrompt(FormatCandidates(candidates))
+	prompt := buildRankPrompt(r.Config.PromptTemplate, FormatCandidates(candidates))
 
 	for _, model := range dedupModels(modelChain) {
 		attempts := 1 + r.Config.MaxRetries

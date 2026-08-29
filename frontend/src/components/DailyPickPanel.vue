@@ -7,6 +7,16 @@
       <template #extra>
         <n-space>
           <n-date-picker v-model:value="queryDate" type="date" :is-date-disabled="dateDisabled" clearable placeholder="筛选日期" style="width:160px" @update:value="onDateChange" />
+          <n-popover trigger="hover" placement="bottom">
+            <template #trigger>
+              <n-space align="center" size="small">
+                <n-switch v-model:value="llmRankingEnabled" size="small" :disabled="llmRankingLoading" @update:value="toggleLLMRanking" />
+                <n-text depth="3" style="font-size:12px;cursor:pointer">AI 增强选股</n-text>
+              </n-space>
+            </template>
+            AI 增强选股开启后，量化初筛的前 30 名会经 LLM 二次排序（FinalScore = 量化×0.6 + AI×0.4），
+            并在表格中展示 AI 论点与风险。未配置 AI 服务时自动跳过，不影响原有结果。
+          </n-popover>
           <n-button type="primary" :loading="running" @click="runPick">
             <template #icon><n-icon><DownloadOutline /></n-icon></template>运行选股
           </n-button>
@@ -119,6 +129,7 @@ import FactorBar from './charts/FactorBar.vue'
 import {
   runDailyPickAsync, getDailyPicks, getDailyPickStats,
   updateDailyPickRemarks, runDailyReview, getReviewTrend,
+  getLLMRankingEnabled, setLLMRankingEnabled,
 } from '../api/dailyPick'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 
@@ -163,6 +174,23 @@ const winRateLoading = ref(false)
 const trendDays = ref(30)
 
 const showExtraColumns = ref(false)
+
+// AI 增强选股（D2 LLM 二次排序）开关
+const llmRankingEnabled = ref(true)
+const llmRankingLoading = ref(false)
+
+async function toggleLLMRanking(v: boolean) {
+  llmRankingLoading.value = true
+  try {
+    await setLLMRankingEnabled(v)
+    message.success(v ? '已开启 AI 增强选股，下次运行选股生效' : '已关闭 AI 增强选股')
+  } catch (e) {
+    llmRankingEnabled.value = !v
+    message.error('保存开关失败: ' + String(e))
+  } finally {
+    llmRankingLoading.value = false
+  }
+}
 
 const showDetail = ref(false)
 const selectedPick = ref<any>(null)
@@ -231,6 +259,13 @@ function renderReason(row: any) {
     row.reason.length > 30 ? row.reason.slice(0, 30) + '...' : row.reason)
 }
 
+// 长文本（AI 论点/风险等）截断展示，悬浮显示全文
+function renderLongText(text: string) {
+  if (!text) return h('span', { style: { color: '#909399', fontSize: '12px' } }, '-')
+  return h('span', { style: { fontSize: '12px', color: '#606266', maxWidth: '200px', display: 'inline-block' }, title: text },
+    text.length > 30 ? text.slice(0, 30) + '...' : text)
+}
+
 function renderActions(row: any) {
   return h('a', { href: '#', style: { color: row.remarks ? '#18a058' : '#909399', fontSize: '12px' },
     onClick: (e: Event) => { e.preventDefault(); editRemarks(row) } }, row.remarks || '添加备注')
@@ -283,6 +318,8 @@ const extraColumns: any[] = [
   { title: '均线因子', key: 'maFactor', width: 70, align: 'center', render: (r: any) => r.maFactor ? r.maFactor.toFixed(2) : '-' },
   { title: '最大收益', key: 'nextMaxReturn', width: 80, align: 'right', render: (r: any) => r.reviewed ? ((r.nextMaxReturn ?? 0) >= 0 ? '+' : '') + (r.nextMaxReturn ?? 0).toFixed(2) + '%' : '-' },
   { title: '最大回撤', key: 'nextMaxDrawdown', width: 80, align: 'right', render: (r: any) => r.reviewed ? (r.nextMaxDrawdown ?? 0).toFixed(2) + '%' : '-' },
+  { title: 'AI 论点', key: 'llmThesis', width: 220, render: (r: any) => renderLongText(r.llmThesis) },
+  { title: 'AI 风险', key: 'llmRisk', width: 220, render: (r: any) => renderLongText(r.llmRisk) },
 ]
 
 const visibleColumns = computed(() => showExtraColumns.value ? [...baseColumns, ...extraColumns] : baseColumns)
@@ -458,6 +495,11 @@ function dateDisabled() { return false }
 
 onMounted(async () => {
   await loadStats(); await loadPicks(); await loadWinRate()
+  try {
+    llmRankingEnabled.value = await getLLMRankingEnabled()
+  } catch (e) {
+    console.error('GetLLMRankingEnabled error:', e)
+  }
 })
 </script>
 

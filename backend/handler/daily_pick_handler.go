@@ -90,3 +90,22 @@ func (h *DailyPickHandler) GetDateRange() (string, string) {
 func (h *DailyPickHandler) GetReviewTrend(limit int) []map[string]interface{} {
 	return h.svc.GetReviewTrend(limit)
 }
+
+// GetLLMRankingEnabled 返回 AI 增强选股（LLM 二次排序）开关状态；未设置时默认开启。
+func (h *DailyPickHandler) GetLLMRankingEnabled() bool {
+	sc := data.GetSettingConfig()
+	if sc == nil || sc.EnableLLMRanking == nil {
+		return true
+	}
+	return *sc.EnableLLMRanking
+}
+
+// SetLLMRankingEnabled 持久化 AI 增强选股开关。
+func (h *DailyPickHandler) SetLLMRankingEnabled(enabled bool) string {
+	sc := data.GetSettingConfig()
+	if sc == nil || sc.Settings == nil {
+		return "保存失败: 配置未就绪"
+	}
+	sc.EnableLLMRanking = &enabled
+	return data.UpdateConfig(sc)
+}

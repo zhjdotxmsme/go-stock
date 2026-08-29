@@ -60,6 +60,8 @@ type Settings struct {
 	EmApiKey               string `json:"emApiKey" gorm:"column:em_api_key"`
 	WindowWidth            int    `json:"windowWidth"`
 	WindowHeight           int    `json:"windowHeight"`
+	// EnableLLMRanking AI 增强选股（D2 LLM 二次排序）开关；nil = 默认开。
+	EnableLLMRanking *bool `json:"enableLlmRanking" gorm:"column:enable_llm_ranking"`
 }
 
 func (receiver Settings) TableName() string {
@@ -174,6 +176,7 @@ func UpdateConfig(s *SettingConfig) string {
 			"em_api_key":                 s.EmApiKey,
 			"window_width":               s.WindowWidth,
 			"window_height":              s.WindowHeight,
+			"enable_llm_ranking":         s.EnableLLMRanking,
 		})
 		if result.Error != nil {
 			logger.SugaredLogger.Errorf("更新配置失败: %v", result.Error)
@@ -293,6 +296,10 @@ func GetSettingConfig() *SettingConfig {
 		// Embedded *Settings must be non-nil or promoted-field access
 		// (cfg.CrawlTimeOut etc.) panics on the empty config.
 		return &SettingConfig{Settings: &Settings{CrawlTimeOut: 60}}
+	}
+	// AutoMigrate 保证新列存在（settings 表历史上由 map 更新创建，列缺失时 First 会报错）
+	if err := db.Dao.AutoMigrate(&Settings{}); err != nil {
+		logger.SugaredLogger.Warnf("settings AutoMigrate failed: %v", err)
 	}
 	settingConfig := &SettingConfig{}
 	settings := &Settings{}

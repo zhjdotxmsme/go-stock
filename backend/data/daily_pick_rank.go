@@ -134,6 +134,10 @@ func buildLLMChatCall(aiConfigs []*AIConfig) ranking.LLMCallFunc {
 // 无 AI 配置/LLM 失败/降级时返回 false，保持 screen 序（行为同旧版）。
 func (e *DailyPickEngine) applyLLMRanking(ctx context.Context, results []scored) (ranked bool) {
 	cfg := e.enhanceCfg.normalize()
+	// 设置页开关（nil = 未设置，沿用 enhanceCfg 默认值）
+	if sc := GetSettingConfig(); sc != nil && sc.EnableLLMRanking != nil {
+		cfg.EnableLLMRanking = *sc.EnableLLMRanking
+	}
 	if !cfg.EnableLLMRanking {
 		return false
 	}
@@ -182,6 +186,14 @@ func (e *DailyPickEngine) applyLLMRanking(ctx context.Context, results []scored)
 	candidates := make([]ranking.Candidate, 0, len(rankIdxs))
 	for _, i := range rankIdxs {
 		candidates = append(candidates, buildRankCandidate(&results[i].pick))
+	}
+
+	// 排序 Prompt 支持在提示词管理页编辑：role_key=d2_ranking。
+	// 首次读取时把默认模板写入 DB（Upsert 幂等），之后一直用页面上的版本。
+	if tpl := GetPromptByRoleKey("d2_ranking"); tpl != "" {
+		cfg.Ranker.PromptTemplate = tpl
+	} else {
+		UpsertPromptByRoleKey("d2_ranking", "每日选股LLM排序", ranking.DefaultRankPromptTemplate(), "multi_agent")
 	}
 
 	res := ranking.NewRanker(cfg.Ranker).Rank(ctx, candidates, chain, call)

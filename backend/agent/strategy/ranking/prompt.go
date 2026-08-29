@@ -41,7 +41,25 @@ const rankPromptTemplate = `你是一位严谨的 A 股投资分析师。下面�
 %s
 `
 
+// DefaultRankPromptTemplate 返回排序 Prompt 默认模板（供调用方写入
+// prompt_template 表 role_key=d2_ranking 以便在提示词管理页编辑）。
+func DefaultRankPromptTemplate() string {
+	return rankPromptTemplate
+}
+
 // BuildRankPrompt 用格式化后的候选池文本构建完整排序 Prompt。
 func BuildRankPrompt(formattedPool string) string {
-	return strings.Replace(rankPromptTemplate, "%s", formattedPool, 1)
+	return buildRankPrompt("", formattedPool)
+}
+
+// buildRankPrompt 使用自定义模板（可来自 prompt_template 表）构建完整排序 Prompt。
+// 模板为空时回退内置默认；模板不含 %s 占位符时自动把候选池拼在末尾。
+func buildRankPrompt(template, formattedPool string) string {
+	if template == "" {
+		template = rankPromptTemplate
+	}
+	if !strings.Contains(template, "%s") {
+		return template + "\n\n候选池：\n" + formattedPool
+	}
+	return strings.Replace(template, "%s", formattedPool, 1)
 }

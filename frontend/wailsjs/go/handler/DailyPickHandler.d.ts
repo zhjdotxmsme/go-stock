@@ -10,6 +10,8 @@ export function GetDailyPicks(arg1:models.DailyPickQuery):Promise<models.DailyPi
 
 export function GetDateRange():Promise<string|string>;
 
+export function GetLLMRankingEnabled():Promise<boolean>;
+
 export function GetLatestPicks(arg1:number):Promise<Array<models.DailyPick>>;
 
 export function GetLatestUnreviewedPicks():Promise<Array<models.DailyPick>>;
@@ -25,5 +27,7 @@ export function RunDailyPick(arg1:string,arg2:number):Promise<Array<models.Daily
 export function RunDailyPickAsync(arg1:string,arg2:number):Promise<void>;
 
 export function RunDailyReview(arg1:string,arg2:string):Promise<number>;
+
+export function SetLLMRankingEnabled(arg1:boolean):Promise<string>;
 
 export function UpdateDailyPickRemarks(arg1:number,arg2:string):Promise<void>;

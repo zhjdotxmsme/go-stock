@@ -18,6 +18,10 @@ export function GetDateRange() {
   return window['go']['handler']['DailyPickHandler']['GetDateRange']();
 }
 
+export function GetLLMRankingEnabled() {
+  return window['go']['handler']['DailyPickHandler']['GetLLMRankingEnabled']();
+}
+
 export function GetLatestPicks(arg1) {
   return window['go']['handler']['DailyPickHandler']['GetLatestPicks'](arg1);
 }
@@ -48,6 +52,10 @@ export function RunDailyPickAsync(arg1, arg2) {
 
 export function RunDailyReview(arg1, arg2) {
   return window['go']['handler']['DailyPickHandler']['RunDailyReview'](arg1, arg2);
+}
+
+export function SetLLMRankingEnabled(arg1) {
+  return window['go']['handler']['DailyPickHandler']['SetLLMRankingEnabled'](arg1);
 }
 
 export function UpdateDailyPickRemarks(arg1, arg2) {
