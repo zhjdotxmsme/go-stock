@@ -1201,6 +1201,7 @@ export namespace data {
 	}
 	export class MacroSnapshotEnhanced {
 	    dxy: number;
+	    eurusd: number;
 	    us2yr: number;
 	    us5yr: number;
 	    us7yr: number;
@@ -1227,6 +1228,7 @@ export namespace data {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.dxy = source["dxy"];
+	        this.eurusd = source["eurusd"];
 	        this.us2yr = source["us2yr"];
 	        this.us5yr = source["us5yr"];
 	        this.us7yr = source["us7yr"];

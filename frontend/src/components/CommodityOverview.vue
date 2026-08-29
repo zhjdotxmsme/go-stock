@@ -134,11 +134,11 @@ onBeforeUnmount(() => {
               <n-space justify="space-between" align="center">
                 <div>
                   <n-text depth="3" style="font-size: 12px">{{ asset.name }}</n-text>
-                  <div class="text-lg font-bold">{{ formatPrice(quotes[asset.code]?.Price) }}</div>
+                  <div class="text-lg font-bold">{{ formatPrice(quotes[asset.code]?.price) }}</div>
                   <div v-if="errors[asset.code]" class="text-xs text-red-500">{{ errors[asset.code] }}</div>
                 </div>
-                <div :class="quotes[asset.code]?.ChangePct >= 0 ? 'text-red-500' : 'text-green-500'" style="font-size: 13px">
-                  {{ formatPct(quotes[asset.code]?.ChangePct) }}
+                <div :class="quotes[asset.code]?.changePct >= 0 ? 'text-red-500' : 'text-green-500'" style="font-size: 13px">
+                  {{ formatPct(quotes[asset.code]?.changePct) }}
                 </div>
               </n-space>
             </n-card>
