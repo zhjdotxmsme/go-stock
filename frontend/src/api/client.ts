@@ -4,6 +4,7 @@
  */
 
 import { logger } from '../utils/logger'
+import { reportError } from '../utils/tracker'
 import type { ApiResult } from '../types/api'
 
 /**
@@ -38,6 +39,7 @@ export async function callApi<T = any>(
     return createResult<T>(result)
   } catch (error) {
     logger.error(`[API] ${method?.name || 'unknown'} error`, error)
+    reportError('api:' + (method?.name || 'unknown'), error)
     return createResult<T>(null, error as Error)
   }
 }

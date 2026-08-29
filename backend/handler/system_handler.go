@@ -1251,6 +1251,30 @@ func panicHandler() {
 	}
 }
 
+// TrackEvent 接收前端埋点与报错上报，写入应用日志（[FRONTEND] 前缀），
+// 与 [HTTP] 出站请求日志同库，供排查页面操作问题。
+func (h *SystemHandler) TrackEvent(level, source, action, detail string) {
+	level = strings.ToLower(strings.TrimSpace(level))
+	if level != "error" {
+		level = "info"
+	}
+	if level == "error" {
+		logger.SugaredLogger.Errorf("[FRONTEND][%s][%s] %s | %s",
+			truncateRunes(source, 64), truncateRunes(action, 128), truncateRunes(detail, 800))
+		return
+	}
+	logger.SugaredLogger.Infof("[FRONTEND][%s][%s] %s | %s",
+		truncateRunes(source, 64), truncateRunes(action, 128), truncateRunes(detail, 800))
+}
+
+func truncateRunes(s string, max int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) > max {
+		return string(r[:max]) + "…"
+	}
+	return string(r)
+}
+
 func (h *SystemHandler) isWindows() bool {
 	return stdruntime.GOOS == "windows"
 }

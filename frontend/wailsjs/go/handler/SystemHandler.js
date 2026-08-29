@@ -201,3 +201,7 @@ export function UpdateSkill(arg1) {
 export function ValidateCronExpr(arg1) {
   return window['go']['handler']['SystemHandler']['ValidateCronExpr'](arg1);
 }
+
+export function TrackEvent(arg1, arg2, arg3, arg4) {
+  return window['go']['handler']['SystemHandler']['TrackEvent'](arg1, arg2, arg3, arg4);
+}
