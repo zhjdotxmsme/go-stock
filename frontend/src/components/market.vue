@@ -21,8 +21,7 @@ import IndustryResearchReportList from "./IndustryResearchReportList.vue";
 import HotStockList from "./HotStockList.vue";
 import HotEvents from "./HotEvents.vue";
 import HotTopics from "./HotTopics.vue";
-import InvestCalendarTimeLine from "./InvestCalendarTimeLine.vue";
-import ClsCalendarTimeLine from "./ClsCalendarTimeLine.vue";
+import CalendarTimeline from "./CalendarTimeline.vue";
 import Stockhotmap from "./stockhotmap.vue";
 import FundFlowChart from "./FundFlowChart.vue";
 
@@ -743,10 +742,10 @@ function ReFlesh(source) {
             </n-grid>
           </n-tab-pane>
           <n-tab-pane name="重大事件时间轴" tab="重大事件时间轴">
-            <InvestCalendarTimeLine />
+            <CalendarTimeline source="invest" />
           </n-tab-pane>
           <n-tab-pane name="财经日历" tab="财经日历">
-            <ClsCalendarTimeLine />
+            <CalendarTimeline source="cls" />
           </n-tab-pane>
         </n-tabs>
       </n-tab-pane>
