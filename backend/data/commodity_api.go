@@ -402,6 +402,70 @@ func (c *CommodityApi) GetKLineIntl(code string, period string, count int) ([]da
 	return yahoo.GetKLineNoCtx(asset.Code, period, count)
 }
 
+// wscnKLineColIdx 依据服务端返回的 fields 元数据解析 WSCN K 线列下标。
+// WSCN 实际按自身规范序返回列（已采样实证为 [open_px, close_px, high_px, low_px, turnover_volume, tick_at]），
+// fields 元数据为空或缺某个列名时，回退到该规范序，避免"按请求顺序假定"的列错位 bug。
+func wscnKLineColIdx(fields []string) (iOpen, iClose, iHigh, iLow, iVol, iTime int) {
+	iOpen, iClose, iHigh, iLow, iVol, iTime = 0, 1, 2, 3, 4, 5
+	for i, name := range fields {
+		switch name {
+		case "open_px":
+			iOpen = i
+		case "close_px":
+			iClose = i
+		case "high_px":
+			iHigh = i
+		case "low_px":
+			iLow = i
+		case "turnover_volume", "volume":
+			iVol = i
+		case "tick_at", "time":
+			iTime = i
+		}
+	}
+	return
+}
+
+// parseWSCNKLineToBars 把 WSCN K 线行转为 KLineBar，按 fields 元数据映射列，
+// 并跳过时间戳为 0 / 明显非法（<1980 或 >2100）的行作为防御。
+func parseWSCNKLineToBars(lines [][]float64, fields []string) []datasource.KLineBar {
+	iOpen, iClose, iHigh, iLow, iVol, iTime := wscnKLineColIdx(fields)
+	needCol := maxCol(iOpen, iClose, iHigh, iLow, iTime)
+	out := make([]datasource.KLineBar, 0, len(lines))
+	for _, line := range lines {
+		if len(line) <= needCol {
+			continue
+		}
+		t := time.Unix(int64(line[iTime]), 0)
+		if t.IsZero() || t.Year() < 1980 || t.Year() > 2100 {
+			continue
+		}
+		var vol int64
+		if iVol < len(line) {
+			vol = int64(line[iVol])
+		}
+		out = append(out, datasource.KLineBar{
+			Time:   t,
+			Open:   line[iOpen],
+			Close:  line[iClose],
+			High:   line[iHigh],
+			Low:    line[iLow],
+			Volume: vol,
+		})
+	}
+	return out
+}
+
+func maxCol(idx ...int) int {
+	m := idx[0]
+	for _, v := range idx[1:] {
+		if v > m {
+			m = v
+		}
+	}
+	return m
+}
+
 func (c *CommodityApi) getSpotKLine(asset *models.CommodityAsset, period string, count int) ([]datasource.KLineBar, error) {
 	yahoo := NewYahooFinanceApi()
 	// YahooFinanceApi 内部有 Code→Yahoo符号映射表(yahooCommoditySymbols)，传 Code 即可
@@ -425,32 +489,24 @@ func (c *CommodityApi) getSpotKLine(asset *models.CommodityAsset, period string,
 		count = 120
 	}
 
-	fields := []string{"tick_at", "open_px", "close_px", "high_px", "low_px", "turnover_volume"}
+	// 请求 OHLCV+时间齐全字段。注意：服务端按自身规范序返回列，
+	// 具体顺序以返回体的 fields 元数据为准（见 parseWSCNKLineToBars）。
+	fields := []string{"open_px", "close_px", "high_px", "low_px", "turnover_volume", "tick_at"}
 	resp := c.wsClient.GetKline(asset.Symbol, wsPeriod, count, fields)
 	if resp != nil && resp.Code == 20000 {
 		candle, ok := resp.Data.Candle[asset.Symbol]
-		if ok && len(candle.Lines) > 0 {
-			result := make([]datasource.KLineBar, 0, len(candle.Lines))
-			for _, line := range candle.Lines {
-				if len(line) < 5 {
-					continue
-				}
-				timestamp := int64(line[0])
-				var volume int64
-				if len(line) > 5 {
-					volume = int64(line[5])
-				}
-				result = append(result, datasource.KLineBar{
-					Time:   time.Unix(timestamp, 0),
-					Open:   line[1],
-					Close:  line[2],
-					High:   line[3],
-					Low:    line[4],
-					Volume: volume,
-				})
+		if !ok {
+			// 兜底：取任意一个 candle 条目（与 WSCN 其它调用方行为一致）
+			for _, v := range resp.Data.Candle {
+				candle = v
+				break
 			}
-			return result, nil
+			ok = true
 		}
+		if bars := parseWSCNKLineToBars(candle.Lines, resp.Data.Fields); len(bars) > 0 {
+			return bars, nil
+		}
+		logger.SugaredLogger.Warnf("WallStreetCN spot K-line returned no valid bars for %s (lines=%d, code=%d)", asset.Code, len(candle.Lines), resp.Code)
 	}
 
 	logger.SugaredLogger.Errorf("All spot K-line sources failed for %s", asset.Code)

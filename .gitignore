@@ -119,3 +119,6 @@ frontend/package.json.md5
 # AI tooling working dirs
 .zcode/
 .codegraph/
+
+# Go build cache (created inside workspace when the default user cache is not writable)
+.gocache/

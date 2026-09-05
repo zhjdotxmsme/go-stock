@@ -99,6 +99,10 @@ type WSCNKlineResponse struct {
 		Candle map[string]struct {
 			Lines [][]float64 `json:"lines"`
 		} `json:"candle"`
+		// Fields 是服务端返回的 K 线列名元数据，顺序即 lines 每行的列序，
+		// 例如 ["open_px","close_px","high_px","low_px","turnover_volume","tick_at"]。
+		// 解析必须以此为准，不能假设请求时传入的 fields 顺序（服务端按自身规范序返回）。
+		Fields []string `json:"fields"`
 	} `json:"data"`
 }
 
@@ -484,12 +488,9 @@ func (w WallstreetcnApi) GetKlineReadable(prodCode string, periodType int, limit
 		}
 	}
 
-	for _, line := range candleData.Lines {
-		if len(line) < 5 {
-			continue
-		}
-		t := time.Unix(int64(line[4]), 0).Local().Format("01-02 15:04")
-		md.WriteString(fmt.Sprintf("| %s | %.2f | %.2f | %.2f | %.2f |\r\n", t, line[0], line[1], line[2], line[3]))
+	for _, bar := range parseWSCNKLineToBars(candleData.Lines, result.Data.Fields) {
+		md.WriteString(fmt.Sprintf("| %s | %.2f | %.2f | %.2f | %.2f |\r\n",
+			bar.Time.Local().Format("01-02 15:04"), bar.Open, bar.Close, bar.High, bar.Low))
 	}
 
 	return md.String()
