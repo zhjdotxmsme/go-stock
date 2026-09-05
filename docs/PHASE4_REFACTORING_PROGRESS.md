@@ -190,3 +190,31 @@ useWailsEvents/useMarketStatus/useNavigation 组合。
 4. **Day 6-7**: market.vue 接入 API 层，完成核心页面迁移
 
 完成后 Phase 4 架构基本落地，后续可按节奏拆分超大组件。
+
+---
+
+## 全计划完成状态（2026-09-05 更新）
+
+Phase 0-8 全部落地，最终架构状态：
+
+| Phase | 主题 | 状态 | 关键产物 |
+|-------|------|------|----------|
+| 0 | 废弃组件清理 | ✅ | FloatingAiAssistant/promptPlaza/promptQa/agent-chat_bk 已删除 |
+| 1 | stockcode + Handler 框架 | ✅ | `backend/stockcode/`、`backend/handler/`（13 个 Handler）、前端 `utils/stockCode.js` |
+| 2 | 领域模型/端口/适配器 | ✅ | `internal/domain/`、`internal/port/`、`internal/adapter/` |
+| 3 | Agent 分析增强 | ✅ | 多层降级信号提取、LLM 分层分配 |
+| 4 | 前端重构 | ✅ | Pinia stores、api/ 层、composables；超大组件拆分：K线图 4832→1373 行、stock.vue 3151→1411 行、AnalyzeMartket 2032→395 行；重复组件合并：`FundFlowChart.vue`、`CalendarTimeline.vue` |
+| 5 | 后端 Service 层 | ✅ | `internal/service/`（analysis/fund/market/news/stockchange/system/trading），app.go 3488→183 行 |
+| 6 | DSA 量化选股 | ✅ | `agent/strategy/scoring|ranking|risk|filter`，已接入 daily_pick_engine（评分→LLM排序→风控→决策标尺） |
+| 7 | 风控辩论 + 记忆 | ✅ | `agent/strategy/disagreement`、`agent/memory`（SQLite FTS5 反思记忆） |
+| 8 | 选股高级功能 | ✅ | 瀑布过滤诊断、种子轮换（selection_variant）、后分析链（postanalysis） |
+
+### 构建验证（2026-09-05）
+- `go build ./...` 通过
+- `go test ./...` 全部通过（根包 app_test 因 Wails 生命周期上下文在纯 go test 环境不可用，属环境限制）
+- `npm run build` 通过
+
+### 近期补充修复
+- 大宗商品 K 线端到端修复（WSCN 列映射、前端字段大小写、时区、精度、ResizeObserver）
+- AI 推荐列表空数据修复（日期格式化、字段名兼容、错误处理、默认 30 天范围）
+- 多级缓存修复（L3 nil panic、cache_items 建表缺失、Mock Redis TTL、Clear 语义）
