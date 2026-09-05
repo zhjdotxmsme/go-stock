@@ -2,10 +2,27 @@
 package data_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
 	"go-stock/backend/data/cache"
+	"go-stock/backend/db"
 )
+
+// TestMain 初始化临时文件 SQLite。
+// 不能用 ":memory:"：连接池 MaxOpenConns>1 时每个连接各自独立内存库，
+// 会出现 "no such table" 的偶发失败。
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "gostock-cache-test")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(dir)
+	db.Init(filepath.Join(dir, "test.db"))
+	os.Exit(m.Run())
+}
 
 func TestMultiLevelCache_SetAndGet(t *testing.T) {
 	cache := cache.NewMultiLevelCache()

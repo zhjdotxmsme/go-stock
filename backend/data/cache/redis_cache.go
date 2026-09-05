@@ -3,6 +3,7 @@ package cache
 
 import (
 	"context"
+	"sync"
 	"time"
 )
 
@@ -22,18 +23,31 @@ type RedisClient interface {
 
 // MockRedisClient provides a mock implementation for testing
 type MockRedisClient struct {
-	data map[string]any
+	mu   sync.RWMutex
+	data map[string]mockEntry
 }
 
 func NewMockRedisClient() *MockRedisClient {
 	return &MockRedisClient{
-		data: make(map[string]any),
+		data: make(map[string]mockEntry),
 	}
 }
 
+// mockEntry 记录写入时间与过期时间，让 Mock 语义与真实 Redis 一致：
+// 旧行为忽略 TTL，导致 L1 过期后 L2 仍返回陈旧值（MultiLevelCache_Expiration 场景）。
+type mockEntry struct {
+	value     any
+	expiresAt time.Time
+}
+
 func (m *MockRedisClient) Get(ctx context.Context, key string) (string, error) {
-	if val, exists := m.data[key]; exists {
-		if str, ok := val.(string); ok {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if e, exists := m.data[key]; exists {
+		if time.Now().After(e.expiresAt) {
+			return "", &CacheNotFoundError{}
+		}
+		if str, ok := e.value.(string); ok {
 			return str, nil
 		}
 		return "", &CacheNotFoundError{}
@@ -42,11 +56,15 @@ func (m *MockRedisClient) Get(ctx context.Context, key string) (string, error) {
 }
 
 func (m *MockRedisClient) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
-	m.data[key] = value
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.data[key] = mockEntry{value: value, expiresAt: time.Now().Add(expiration)}
 	return nil
 }
 
 func (m *MockRedisClient) Del(ctx context.Context, keys ...string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, key := range keys {
 		delete(m.data, key)
 	}
@@ -54,7 +72,9 @@ func (m *MockRedisClient) Del(ctx context.Context, keys ...string) error {
 }
 
 func (m *MockRedisClient) FlushDB(ctx context.Context) error {
-	m.data = make(map[string]any)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.data = make(map[string]mockEntry)
 	return nil
 }
 
