@@ -36,14 +36,16 @@ onMounted(() => {
     pageSize: paginationReactive.pageSize,
     order: "desc",
     keyword: paginationReactive.keyword,
-    startDate: paginationReactive.range[0],
-    endDate: paginationReactive.range[1]
+    startDate: formatDate(paginationReactive.range[0]),
+    endDate: formatDate(paginationReactive.range[1])
   }).then((data) => {
-    console.log( data)
     dataRef.value = data.data
     paginationReactive.page = 1
     paginationReactive.pageCount = data.pageCount
     paginationReactive.itemCount = data.total
+    loadingRef.value = false
+  }).catch((err) => {
+    console.error('加载 AI 推荐列表失败:', err)
     loadingRef.value = false
   })
 })
@@ -148,7 +150,8 @@ const columnsRef = ref([
     key: 'dataTime',
     render(row, index) {
       //2026-01-14T22:13:27.2693252+08:00 格式化为常用时间格式
-      return row.CreatedAt.substring(0, 19).replace('T', ' ')
+      const t = row.dataTime || row.createdAt || row.DataTime || ''
+      return String(t).substring(0, 19).replace('T', ' ')
     }
   },
   {
@@ -170,7 +173,7 @@ const columnsRef = ref([
     title: '最新分时',
     key: 'stockCode',
     render(row, index) {
-      return h(sparkLine, { idSuffix:row.ID, stockName: row.stockName, stockCode: row.stockCode, lastPrice: row.stockCurrentPrice, openPrice: row.stockPrePrice, tooltip: true }, )
+      return h(sparkLine, { idSuffix: row.ID ?? row.id, stockName: row.stockName, stockCode: row.stockCode, lastPrice: row.stockCurrentPrice, openPrice: row.stockPrePrice, tooltip: true }, )
     }
   },
   {
@@ -379,7 +382,7 @@ const columnsRef = ref([
           },
           { default: () => '查看' }
       ),h(NTag, { strong: true,
-        tertiary: true, type: 'error',  onClick: () => deleteAiRecommendStocks(row.ID) }, { default: () => '删除' })]
+        tertiary: true, type: 'error',  onClick: () => deleteAiRecommendStocks(row.ID ?? row.id) }, { default: () => '删除' })]
     }
   },
 ])
@@ -391,7 +394,7 @@ const paginationReactive = reactive({
   keyword: "",
   enableAlert: null, // null 表示全部，true 表示已开启，false 表示未开启
   range: [
-    new Date(new Date().getTime() - 3 * 24 * 60 * 60 * 1000), // 前3天
+    new Date(new Date().getTime() - 30 * 24 * 60 * 60 * 1000), // 前30天
     new Date() // 当天
   ],
   prefix({ itemCount }) {
@@ -440,28 +443,28 @@ function query({
                  endDate = "",
                  enableAlert = null
                }) {
-  return new Promise((resolve) => {
-
-    systemApi.getAiRecommendStocksList({
-      "page": page,
-      "pageSize": pageSize,
-      "modelName":keyword,
-      "stockName":keyword,
-      "stockCode":keyword,
-      "bkName":keyword,
-      "startDate": startDate,
-      "endDate": endDate,
-      "enableAlert": enableAlert
-    }).then(({data: res}) => {
-      const pagedData =res.list
-      const total = res.total
-      const pageCount =res.totalPages
-      resolve({
-        pageCount,
-        data: pagedData,
-        total
-      })
-    })
+  return systemApi.getAiRecommendStocksList({
+    "page": page,
+    "pageSize": pageSize,
+    "modelName": keyword,
+    "stockName": keyword,
+    "stockCode": keyword,
+    "bkName": keyword,
+    "startDate": startDate,
+    "endDate": endDate,
+    "enableAlert": enableAlert
+  }).then(({ data: res, success, message }) => {
+    if (!success || !res) {
+      console.warn('AI 推荐列表查询失败:', message)
+      return { pageCount: 0, data: [], total: 0 }
+    }
+    const pagedData = res.list || []
+    const total = res.total || 0
+    const pageCount = res.totalPages || 0
+    return { pageCount, data: pagedData, total }
+  }).catch((err) => {
+    console.error('AI 推荐列表查询异常:', err)
+    return { pageCount: 0, data: [], total: 0 }
   })
 }
 
@@ -482,6 +485,9 @@ function handlePageChange(currentPage) {
       paginationReactive.pageCount = data.pageCount
       paginationReactive.itemCount = data.total
       loadingRef.value = false
+    }).catch((err) => {
+      console.error('翻页加载 AI 推荐列表失败:', err)
+      loadingRef.value = false
     })
   }
 }
@@ -501,6 +507,9 @@ function handleSearch() {
       paginationReactive.page = data.page
       paginationReactive.pageCount = data.pageCount
       paginationReactive.itemCount = data.total
+      loadingRef.value = false
+    }).catch((err) => {
+      console.error('搜索 AI 推荐列表失败:', err)
       loadingRef.value = false
     })
   }
@@ -560,17 +569,25 @@ function rowProps(row) {
   }
 }
 function deleteAiRecommendStocks(id) {
-  systemApi.deleteAiRecommendStocks(id).then(({data: res}) => {
-    notify.info({content: res, duration: 2000})
+  const realId = id ?? row?.ID ?? row?.id
+  systemApi.deleteAiRecommendStocks(realId).then(({ data: res, message }) => {
+    notify.info({ content: res || message || '操作完成', duration: 2000 })
     handleSearch()
+  }).catch((err) => {
+    console.error('删除推荐失败:', err)
+    notify.error({ content: '删除失败: ' + (err.message || err) })
   })
 }
 
 function toggleAlert(row, newEnableAlert) {
-  systemApi.updateAiRecommendStocksAlert(row.ID, newEnableAlert).then(({data: res}) => {
-    notify.info({content: res, duration: 2000})
+  const rowId = row.ID ?? row.id
+  systemApi.updateAiRecommendStocksAlert(rowId, newEnableAlert).then(({ data: res, message }) => {
+    notify.info({ content: res || message || '操作完成', duration: 2000 })
     // 更新本地数据
     row.enableAlert = newEnableAlert
+  }).catch((err) => {
+    console.error('更新预警状态失败:', err)
+    notify.error({ content: '更新失败: ' + (err.message || err) })
   })
 }
 
@@ -674,7 +691,7 @@ function toggleAlert(row, newEnableAlert) {
             :data="dataRef"
             :loading="loadingRef"
             :pagination="paginationReactive"
-            :row-key="(rowData)=>rowData.ID"
+            :row-key="(rowData)=>rowData.ID ?? rowData.id"
             @update:page="handlePageChange"
             flex-height
             style="height: calc(100vh - 210px);margin-top: 10px"
