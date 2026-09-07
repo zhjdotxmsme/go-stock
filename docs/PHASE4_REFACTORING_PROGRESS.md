@@ -218,3 +218,14 @@ Phase 0-8 全部落地，最终架构状态：
 - 大宗商品 K 线端到端修复（WSCN 列映射、前端字段大小写、时区、精度、ResizeObserver）
 - AI 推荐列表空数据修复（日期格式化、字段名兼容、错误处理、默认 30 天范围）
 - 多级缓存修复（L3 nil panic、cache_items 建表缺失、Mock Redis TTL、Clear 语义）
+
+### 补完的计划项（2026-09-07）
+
+最后一轮审计发现的 4 项计划缺口已全部补齐：
+
+| 计划项 | 实现 | 提交 |
+|--------|------|------|
+| Step 3.3 数据完整性预检器 | `multi/checker.go`：K线存在/可解析/时效(12自然日,覆盖春节国庆)/完整率≥50%，不过则中止并透出明确原因 | 5ed3f49 |
+| Step 3.5 工具调用轮数上限 | 旧硬编码 200 轮 → 默认 8 轮，`OpenAi.MaxToolDepth` 可按会话覆盖 | 9704dee |
+| Step 3.4 交易标的上下文注入 | `domain/stock/instrument_context.go`：按代码前缀识别沪深/北交/港股/美股规则(交易时段/涨跌停/手数/T+N/做空)，注入 7 个分析师 Prompt | 3e04f36 |
+| Step 5.1 stock 服务层 | `internal/service/stock/`：盈亏计算纯函数(6单测) + watchlist/groups 域服务(文案逐字一致)，stock 成为第 8 个有服务层的域 | 7de2051, 93ac57c |
