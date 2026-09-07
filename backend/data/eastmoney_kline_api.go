@@ -72,7 +72,12 @@ func setEastMoneyKlineBrowserHeaders(r *resty.Request, referer string) {
 // fetchKLineJSONBytesByHTTP 每次调用均发起真实 GET，不缓存 K 线响应；cookieHeader 仅来自 chromedp 缓存或当次刷新。
 // 由于 Transport 设置了 DisableCompression=true，需要手动处理 gzip 解压。
 func (receiver *EastMoneyKLineApi) fetchKLineJSONBytesByHTTP(reqURL string) ([]byte, error) {
-	req := receiver.client.SetTimeout(time.Duration(receiver.config.CrawlTimeOut) * time.Second).R()
+	timeout := 30 * time.Second
+	if receiver.config != nil && receiver.config.CrawlTimeOut > 0 {
+		timeout = time.Duration(receiver.config.CrawlTimeOut) * time.Second
+	}
+	// 按目标 host 选择 HTTP/1.1 客户端（SNI 跟随目标域，push2delay 兜底域可正常访问）
+	req := emHTTP11Client(reqURL, timeout).SetTimeout(timeout).R()
 	setEastMoneyKlineBrowserHeaders(req, "https://quote.eastmoney.com")
 	// 使用缓存的 Cookie，pageURL 参数传空字符串由函数内部使用默认值
 	//cookieHeader, err := FetchEastMoneyCookiesViaChromedp("", time.Second*5, reqURL)
@@ -281,8 +286,7 @@ func (receiver *EastMoneyKLineApi) GetKLineDataBefore(stockCode, kLineType, adju
 		fields = "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f116,f113,f114,f115"
 	}
 
-	// 构建 URL
-	baseURL := "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+	// 构建请求参数
 	params := url.Values{}
 	params.Set("secid", secid)
 	params.Set("klt", kLineType)
@@ -292,19 +296,31 @@ func (receiver *EastMoneyKLineApi) GetKLineDataBefore(stockCode, kLineType, adju
 	params.Set("fields1", "f1,f2,f3,f4,f5,f6")
 	params.Set("fields2", fields)
 	params.Set("wbp2u", "|0|0|0|web")
-	params.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
-
-	reqURL := fmt.Sprintf("%s?%s", baseURL, params.Encode())
-
-	//logger.SugaredLogger.Infof("GetKLineDataBefore url: %s", reqURL)
 
 	if receiver.config != nil && strings.TrimSpace(receiver.config.BrowserPath) == "" {
 		logger.SugaredLogger.Infof("东财 K 线未配置 BrowserPath，HTTP 请求不带 chromedp cookie")
 	}
 
+	// 东财主域被限流时连接被掐断（EOF，高频轮询易触发）：从粘性索引开始
+	// 依次尝试候选 host（push2delay 接口同构），每域最多 2 次（移植自上游 go-stock 方案）
 	var body []byte
-	var fetchErr error
-	body, fetchErr = receiver.fetchKLineJSONBytesByHTTP(reqURL)
+	fetchErr := emFallbackFetch(emKlineHosts(), &emKlineHostIdx, 2, func(host string) error {
+		params.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
+		reqURL := fmt.Sprintf("%s/api/qt/stock/kline/get?%s", host, params.Encode())
+		b, err := receiver.fetchKLineJSONBytesByHTTP(reqURL)
+		if err != nil {
+			return err
+		}
+		// 业务错误（rc!=0）也视为该 host 失败，继续尝试下一域，避免粘性索引被"空数据域"污染
+		var rr struct {
+			Rc int `json:"rc"`
+		}
+		if e := json.Unmarshal(b, &rr); e == nil && rr.Rc != 0 {
+			return fmt.Errorf("rc=%d no data", rr.Rc)
+		}
+		body = b
+		return nil
+	})
 
 	if fetchErr != nil {
 		logger.SugaredLogger.Errorf("GetKLineData error: %v", fetchErr)

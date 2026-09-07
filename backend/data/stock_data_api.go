@@ -1917,8 +1917,6 @@ func (receiver StockDataApi) GetStockHistoryMoneyData(stockCode string) []models
 		stockCode = strings.Split(stockCode, ".")[1] + "." + strings.Split(stockCode, ".")[0]
 	}
 
-	baseURL := "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
-
 	params := url2.Values{}
 	params.Set("cb", "data")
 	params.Set("lmt", "0")
@@ -1927,60 +1925,30 @@ func (receiver StockDataApi) GetStockHistoryMoneyData(stockCode string) []models
 	params.Set("fields2", "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65")
 	params.Set("ut", "b2884a393a59ad64002292a3e90d46a5")
 	params.Set("secid", stockCode)
-	params.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
-	reqURL := fmt.Sprintf("%s?%s", baseURL, params.Encode())
-	//
-	//// 配置强制 IPv4 优先的 Transport，解决 IPv6 连接问题
-	//dialer := &net.Dialer{
-	//	Timeout:       10 * time.Second,
-	//	KeepAlive:     30 * time.Second,
-	//	DualStack:     false, // 禁用双栈
-	//	FallbackDelay: -1,    // 禁用 Happy Eyeballs
-	//}
-	//receiver.client.SetTransport(&http.Transport{
-	//	DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-	//		// 强制只使用 IPv4
-	//		host, port, err := net.SplitHostPort(addr)
-	//		if err != nil {
-	//			return nil, err
-	//		}
-	//		// 解析 A 记录（IPv4）
-	//		ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", host)
-	//		if err != nil {
-	//			return nil, err
-	//		}
-	//		if len(ips) == 0 {
-	//			return nil, fmt.Errorf("no IPv4 address found for %s", host)
-	//		}
-	//		ipv4 := ips[0].String()
-	//		return dialer.DialContext(ctx, "tcp4", net.JoinHostPort(ipv4, port))
-	//	},
-	//	TLSClientConfig: &tls.Config{
-	//		MinVersion: tls.VersionTLS12,
-	//		ServerName: "push2.eastmoney.com",
-	//	},
-	//	DisableCompression:  true, // 禁用自动压缩，手动处理 gzip
-	//	MaxIdleConns:        100,
-	//	MaxIdleConnsPerHost: 10,
-	//	IdleConnTimeout:     90 * time.Second,
-	//	ForceAttemptHTTP2:   false, // 强制使用 HTTP/1.1
-	//})
 
-	//logger.SugaredLogger.Infof("url:%s", reqURL)
-	req := receiver.client.SetHeader("User-Agent", getRandomUA()).R()
-	setEastMoneyKlineBrowserHeaders(req, "https://quote.eastmoney.com")
-	// 使用缓存的 Cookie，pageURL 参数传空字符串由函数内部使用默认值
-	//cookieHeader, err := FetchEastMoneyCookiesViaChromedp("", time.Second*3, reqURL)
-	//if err == nil {
-	//	//logger.SugaredLogger.Infof("Cookie: %s", cookieHeader)
-	//	req.SetHeader("Cookie", cookieHeader)
-	//}
-
-	resp, err := req.Get(reqURL)
-	if err != nil {
-		//logger.SugaredLogger.Errorf("err:%s", err.Error())
+	// 东财主域被限流（EOF）：从粘性索引开始依次尝试候选 host
+	//（push2delay 兜底域接口同构）（移植自上游 go-stock 方案）
+	var body string
+	fetchErr := emFallbackFetch(emKlineHosts(), &emKlineHostIdx, 2, func(host string) error {
+		params.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
+		reqURL := fmt.Sprintf("%s/api/qt/stock/fflow/daykline/get?%s", host, params.Encode())
+		req := emHTTP11Client(reqURL, 30*time.Second).SetHeader("User-Agent", getRandomUA()).R()
+		setEastMoneyKlineBrowserHeaders(req, "https://quote.eastmoney.com")
+		r, e := req.Get(reqURL)
+		if e != nil {
+			return e
+		}
+		b := string(r.Body())
+		if strings.TrimSpace(b) == "" {
+			return fmt.Errorf("empty response from %s", host)
+		}
+		body = b
+		return nil
+	})
+	if fetchErr != nil {
+		logger.SugaredLogger.Errorf("GetStockHistoryMoneyData fflow 请求失败: %v", fetchErr)
+		return hisData
 	}
-	body := string(resp.Body())
 	//logger.SugaredLogger.Infof("resp:%s", body)
 	vm := otto.New()
 	vm.Run("function data(res){return res};")

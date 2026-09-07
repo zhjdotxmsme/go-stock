@@ -48,20 +48,42 @@ func (e *EastMoneyFuturesApi) GetQuote(asset *models.CommodityAsset) (*datasourc
 		return nil, fmt.Errorf("empty symbol for %s", asset.Code)
 	}
 
-	url := fmt.Sprintf(
-		"https://push2.eastmoney.com/api/qt/stock/get?secid=%s&fields=f43,f44,f45,f46,f57,f58,f60,f169,f170,f86&fltt=2&invt=2",
-		secid,
-	)
-
-	resp, err := emFuturesHTTPClient.R().
-		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
-		SetHeader("Referer", "https://quote.eastmoney.com/").
-		Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("eastmoney futures quote request: %w", err)
+	// 东财主域被限流时连接被掐断（EOF）：从粘性索引开始依次尝试候选 host
+	// （push2delay 接口同构），每域最多 2 次（移植自上游 go-stock 方案）
+	var body []byte
+	fetchErr := emFallbackFetch(emQuoteHosts(), &emQuoteHostIdx, 2, func(host string) error {
+		u := fmt.Sprintf(
+			"%s/api/qt/stock/get?secid=%s&fields=f43,f44,f45,f46,f57,f58,f60,f169,f170,f86&fltt=2&invt=2",
+			host, secid,
+		)
+		r, e := emHTTP11Client(u, 30*time.Second).R().
+			SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
+			SetHeader("Referer", "https://quote.eastmoney.com/").
+			Get(u)
+		if e != nil {
+			return e
+		}
+		if r.StatusCode() != 200 {
+			return fmt.Errorf("HTTP %d", r.StatusCode())
+		}
+		b := r.Body()
+		// 业务错误（rc!=0 / 无数据）也视为该 host 失败，继续尝试下一域，避免粘性索引被"空数据域"污染
+		var rr struct {
+			RC   int                    `json:"rc"`
+			Data map[string]interface{} `json:"data"`
+		}
+		if e := json.Unmarshal(b, &rr); e != nil {
+			return e
+		}
+		if rr.RC != 0 || len(rr.Data) == 0 {
+			return fmt.Errorf("rc=%d no data", rr.RC)
+		}
+		body = b
+		return nil
+	})
+	if fetchErr != nil {
+		return nil, fmt.Errorf("eastmoney futures quote request: %w", fetchErr)
 	}
-
-	body := resp.Body()
 	var result struct {
 		RC   int    `json:"rc"`
 		RT   int    `json:"rt"`
@@ -140,17 +162,43 @@ func (e *EastMoneyFuturesApi) GetKLine(asset *models.CommodityAsset, period stri
 		count = 120
 	}
 
-	url := fmt.Sprintf(
-		"https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=%s&klt=%s&fqt=1&lmt=%d&fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
-		secid, klt, count,
-	)
-
-	resp, err := emFuturesHTTPClient.R().
-		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
-		SetHeader("Referer", "https://quote.eastmoney.com/").
-		Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("eastmoney futures kline request: %w", err)
+	// 东财主域被限流时连接被掐断（EOF）：从粘性索引开始依次尝试候选 host
+	// （push2delay 接口同构），每域最多 2 次（移植自上游 go-stock 方案）
+	var body []byte
+	fetchErr := emFallbackFetch(emKlineHosts(), &emKlineHostIdx, 2, func(host string) error {
+		u := fmt.Sprintf(
+			"%s/api/qt/stock/kline/get?secid=%s&klt=%s&fqt=1&lmt=%d&fields1=f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+			host, secid, klt, count,
+		)
+		r, e := emHTTP11Client(u, 30*time.Second).R().
+			SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
+			SetHeader("Referer", "https://quote.eastmoney.com/").
+			Get(u)
+		if e != nil {
+			return e
+		}
+		if r.StatusCode() != 200 {
+			return fmt.Errorf("HTTP %d", r.StatusCode())
+		}
+		b := r.Body()
+		// 业务错误（rc!=0 / 无klines）也视为该 host 失败，继续尝试下一域，避免粘性索引被"空数据域"污染
+		var rr struct {
+			RC   int `json:"rc"`
+			Data *struct {
+				Klines []string `json:"klines"`
+			} `json:"data"`
+		}
+		if e := json.Unmarshal(b, &rr); e != nil {
+			return e
+		}
+		if rr.RC != 0 || rr.Data == nil || len(rr.Data.Klines) == 0 {
+			return fmt.Errorf("rc=%d no klines", rr.RC)
+		}
+		body = b
+		return nil
+	})
+	if fetchErr != nil {
+		return nil, fmt.Errorf("eastmoney futures kline request: %w", fetchErr)
 	}
 
 	var result struct {
@@ -159,7 +207,7 @@ func (e *EastMoneyFuturesApi) GetKLine(asset *models.CommodityAsset, period stri
 			Klines []string `json:"klines"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(resp.Body(), &result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("eastmoney futures kline parse: %w", err)
 	}
 	if result.RC != 0 || result.Data == nil || len(result.Data.Klines) == 0 {

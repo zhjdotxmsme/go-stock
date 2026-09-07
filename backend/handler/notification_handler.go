@@ -237,9 +237,9 @@ func checkHKHolidayAPI(date string) (isHoliday bool, apiOk bool) {
 	}
 	var result klineResp
 	dateClean := strings.ReplaceAll(date, "-", "")
-	apiURL := fmt.Sprintf("https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.HSI&fields1=f1&fields2=f51&klt=101&fqt=0&beg=%s&end=%s", dateClean, dateClean)
-	resp, err := data.SharedHTTPClient.R().SetResult(&result).Get(apiURL)
-	if err != nil || resp.StatusCode() != 200 {
+	pathQuery := fmt.Sprintf("/api/qt/stock/kline/get?secid=100.HSI&fields1=f1&fields2=f51&klt=101&fqt=0&beg=%s&end=%s", dateClean, dateClean)
+	// 东财主域被限流（EOF）时自动回退 push2delay 兜底域（移植自上游 go-stock 方案）
+	if err := data.FetchKlineAnyHost(pathQuery, &result); err != nil {
 		return false, false
 	}
 	if result.Data.Klines != nil && len(result.Data.Klines) > 0 {

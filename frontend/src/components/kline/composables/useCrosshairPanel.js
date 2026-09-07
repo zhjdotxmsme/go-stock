@@ -6,7 +6,7 @@
 import { computed } from 'vue'
 import { parseNumStr, formatPrice2, formatVolumeCn, formatAmountCn, formatPctField, formatSigned2 } from '../format'
 import { chartTimeToUtcMs, toChartTime, extractYmdDatePart } from '../time'
-import { CLR_RISE, CLR_FALL, DAILY_LIKE_KLT, CN_TZ } from '../constants'
+import { CLR_RISE, CLR_FALL, DAILY_LIKE_KLT, CN_TZ, INTERVALS } from '../constants'
 
 export function createCrosshairPanel(ctx) {
   const { props, activeKlt, hoverRawRow, defaultLatestRawRow, getMergedRawRows } = ctx
@@ -140,8 +140,10 @@ export function createCrosshairPanel(ctx) {
       if (Number.isFinite(a10)) amp10 = a10.toFixed(2) + '%'
       if (Number.isFinite(a20)) amp20 = a20.toFixed(2) + '%'
     }
+    // 标题带上周期标签：周K/月K的涨跌幅是"上周期收盘"口径，不带标签极易误读成日K涨跌幅
+    const kltLabel = INTERVALS.find((it) => it.klt === activeKlt.value)?.label || ''
     return {
-      title: showLatestTag ? `${titleDay} · 最新` : titleDay,
+      title: [titleDay, kltLabel, showLatestTag ? '最新' : ''].filter(Boolean).join(' · '),
       open: formatPrice2(r.open),
       close: formatPrice2(r.close),
       high: formatPrice2(r.high),
