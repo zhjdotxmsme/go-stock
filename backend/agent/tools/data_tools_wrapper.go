@@ -5125,6 +5125,34 @@ func appendCommodityTools(tools *[]tool.BaseTool) {
 	))
 
 	*tools = append(*tools, NewDataToolWrapper(
+		"GetCommoditySignalBoard",
+		"商品策略信号排行。对所有可交易商品（黄金/白银/原油/沪金沪银原油期货/ETF）统一计算确定性信号：趋势、动量、突破、期限结构(carry)、持仓四象限，输出综合分与偏多/偏空结论，按信号强度排序。无需参数。",
+		map[string]*schema.ParameterInfo{},
+		func(args string) (string, error) {
+			board, err := data.GetCommoditySignalBoard()
+			if err != nil {
+				return "", err
+			}
+			b, _ := json.Marshal(board)
+			return string(b), nil
+		},
+	))
+
+	*tools = append(*tools, NewDataToolWrapper(
+		"GetCommodityFuturesPanel",
+		"商品期货盘面数据。沪金/沪银/原油主力持仓量、日增仓、近远月期限结构(贴水/升水)、SHFE仓单库存、CFTC COT非商业净持仓、金银比及5年分位、ATR波动率、月度季节性。缺失数据在failed列表中。无需参数。",
+		map[string]*schema.ParameterInfo{},
+		func(args string) (string, error) {
+			panel, err := data.GetCommodityFuturesPanel()
+			if err != nil {
+				return "", err
+			}
+			b, _ := json.Marshal(panel)
+			return string(b), nil
+		},
+	))
+
+	*tools = append(*tools, NewDataToolWrapper(
 		"GetCommodityReport",
 		"生成商品分析报告。综合分析多个商品品种的技术面、基本面和关联性，输出结构化报告。",
 		map[string]*schema.ParameterInfo{

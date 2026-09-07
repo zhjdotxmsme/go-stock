@@ -4,6 +4,7 @@ import {EventsOn, EventsOff} from "../../wailsjs/runtime";
 import {useRoute} from 'vue-router'
 import CommodityOverview from "./CommodityOverview.vue";
 import CommodityAnalysis from "./CommodityAnalysis.vue";
+import CommoditySignals from "./CommoditySignals.vue";
 
 const nowTab = ref("行情总览")
 const route = useRoute()
@@ -24,6 +25,9 @@ onBeforeUnmount(() => {
     <n-tabs type="line" animated v-model:value="nowTab" style="--wails-draggable:no-drag">
       <n-tab-pane name="行情总览" display-directive="show">
         <CommodityOverview/>
+      </n-tab-pane>
+      <n-tab-pane name="策略信号" display-directive="show">
+        <CommoditySignals/>
       </n-tab-pane>
       <n-tab-pane name="AI分析" display-directive="show">
         <CommodityAnalysis/>

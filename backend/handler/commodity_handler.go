@@ -77,6 +77,17 @@ func (h *CommodityHandler) GetMacroIndicatorsEnhanced() (*data.MacroSnapshotEnha
 	return api.GetMacroIndicatorsEnhanced()
 }
 
+// GetCommodityFuturesPanel 期货盘面数据（持仓/期限结构/库存/COT/金银比/ATR/季节性），
+// 后端 60s 缓存，缺失数据点在 failed 列表中。
+func (h *CommodityHandler) GetCommodityFuturesPanel() (*data.CommodityFuturesPanel, error) {
+	return data.GetCommodityFuturesPanel()
+}
+
+// GetCommoditySignalBoard 全品种策略信号排行（趋势/动量/突破/carry/持仓象限 + 综合分）。
+func (h *CommodityHandler) GetCommoditySignalBoard() (*data.CommoditySignalBoard, error) {
+	return data.GetCommoditySignalBoard()
+}
+
 func (h *CommodityHandler) GetCommodityReport(codes string, reportType string) (string, error) {
 	output, err := data.GetCommodityReportOutput(codes, reportType)
 	if err != nil {

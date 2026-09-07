@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-stock/backend/data/datasource"
+	"go-stock/backend/models"
 	"math"
 	"sort"
 	"strconv"
@@ -22,17 +23,28 @@ type CommodityTechnicalOutput struct {
 	MacdSignal    string  `json:"macdSignal"`    // MACD 信号
 	Rsi           float64 `json:"rsi"`
 	RiskLevel     string  `json:"riskLevel"`     // 低/中/高
+	// 期货盘面扩展（仅期货标的，取自 GetCommodityFuturesPanel 缓存）
+	OpenInterest *float64 `json:"openInterest,omitempty"` // 主力持仓量（手）
+	OIChange     *float64 `json:"oiChange,omitempty"`     // 增仓（手）
+	OIQuadrant   string   `json:"oiQuadrant,omitempty"`   // 持仓四象限
+	CarryPct     *float64 `json:"carryPct,omitempty"`     // 近远月价差 %
+	CarryLabel   string   `json:"carryLabel,omitempty"`   // 贴水/升水
+	AtrPct       *float64 `json:"atrPct,omitempty"`       // ATR14 / 收盘 %
+	Season5y     *float64 `json:"season5y,omitempty"`     // 当前月份近 5 年季月均
 	Summary       string  `json:"summary"`       // 综合判断
 }
 
 type CommodityFundamentalOutput struct {
-	Code            string  `json:"code"`
-	Name            string  `json:"name"`
-	SupplyDemand    string  `json:"supplyDemand"`   // 供需格局描述
-	DollarIndex     float64 `json:"dollarIndex"`    // 美元指数
-	MacroEvents     string  `json:"macroEvents"`     // 宏观事件影响
-	CftcSentiment   string  `json:"cftcSentiment"`   // CFTC 持仓情绪
-	Summary         string  `json:"summary"`
+	Code            string   `json:"code"`
+	Name            string   `json:"name"`
+	SupplyDemand    string   `json:"supplyDemand"`   // 供需格局描述
+	DollarIndex     float64  `json:"dollarIndex"`    // 美元指数
+	MacroEvents     string   `json:"macroEvents"`    // 宏观事件影响
+	CftcSentiment   string   `json:"cftcSentiment"`  // CFTC 持仓情绪
+	GoldSilverRatio   *float64 `json:"goldSilverRatio,omitempty"`
+	GoldSilverPercentile *float64 `json:"goldSilverPercentile,omitempty"`
+	SHFEInventoryText string   `json:"shfeInventory,omitempty"` // SHFE 仓单/库存
+	Summary         string   `json:"summary"`
 }
 
 type CorrelationPair struct {
@@ -66,6 +78,27 @@ func init() {
 	registerToolHandler("GetCommodityFundamentals", handleCommodityFundamentals)
 	registerToolHandler("GetCorrelationAnalysis", handleCorrelationAnalysis)
 	registerToolHandler("GetCommodityReport", handleCommodityReport)
+	registerToolHandler("GetCommoditySignalBoard", handleCommoditySignalBoard)
+	registerToolHandler("GetCommodityFuturesPanel", handleCommodityFuturesPanel)
+}
+
+func handleCommoditySignalBoard(o *OpenAi, funcArguments string, ctx *ToolContext) error {
+	ctx.Ch <- toolStartMessage(ctx, "GetCommoditySignalBoard")
+	board, err := GetCommoditySignalBoard()
+	content := commodityResultToString(board, err)
+	if err == nil && board != nil {
+		content = signalBoardSummary(board)
+	}
+	appendToolMessages(ctx.Messages, ctx.CurrentAIContent.String(), ctx.ReasoningContentText.String(), ctx.CurrentCallID, ctx.FuncName, funcArguments, content)
+	return nil
+}
+
+func handleCommodityFuturesPanel(o *OpenAi, funcArguments string, ctx *ToolContext) error {
+	ctx.Ch <- toolStartMessage(ctx, "GetCommodityFuturesPanel")
+	panel, err := GetCommodityFuturesPanel()
+	content := commodityResultToString(panel, err)
+	appendToolMessages(ctx.Messages, ctx.CurrentAIContent.String(), ctx.ReasoningContentText.String(), ctx.CurrentCallID, ctx.FuncName, funcArguments, content)
+	return nil
 }
 
 func handleCommodityTechnicals(o *OpenAi, funcArguments string, ctx *ToolContext) error {
@@ -223,7 +256,7 @@ func GetCommodityTechnicalsOutput(code string, period string) (*CommodityTechnic
 	summary := fmt.Sprintf("%s(%.2f) 趋势:%s, MACD:%s, RSI:%.1f, 支撑:%.2f, 压力:%.2f, 风险:%s",
 		asset.Name, lastClose, trend, macdSignal, rsi, support, resistance, riskLevel)
 
-	return &CommodityTechnicalOutput{
+	out := &CommodityTechnicalOutput{
 		Code:         code,
 		Name:         asset.Name,
 		Trend:        trend,
@@ -233,7 +266,75 @@ func GetCommodityTechnicalsOutput(code string, period string) (*CommodityTechnic
 		Rsi:          rsi,
 		RiskLevel:    riskLevel,
 		Summary:      summary,
-	}, nil
+	}
+
+	// 期货标的：合并盘面数据（持仓/增仓/四象限/期限结构/ATR/季节性），面板内部 60s 缓存。
+	if asset.AssetType == models.AssetFutures {
+		if panel, perr := GetCommodityFuturesPanel(); perr == nil && panel != nil {
+			for _, c := range panel.Contracts {
+				if c.Code != asset.Code {
+					continue
+				}
+				if c.OpenInterest > 0 {
+					oi := c.OpenInterest
+					out.OpenInterest = &oi
+					out.OIChange = c.OIChange
+					if c.OIChange != nil {
+						out.OIQuadrant = oiQuadrantLabel(c.ChangePct, *c.OIChange)
+					}
+				}
+				if c.CarryOK {
+					pct := c.CarryPct
+					out.CarryPct = &pct
+					out.CarryLabel = carryStatusLabel(c.NearPrice, c.FarPrice)
+				}
+				if c.ATROK {
+					atr := c.ATRPct
+					out.AtrPct = &atr
+				}
+				if c.SeasonOK {
+					s5 := c.Season5y
+					out.Season5y = &s5
+				}
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
+// oiQuadrantLabel 持仓四象限中文标签。
+func oiQuadrantLabel(priceChangePct, oiChange float64) string {
+	q, ok := ComputeOIQuadrant(priceChangePct, oiChange)
+	if !ok {
+		return ""
+	}
+	switch q {
+	case OIQLongAttack:
+		return "涨+仓增(多头进攻)"
+	case OIQShortCover:
+		return "涨+仓减(空头回补)"
+	case OIQShortAttack:
+		return "跌+仓增(空头进攻)"
+	default:
+		return "跌+仓减(多头离场)"
+	}
+}
+
+// carryStatusLabel 期限结构中文标签。
+func carryStatusLabel(near, far float64) string {
+	level, ok := ComputeCarry(near, far)
+	if !ok {
+		return ""
+	}
+	switch level {
+	case CarryBackwardation:
+		return "贴水(偏多)"
+	case CarryContango:
+		return "升水(偏空)"
+	default:
+		return "期限中性"
+	}
 }
 
 func GetCommodityFundamentalsOutput(code string) (*CommodityFundamentalOutput, error) {
@@ -276,15 +377,57 @@ func GetCommodityFundamentalsOutput(code string) (*CommodityFundamentalOutput, e
 	summary := fmt.Sprintf("%s 当前价格:%.2f, 美元指数:%.2f, 近期新闻:%s",
 		asset.Name, price, dxy, truncateStr(newsText.String(), 200))
 
-	return &CommodityFundamentalOutput{
+	out := &CommodityFundamentalOutput{
 		Code:          code,
 		Name:          asset.Name,
 		SupplyDemand:  "参考新闻资讯",
 		DollarIndex:   dxy,
 		MacroEvents:   truncateStr(newsText.String(), 500),
-		CftcSentiment: "暂不支持 CFTC 数据",
+		CftcSentiment: "CFTC 数据暂不可用",
 		Summary:       summary,
-	}, nil
+	}
+
+	// 合并盘面数据：COT 净持仓、金银比+分位、SHFE 仓单/库存（面板内部 60s 缓存）。
+	if panel, perr := GetCommodityFuturesPanel(); perr == nil && panel != nil {
+		if want := cotProductFor(code); want != "" {
+			for _, c := range panel.COT {
+				if c.Product == want {
+					out.CftcSentiment = fmt.Sprintf("非商业净持仓 %+.0f 手（占 %.1f%%，报告日 %s，口径: CFTC Legacy non-commercial）",
+						c.Net, c.Percent, c.Date)
+					break
+				}
+			}
+		}
+		if panel.GoldSilverRatio != nil {
+			out.GoldSilverRatio = panel.GoldSilverRatio
+			out.GoldSilverPercentile = panel.GoldSilverPercentile
+		}
+		if len(panel.Inventories) > 0 {
+			parts := make([]string, 0, len(panel.Inventories))
+			for _, inv := range panel.Inventories {
+				s := fmt.Sprintf("%s%s仓单 %.1f%s", inv.Exchange, inv.Product, inv.Value, inv.Unit)
+				if inv.Change != nil {
+					s += fmt.Sprintf("（日增 %+.1f%s）", *inv.Change, inv.Unit)
+				}
+				parts = append(parts, s)
+			}
+			out.SHFEInventoryText = strings.Join(parts, "；")
+		}
+	}
+	return out, nil
+}
+
+// cotProductFor 商品代码 → CFTC 品种代码。
+func cotProductFor(code string) string {
+	switch code {
+	case "XAUUSD", "XAU", "AU", "518880":
+		return "GC"
+	case "XAGUSD", "XAG", "AG", "161226":
+		return "SI"
+	case "USCL", "USCO", "SC":
+		return "CL"
+	}
+	return ""
 }
 
 func GetCorrelationOutput(primaryCode string, secondaryCodes []string) (*CorrelationOutput, error) {

@@ -2130,11 +2130,11 @@ export namespace data {
 	    upCount: number;
 	    downCount: number;
 	    totalCount: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new TypeCountStats(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.typeName = source["typeName"];
@@ -2142,6 +2142,79 @@ export namespace data {
 	        this.downCount = source["downCount"];
 	        this.totalCount = source["totalCount"];
 	    }
+	}
+
+	export interface COTPnl {
+	    product: string;
+	    name: string;
+	    net: number;
+	    percent: number;
+	    date: string;
+	}
+
+	export interface InventoryItem {
+	    exchange: string;
+	    product: string;
+	    value: number;
+	    unit: string;
+	    change: number | null;
+	    date: string;
+	}
+
+	export interface FuturesContractPanel {
+	    code: string;
+	    name: string;
+	    price: number;
+	    changePct: number;
+	    volume: number;
+	    openInterest: number;
+	    oiChange: number | null;
+	    nearPrice: number;
+	    farPrice: number;
+	    carryPct: number;
+	    carryOK: boolean;
+	    atrPct: number;
+	    atrOK: boolean;
+	    season5y: number;
+	    seasonOK: boolean;
+	    seasonMonth: number;
+	}
+
+	export interface CommodityFuturesPanel {
+	    contracts: Array<FuturesContractPanel>;
+	    goldSilverRatio: number | null;
+	    goldSilverPercentile: number | null;
+	    inventories: Array<InventoryItem>;
+	    cot: Array<COTPnl>;
+	    failed: Array<string>;
+	    fetchedAt: string;
+	}
+
+	export interface SignalBoardRow {
+	    code: string;
+	    name: string;
+	    market: string;
+	    price: number;
+	    trend: string;
+	    momentum: string;
+	    breakout: string;
+	    carry: string;
+	    oi: string;
+	    score: number;
+	    verdict: string;
+	    failed: boolean;
+	}
+
+	export interface SignalBoardStats {
+	    bull: number;
+	    neutral: number;
+	    bear: number;
+	}
+
+	export interface CommoditySignalBoard {
+	    rows: Array<SignalBoardRow>;
+	    stats: SignalBoardStats;
+	    fetchedAt: string;
 	}
 
 }

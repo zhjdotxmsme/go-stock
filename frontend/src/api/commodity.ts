@@ -49,6 +49,24 @@ export async function getMacroIndicatorsEnhanced() {
   return callApi(CommodityHandler.GetMacroIndicatorsEnhanced)
 }
 
+// ========== 期货盘面 / 策略信号 ==========
+
+/**
+ * 期货盘面数据（持仓/增仓/期限结构/库存/COT/金银比/ATR/季节性）
+ * Go: GetCommodityFuturesPanel() data.CommodityFuturesPanel
+ */
+export async function getCommodityFuturesPanel() {
+  return callApi(CommodityHandler.GetCommodityFuturesPanel)
+}
+
+/**
+ * 全品种策略信号排行（趋势/动量/突破/carry/持仓象限 + 综合分）
+ * Go: GetCommoditySignalBoard() data.CommoditySignalBoard
+ */
+export async function getCommoditySignalBoard() {
+  return callApi(CommodityHandler.GetCommoditySignalBoard)
+}
+
 // ========== K线 ==========
 
 /**
@@ -120,6 +138,8 @@ export default {
   getTradableCommodities,
   getCommodityRegistry,
   getMacroIndicatorsEnhanced,
+  getCommodityFuturesPanel,
+  getCommoditySignalBoard,
   getCommodityKLine,
   getCommodityKLineIntl,
   getCommodityFundamentals,

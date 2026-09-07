@@ -10,6 +10,10 @@ export function GetCommodityFundamentals(arg1) {
   return window['go']['handler']['CommodityHandler']['GetCommodityFundamentals'](arg1);
 }
 
+export function GetCommodityFuturesPanel() {
+  return window['go']['handler']['CommodityHandler']['GetCommodityFuturesPanel']();
+}
+
 export function GetCommodityKLine(arg1, arg2, arg3) {
   return window['go']['handler']['CommodityHandler']['GetCommodityKLine'](arg1, arg2, arg3);
 }
@@ -32,6 +36,10 @@ export function GetCommodityRegistry() {
 
 export function GetCommodityReport(arg1, arg2) {
   return window['go']['handler']['CommodityHandler']['GetCommodityReport'](arg1, arg2);
+}
+
+export function GetCommoditySignalBoard() {
+  return window['go']['handler']['CommodityHandler']['GetCommoditySignalBoard']();
 }
 
 export function GetCommodityTechnicals(arg1, arg2) {

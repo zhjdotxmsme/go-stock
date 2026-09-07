@@ -122,3 +122,6 @@ frontend/package.json.md5
 
 # Go build cache (created inside workspace when the default user cache is not writable)
 .gocache/
+
+# Runtime commodity OI snapshot (written by app/tests into the run-dir data/ folder)
+commodity_oi_snapshots.json

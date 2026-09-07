@@ -146,6 +146,8 @@ var dataToolGroupMap = map[string]dataToolGroup{
 	"GetCommodityFundamentals":   dataToolGroupMarket,
 	"GetCorrelationAnalysis":     dataToolGroupMarket,
 	"GetCommodityReport":         dataToolGroupMarket,
+	"GetCommoditySignalBoard":    dataToolGroupMarket,
+	"GetCommodityFuturesPanel":   dataToolGroupMarket,
 	"GetDailyDimensionStats":     dataToolGroupMarket,
 	"GetTypeStatsByDate":         dataToolGroupMarket,
 
@@ -541,6 +543,31 @@ func appendAgentParityTools(tools []Tool) []Tool {
 					},
 				},
 				Required: []string{"codes"},
+			},
+		},
+	})
+
+	tools = append(tools, Tool{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "GetCommoditySignalBoard",
+			Description: "商品策略信号排行。对黄金/白银/原油等全部可交易商品统一计算确定性信号：趋势(MA20/60)、动量(20/60日)、突破(唐奇安20日)、期限结构(carry)、持仓四象限，输出综合分与偏多/偏空结论，按信号强度排序。无需参数。",
+			Parameters: &FunctionParameters{
+				Type:       "object",
+				Properties: map[string]any{},
+				Required:   []string{},
+			},
+		},
+	})
+	tools = append(tools, Tool{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        "GetCommodityFuturesPanel",
+			Description: "商品期货盘面数据。沪金/沪银/原油的主力持仓量、日增仓、近远月期限结构(贴水/升水)、SHFE仓单库存、CFTC COT非商业净持仓、金银比及5年分位、ATR波动率、月度季节性。缺失数据在failed列表中。无需参数。",
+			Parameters: &FunctionParameters{
+				Type:       "object",
+				Properties: map[string]any{},
+				Required:   []string{},
 			},
 		},
 	})

@@ -8,6 +8,8 @@ export function GetCommodityCorrelation(arg1:string,arg2:string):Promise<string>
 
 export function GetCommodityFundamentals(arg1:string):Promise<string>;
 
+export function GetCommodityFuturesPanel():Promise<data.CommodityFuturesPanel>;
+
 export function GetCommodityKLine(arg1:string,arg2:string,arg3:number):Promise<Array<datasource.KLineBar>>;
 
 export function GetCommodityKLineIntl(arg1:string,arg2:string,arg3:number):Promise<Array<datasource.KLineBar>>;
@@ -19,6 +21,8 @@ export function GetCommodityQuoteIntl(arg1:string):Promise<datasource.QuoteData>
 export function GetCommodityRegistry():Promise<Array<models.CommodityAsset>>;
 
 export function GetCommodityReport(arg1:string,arg2:string):Promise<string>;
+
+export function GetCommoditySignalBoard():Promise<data.CommoditySignalBoard>;
 
 export function GetCommodityTechnicals(arg1:string,arg2:string):Promise<string>;
 
