@@ -8,12 +8,10 @@ import (
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
+	stocksvc "go-stock/backend/internal/service/stock"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/duke-git/lancet/v2/convertor"
-	"github.com/duke-git/lancet/v2/mathutil"
 )
 
 // StockHandler handles all stock-related operations: watchlist, groups, K-lines, search
@@ -49,6 +47,7 @@ func getStockInfo(follow data.FollowedStock) *data.StockInfo {
 
 // addStockFollowData 从 app.go 复制：将关注信息（成本价、分组、报警阈值等）叠加到行情数据，
 // 并计算涨跌幅与盈亏字段；价格变化时异步回写关注表。
+// 数值口径已下沉到 internal/service/stock.CalcProfitFields（可单测）。
 func addStockFollowData(follow data.FollowedStock, stockData *data.StockInfo) {
 	stockData.PrePrice = follow.Price //上次当前价格
 	stockData.Sort = follow.Sort
@@ -58,61 +57,27 @@ func addStockFollowData(follow data.FollowedStock, stockData *data.StockInfo) {
 	stockData.AlarmPrice = follow.AlarmPrice
 	stockData.Groups = follow.Groups
 
-	//当前价格
-	price, _ := convertor.ToFloat(stockData.Price)
-	//当前价格为0 时 使用卖一价格作为当前价格
-	if price == 0 {
-		price, _ = convertor.ToFloat(stockData.A1P)
-	}
-	//当前价格依然为0 时 使用买一报价作为当前价格
-	if price == 0 {
-		price, _ = convertor.ToFloat(stockData.B1P)
-	}
+	res := stocksvc.CalcProfitFields(stocksvc.ProfitInput{
+		Price:     stockData.Price,
+		AskPrice:  stockData.A1P,
+		BidPrice:  stockData.B1P,
+		PreClose:  stockData.PreClose,
+		High:      stockData.High,
+		Low:       stockData.Low,
+		Open:      stockData.Open,
+		CostPrice: follow.CostPrice,
+		Volume:    follow.Volume,
+	})
 
-	//昨日收盘价
-	preClosePrice, _ := convertor.ToFloat(stockData.PreClose)
+	stockData.ChangePrice = res.ChangePrice
+	stockData.ChangePercent = res.ChangePercent
+	stockData.HighRate = res.HighRate
+	stockData.LowRate = res.LowRate
+	stockData.Profit = res.Profit
+	stockData.ProfitAmount = res.ProfitAmount
+	stockData.ProfitAmountToday = res.ProfitAmountToday
 
-	//当前价格依然为0 时 使用昨日收盘价为当前价格
-	if price == 0 {
-		price = preClosePrice
-	}
-
-	//今日最高价
-	highPrice, _ := convertor.ToFloat(stockData.High)
-	if highPrice == 0 {
-		highPrice, _ = convertor.ToFloat(stockData.Open)
-	}
-
-	//今日最低价
-	lowPrice, _ := convertor.ToFloat(stockData.Low)
-	if lowPrice == 0 {
-		lowPrice, _ = convertor.ToFloat(stockData.Open)
-	}
-
-	if price > 0 && preClosePrice > 0 {
-		stockData.ChangePrice = mathutil.RoundToFloat(price-preClosePrice, 2)
-		stockData.ChangePercent = mathutil.RoundToFloat(mathutil.Div(price-preClosePrice, preClosePrice)*100, 3)
-	}
-	if highPrice > 0 && preClosePrice > 0 {
-		stockData.HighRate = mathutil.RoundToFloat(mathutil.Div(highPrice-preClosePrice, preClosePrice)*100, 3)
-	}
-	if lowPrice > 0 && preClosePrice > 0 {
-		stockData.LowRate = mathutil.RoundToFloat(mathutil.Div(lowPrice-preClosePrice, preClosePrice)*100, 3)
-	}
-	if follow.CostPrice > 0 && follow.Volume > 0 {
-		if price > 0 {
-			stockData.Profit = mathutil.RoundToFloat(mathutil.Div(price-follow.CostPrice, follow.CostPrice)*100, 3)
-			stockData.ProfitAmount = mathutil.RoundToFloat((price-follow.CostPrice)*float64(follow.Volume), 2)
-			stockData.ProfitAmountToday = mathutil.RoundToFloat((price-preClosePrice)*float64(follow.Volume), 2)
-		} else {
-			//未开盘时当前价格为昨日收盘价
-			stockData.Profit = mathutil.RoundToFloat(mathutil.Div(preClosePrice-follow.CostPrice, follow.CostPrice)*100, 3)
-			stockData.ProfitAmount = mathutil.RoundToFloat((preClosePrice-follow.CostPrice)*float64(follow.Volume), 2)
-			// 未开盘时，今日盈亏为 0
-			stockData.ProfitAmountToday = 0
-		}
-
-	}
+	price := res.EffectivePrice
 
 	if follow.Price != price && price > 0 {
 		go db.Dao.Model(follow).Where("stock_code = ?", follow.StockCode).Updates(map[string]interface{}{
