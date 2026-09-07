@@ -37,7 +37,7 @@ func RunFundamentalAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport,
 	}
 
 	messages := []*schema.Message{
-		{Role: schema.System, Content: GetRolePrompt("multi_fundamental", FundamentalAnalystPrompt) + memoryInjection(ctx, ac, "fundamental")},
+		{Role: schema.System, Content: GetRolePrompt("multi_fundamental", FundamentalAnalystPrompt) + instrumentContextBlock(ac.StockCode) + memoryInjection(ctx, ac, "fundamental")},
 		{Role: schema.User, Content: fmt.Sprintf("请分析股票 %s(%s) 的基本面\n\n数据:\n%s", ac.StockName, ac.StockCode, dataStr)},
 	}
 
