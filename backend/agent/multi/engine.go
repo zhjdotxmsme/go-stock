@@ -108,6 +108,22 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 			"label": "预取共享行情数据...",
 		})
 		ac.DataPack = PrefetchDataPack(ctx, ac.StockCode)
+
+		// Phase 1.6: 数据完整性预检（T5）——K线缺失/过期/完整率不足时中止，
+		// 避免七个分析师拿残缺数据各跑一轮 LLM 产出幻觉报告。
+		if check := CheckDataPack(ac.DataPack, time.Now()); !check.Passed {
+			logger.SugaredLogger.Errorf("data pre-check failed for %s: %s", ac.StockCode, check.Summary())
+			emitEvent(ctx, ch, "agent:phase", map[string]string{
+				"phase": "datapack", "status": "error",
+				"label": "数据完整性检查未通过",
+			})
+			emitEvent(ctx, ch, "agent:phase", map[string]string{
+				"phase": "error", "status": "error",
+				"label": check.FailReason,
+			})
+			return
+		}
+
 		emitEvent(ctx, ch, "agent:phase", map[string]string{
 			"phase": "datapack", "status": "end",
 			"label": "共享数据就绪",
