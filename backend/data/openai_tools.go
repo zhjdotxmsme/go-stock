@@ -527,14 +527,27 @@ func AskAiWithTools(o *OpenAi, err error, messages []map[string]interface{}, ch 
 	AskAiWithToolsDepth(o, err, messages, ch, question, tools, thinkingMode, 0)
 }
 
+// defaultMaxToolDepth 工具调用轮数默认上限（方案 Step 3.5，替代旧硬编码 200）。
+// 取值需容纳 AI 推荐等链式流程（新闻→资金流→报价→保存推荐→收尾，5~7 轮），
+// 同时远低于旧上限，避免模型不收敛时烧穿 token。
+const defaultMaxToolDepth = 8
+
+// resolveMaxToolDepth 会话级配置优先，非法值回落默认。
+func resolveMaxToolDepth(o *OpenAi) int {
+	if o != nil && o.MaxToolDepth > 0 {
+		return o.MaxToolDepth
+	}
+	return defaultMaxToolDepth
+}
+
 func AskAiWithToolsDepth(o *OpenAi, err error, messages []map[string]interface{}, ch chan map[string]any, question string, tools []Tool, thinkingMode bool, depth int) {
-	const maxDepth = 200
+	maxDepth := resolveMaxToolDepth(o)
 	if depth > maxDepth {
-		logger.SugaredLogger.Warnf("AskAiWithTools max depth exceeded: %d", depth)
+		logger.SugaredLogger.Warnf("AskAiWithTools max depth exceeded: %d (limit %d)", depth, maxDepth)
 		ch <- map[string]any{
 			"code":     0,
 			"question": question,
-			"content":  "工具调用次数过多，已终止",
+			"content":  fmt.Sprintf("工具调用轮数已达上限（%d 轮），为控制成本已终止本次会话", maxDepth),
 		}
 		return
 	}

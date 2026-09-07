@@ -27,6 +27,9 @@ type OpenAi struct {
 	HttpProxy        string  `json:"httpProxy"`
 	HttpProxyEnabled bool    `json:"httpProxyEnabled"`
 	ChatSource       string  `json:"-"`
+	// MaxToolDepth 带工具会话的最大工具调用轮数（每轮 = 一次 LLM 响应 + 其触发的工具执行）。
+	// <=0 时使用 defaultMaxToolDepth。防止模型反复调用工具不收敛，烧穿 token 预算（方案 Step 3.5）。
+	MaxToolDepth int `json:"maxToolDepth,omitempty"`
 }
 
 func (o *OpenAi) Ctx() context.Context     { return o.ctx }
