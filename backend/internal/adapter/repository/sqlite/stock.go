@@ -180,6 +180,19 @@ func GroupToDomain(g *data.Group) stock.Group {
 	return stock.Group{Model: g.Model, Name: g.Name, Sort: g.Sort}
 }
 
+// GroupStockToDomain maps legacy data.GroupStock (含嵌套分组信息) to domain model.
+func GroupStockToDomain(gs *data.GroupStock) stock.GroupStock {
+	if gs == nil {
+		return stock.GroupStock{}
+	}
+	return stock.GroupStock{
+		Model:     gs.Model,
+		StockCode: gs.StockCode,
+		GroupId:   gs.GroupId,
+		GroupInfo: GroupToDomain(&gs.GroupInfo),
+	}
+}
+
 // resultErr converts a legacy string result into an error, treating any
 // result containing "成功" as success.
 func resultErr(result string) error {
@@ -319,19 +332,13 @@ func (r *StockRepository) SetStockSort(ctx context.Context, stockCode string, so
 // Groups
 // ---------------------------------------------------------------------------
 
-func (r *StockRepository) AddGroup(ctx context.Context, name string) (*stock.Group, error) {
+func (r *StockRepository) AddGroup(ctx context.Context, group stock.Group) error {
 	api := data.NewStockGroupApi(db.Dao)
-	maxSort := 0
-	for _, g := range api.GetGroupList() {
-		if g.Sort > maxSort {
-			maxSort = g.Sort
-		}
+	legacy := data.Group{Name: group.Name, Sort: group.Sort}
+	if !api.AddGroup(legacy) {
+		return fmt.Errorf("添加分组失败")
 	}
-	group := data.Group{Name: name, Sort: maxSort + 1}
-	if !api.AddGroup(group) {
-		return nil, fmt.Errorf("添加分组失败")
-	}
-	return &stock.Group{Name: name, Sort: group.Sort}, nil
+	return nil
 }
 
 func (r *StockRepository) RemoveGroup(ctx context.Context, groupID int) error {
@@ -362,6 +369,29 @@ func (r *StockRepository) RemoveStockFromGroup(ctx context.Context, groupID int,
 		return fmt.Errorf("从分组移除股票失败")
 	}
 	return nil
+}
+
+func (r *StockRepository) UpdateGroupSort(ctx context.Context, groupID, newSort int) error {
+	if !data.NewStockGroupApi(db.Dao).UpdateGroupSort(groupID, newSort) {
+		return fmt.Errorf("更新分组排序失败")
+	}
+	return nil
+}
+
+func (r *StockRepository) InitializeGroupSort(ctx context.Context) error {
+	if !data.NewStockGroupApi(db.Dao).InitializeGroupSort() {
+		return fmt.Errorf("初始化分组排序失败")
+	}
+	return nil
+}
+
+func (r *StockRepository) GetGroupStockList(ctx context.Context, groupID int) ([]stock.GroupStock, error) {
+	list := data.NewStockGroupApi(db.Dao).GetGroupStockByGroupId(groupID)
+	result := make([]stock.GroupStock, 0, len(list))
+	for i := range list {
+		result = append(result, GroupStockToDomain(&list[i]))
+	}
+	return result, nil
 }
 
 // ---------------------------------------------------------------------------

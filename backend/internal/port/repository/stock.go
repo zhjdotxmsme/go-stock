@@ -20,11 +20,15 @@ type StockRepository interface {
 	SetStockSort(ctx context.Context, stockCode string, sort int64) error
 
 	// Groups
-	AddGroup(ctx context.Context, name string) (*stock.Group, error)
+	// AddGroup 保留前端传入的 sort 值；sort 冲突时由实现负责把既有分组后移。
+	AddGroup(ctx context.Context, group stock.Group) error
 	RemoveGroup(ctx context.Context, groupID int) error
 	GetGroupList(ctx context.Context) ([]stock.Group, error)
 	AddStockToGroup(ctx context.Context, groupID int, stockCode string) error
 	RemoveStockFromGroup(ctx context.Context, groupID int, stockCode, stockName string) error
+	UpdateGroupSort(ctx context.Context, groupID, newSort int) error
+	InitializeGroupSort(ctx context.Context) error
+	GetGroupStockList(ctx context.Context, groupID int) ([]stock.GroupStock, error)
 
 	// Trading records
 	AddTradingRecord(ctx context.Context, record *stock.TradingRecord) error

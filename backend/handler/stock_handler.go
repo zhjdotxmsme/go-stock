@@ -7,19 +7,25 @@ import (
 	"go-stock/backend/data/backtest"
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/db"
-	"go-stock/backend/models"
+	"go-stock/backend/internal/adapter/repository/sqlite"
+	domainstock "go-stock/backend/internal/domain/stock"
 	stocksvc "go-stock/backend/internal/service/stock"
+	"go-stock/backend/models"
 	"strconv"
 	"strings"
 	"time"
 )
 
 // StockHandler handles all stock-related operations: watchlist, groups, K-lines, search
-type StockHandler struct{}
+// 自选股/分组业务委托 internal/service/stock( port/adapter 分层 );
+// K线/行情/搜索等外部 API 路径仍直连 data 层。
+type StockHandler struct {
+	svc *stocksvc.Service
+}
 
 // NewStockHandler creates a new StockHandler
 func NewStockHandler() *StockHandler {
-	return &StockHandler{}
+	return &StockHandler{svc: stocksvc.NewService(sqlite.NewStockRepository())}
 }
 
 // Greet returns stock info - basic welcome/test method
@@ -86,14 +92,14 @@ func addStockFollowData(follow data.FollowedStock, stockData *data.StockInfo) {
 	}
 }
 
-// Follow adds a stock to watchlist
+// Follow adds a stock to watchlist (业务规则/文案在 service)
 func (h *StockHandler) Follow(stockCode string) string {
-	return data.NewStockDataApi().Follow(stockCode)
+	return h.svc.Follow(context.Background(), stockCode)
 }
 
 // UnFollow removes a stock from watchlist
 func (h *StockHandler) UnFollow(stockCode string) string {
-	return data.NewStockDataApi().UnFollow(stockCode)
+	return h.svc.UnFollow(context.Background(), stockCode)
 }
 
 // GetFollowList returns all followed stocks for a group
@@ -108,31 +114,27 @@ func (h *StockHandler) GetStockList(key string) []data.StockBasic {
 
 // SetCostPriceAndVolume sets cost price and volume for a stock
 func (h *StockHandler) SetCostPriceAndVolume(stockCode string, price float64, volume int64) string {
-	return data.NewStockDataApi().SetCostPriceAndVolume(price, volume, stockCode)
+	return h.svc.SetCostPriceAndVolume(context.Background(), stockCode, price, volume)
 }
 
 // SetTradingPrice sets trading-related prices for a stock
 func (h *StockHandler) SetTradingPrice(stockCode string, entryPrice, takeProfitPrice, stopLossPrice, costPrice float64) string {
-	return data.NewStockDataApi().SetTradingPrice(entryPrice, takeProfitPrice, stopLossPrice, costPrice, stockCode)
+	return h.svc.SetTradingPrice(context.Background(), stockCode, entryPrice, takeProfitPrice, stopLossPrice, costPrice)
 }
 
 // SetAlarmChangePercent sets alarm threshold for a stock
 func (h *StockHandler) SetAlarmChangePercent(val, alarmPrice float64, stockCode string) string {
-	return data.NewStockDataApi().SetAlarmChangePercent(val, alarmPrice, stockCode)
+	return h.svc.SetAlarmChangePercent(context.Background(), val, alarmPrice, stockCode)
 }
 
 // SetStockSort sets sort order for a stock in watchlist
 func (h *StockHandler) SetStockSort(sort int64, stockCode string) {
-	data.NewStockDataApi().SetStockSort(sort, stockCode)
+	h.svc.SetStockSort(context.Background(), stockCode, sort)
 }
 
 // AddGroup adds a new stock group
 func (h *StockHandler) AddGroup(group data.Group) string {
-	ok := data.NewStockGroupApi(db.Dao).AddGroup(group)
-	if ok {
-		return "添加成功"
-	}
-	return "添加失败"
+	return h.svc.AddGroup(context.Background(), domainstock.Group{Name: group.Name, Sort: group.Sort})
 }
 
 // GetGroupList returns all stock groups
@@ -142,12 +144,12 @@ func (h *StockHandler) GetGroupList() []data.Group {
 
 // UpdateGroupSort updates sort order for a group
 func (h *StockHandler) UpdateGroupSort(id int, newSort int) bool {
-	return data.NewStockGroupApi(db.Dao).UpdateGroupSort(id, newSort)
+	return h.svc.UpdateGroupSort(context.Background(), id, newSort)
 }
 
 // InitializeGroupSort initializes sort order for all groups
 func (h *StockHandler) InitializeGroupSort() bool {
-	return data.NewStockGroupApi(db.Dao).InitializeGroupSort()
+	return h.svc.InitializeGroupSort(context.Background())
 }
 
 // GetGroupStockList returns stocks in a group
@@ -157,29 +159,17 @@ func (h *StockHandler) GetGroupStockList(groupId int) []data.GroupStock {
 
 // AddStockGroup adds a stock to a group
 func (h *StockHandler) AddStockGroup(groupId int, stockCode string) string {
-	ok := data.NewStockGroupApi(db.Dao).AddStockGroup(groupId, stockCode)
-	if ok {
-		return "添加成功"
-	}
-	return "添加失败"
+	return h.svc.AddStockGroup(context.Background(), groupId, stockCode)
 }
 
 // RemoveStockGroup removes a stock from a group
 func (h *StockHandler) RemoveStockGroup(code, name string, groupId int) string {
-	ok := data.NewStockGroupApi(db.Dao).RemoveStockGroup(code, name, groupId)
-	if ok {
-		return "移除成功"
-	}
-	return "移除失败"
+	return h.svc.RemoveStockGroup(context.Background(), code, name, groupId)
 }
 
 // RemoveGroup removes a stock group
 func (h *StockHandler) RemoveGroup(groupId int) string {
-	ok := data.NewStockGroupApi(db.Dao).RemoveGroup(groupId)
-	if ok {
-		return "移除成功"
-	}
-	return "移除失败"
+	return h.svc.RemoveGroup(context.Background(), groupId)
 }
 
 // GetStockKLine returns stock K-line data (short-term, quick).
