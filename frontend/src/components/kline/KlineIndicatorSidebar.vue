@@ -1,14 +1,32 @@
 <script setup>
 import { NButton, NFlex, NText, NTooltip } from 'naive-ui'
 import { indicatorTips } from './indicators/tips'
+import { commonCombos, advancedCombos } from './indicators/combos'
 import { SHOW_CHIP_TOOLBAR_BUTTON } from './constants'
 
 const props = defineProps({
   darkTheme: { type: Boolean, default: false },
   indicators: { type: Object, required: true },
+  /** 当前指标开关状态与某组合完全一致时为该组合 key，用于高亮 */
+  activeCombo: { type: String, default: '' },
 })
 
-const emit = defineEmits(['toggle'])
+const emit = defineEmits(['toggle', 'applyCombo', 'help'])
+
+const comboSections = [
+  {
+    name: '🧩常用组合',
+    color: '#0ea5e9',
+    bg: 'rgba(14,165,233,0.08)',
+    items: commonCombos,
+  },
+  {
+    name: '🚀高级组合',
+    color: '#ec4899',
+    bg: 'rgba(236,72,153,0.08)',
+    items: advancedCombos,
+  },
+]
 
 const categories = [
   {
@@ -99,12 +117,80 @@ const categories = [
 function onToggle(key) {
   emit('toggle', key)
 }
+
+function onApplyCombo(combo) {
+  emit('applyCombo', combo)
+}
+
+function onClearAll() {
+  emit('applyCombo', { key: '', keys: [] })
+}
+
+function onHelp() {
+  emit('help')
+}
 </script>
 
 <template>
   <div class="lw-kline-sidebar">
     <div class="lw-kline-sidebar__inner">
       <NFlex vertical :size="6">
+        <NFlex :size="4" wrap style="row-gap: 4px">
+          <NTooltip :delay="500" placement="right-start">
+            <template #trigger>
+              <NButton size="tiny" type="info" secondary @click="onHelp">📖 使用说明</NButton>
+            </template>
+            <span>K线分析页面功能与日线短线分析方法说明</span>
+          </NTooltip>
+          <NTooltip :delay="500" placement="right-start">
+            <template #trigger>
+              <NButton size="tiny" secondary @click="onClearAll">清空指标</NButton>
+            </template>
+            <span>关闭所有已开启的技术指标</span>
+          </NTooltip>
+        </NFlex>
+        <div
+          v-for="sec in comboSections"
+          :key="sec.name"
+          class="lw-kline-sidebar__section"
+        >
+          <NText
+            depth="3"
+            :style="{
+              fontSize: '13px',
+              fontWeight: 700,
+              display: 'block',
+              marginBottom: '4px',
+              padding: '2px 6px',
+              background: sec.bg,
+              borderRadius: '4px',
+              borderLeft: `3px solid ${sec.color}`,
+              color: sec.color
+            }"
+          >
+            {{ sec.name }}
+          </NText>
+          <NFlex :size="4" wrap style="row-gap: 4px">
+            <NTooltip
+              v-for="item in sec.items"
+              :key="item.key"
+              :delay="500"
+              placement="right-start"
+            >
+              <template #trigger>
+                <NButton
+                  size="tiny"
+                  :type="activeCombo === item.key ? 'primary' : 'default'"
+                  :secondary="activeCombo !== item.key"
+                  @click="onApplyCombo(item)"
+                >
+                  {{ item.label }}
+                </NButton>
+              </template>
+              <span style="white-space: pre-line; text-align: left">{{ item.tip }}</span>
+            </NTooltip>
+          </NFlex>
+        </div>
         <div
           v-for="cat in categories"
           :key="cat.name"

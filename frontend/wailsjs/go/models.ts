@@ -460,6 +460,26 @@ export namespace data {
 	        this.searchKeyWord = source["searchKeyWord"];
 	    }
 	}
+	export class COTPnl {
+	    product: string;
+	    name: string;
+	    net: number;
+	    percent: number;
+	    date: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new COTPnl(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.product = source["product"];
+	        this.name = source["name"];
+	        this.net = source["net"];
+	        this.percent = source["percent"];
+	        this.date = source["date"];
+	    }
+	}
 	export class ChangeRankItem {
 	    name: string;
 	    code?: string;
@@ -574,6 +594,196 @@ export namespace data {
 	        this.maxPrice = source["maxPrice"];
 	        this.sumVol = source["sumVol"];
 	        this.items = this.convertValues(source["items"], ChipBin);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class InventoryItem {
+	    exchange: string;
+	    product: string;
+	    value: number;
+	    unit: string;
+	    change?: number;
+	    date: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new InventoryItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.exchange = source["exchange"];
+	        this.product = source["product"];
+	        this.value = source["value"];
+	        this.unit = source["unit"];
+	        this.change = source["change"];
+	        this.date = source["date"];
+	    }
+	}
+	export class FuturesContractPanel {
+	    code: string;
+	    name: string;
+	    price: number;
+	    changePct: number;
+	    volume: number;
+	    openInterest: number;
+	    oiChange?: number;
+	    nearPrice: number;
+	    farPrice: number;
+	    carryPct: number;
+	    carryOk: boolean;
+	    atrPct: number;
+	    atrOk: boolean;
+	    season5y: number;
+	    seasonOk: boolean;
+	    seasonMonth: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FuturesContractPanel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.price = source["price"];
+	        this.changePct = source["changePct"];
+	        this.volume = source["volume"];
+	        this.openInterest = source["openInterest"];
+	        this.oiChange = source["oiChange"];
+	        this.nearPrice = source["nearPrice"];
+	        this.farPrice = source["farPrice"];
+	        this.carryPct = source["carryPct"];
+	        this.carryOk = source["carryOk"];
+	        this.atrPct = source["atrPct"];
+	        this.atrOk = source["atrOk"];
+	        this.season5y = source["season5y"];
+	        this.seasonOk = source["seasonOk"];
+	        this.seasonMonth = source["seasonMonth"];
+	    }
+	}
+	export class CommodityFuturesPanel {
+	    contracts: FuturesContractPanel[];
+	    goldSilverRatio?: number;
+	    goldSilverPercentile?: number;
+	    inventories: InventoryItem[];
+	    cot: COTPnl[];
+	    failed: string[];
+	    fetchedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommodityFuturesPanel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.contracts = this.convertValues(source["contracts"], FuturesContractPanel);
+	        this.goldSilverRatio = source["goldSilverRatio"];
+	        this.goldSilverPercentile = source["goldSilverPercentile"];
+	        this.inventories = this.convertValues(source["inventories"], InventoryItem);
+	        this.cot = this.convertValues(source["cot"], COTPnl);
+	        this.failed = source["failed"];
+	        this.fetchedAt = source["fetchedAt"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SignalBoardStats {
+	    bull: number;
+	    neutral: number;
+	    bear: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SignalBoardStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.bull = source["bull"];
+	        this.neutral = source["neutral"];
+	        this.bear = source["bear"];
+	    }
+	}
+	export class SignalBoardRow {
+	    code: string;
+	    name: string;
+	    market: string;
+	    price: number;
+	    trend?: string;
+	    momentum?: string;
+	    breakout?: string;
+	    carry?: string;
+	    oi?: string;
+	    score: number;
+	    verdict: string;
+	    failed: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SignalBoardRow(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.market = source["market"];
+	        this.price = source["price"];
+	        this.trend = source["trend"];
+	        this.momentum = source["momentum"];
+	        this.breakout = source["breakout"];
+	        this.carry = source["carry"];
+	        this.oi = source["oi"];
+	        this.score = source["score"];
+	        this.verdict = source["verdict"];
+	        this.failed = source["failed"];
+	    }
+	}
+	export class CommoditySignalBoard {
+	    rows: SignalBoardRow[];
+	    stats: SignalBoardStats;
+	    fetchedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CommoditySignalBoard(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rows = this.convertValues(source["rows"], SignalBoardRow);
+	        this.stats = this.convertValues(source["stats"], SignalBoardStats);
+	        this.fetchedAt = source["fetchedAt"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1131,6 +1341,8 @@ export namespace data {
 	}
 	
 	
+	
+	
 	export class KLineData {
 	    day: string;
 	    open: string;
@@ -1474,6 +1686,8 @@ export namespace data {
 		    return a;
 		}
 	}
+	
+	
 	export class StockBasic {
 	    ID: number;
 	    // Go type: time
@@ -2130,11 +2344,11 @@ export namespace data {
 	    upCount: number;
 	    downCount: number;
 	    totalCount: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new TypeCountStats(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.typeName = source["typeName"];
@@ -2142,79 +2356,6 @@ export namespace data {
 	        this.downCount = source["downCount"];
 	        this.totalCount = source["totalCount"];
 	    }
-	}
-
-	export interface COTPnl {
-	    product: string;
-	    name: string;
-	    net: number;
-	    percent: number;
-	    date: string;
-	}
-
-	export interface InventoryItem {
-	    exchange: string;
-	    product: string;
-	    value: number;
-	    unit: string;
-	    change: number | null;
-	    date: string;
-	}
-
-	export interface FuturesContractPanel {
-	    code: string;
-	    name: string;
-	    price: number;
-	    changePct: number;
-	    volume: number;
-	    openInterest: number;
-	    oiChange: number | null;
-	    nearPrice: number;
-	    farPrice: number;
-	    carryPct: number;
-	    carryOK: boolean;
-	    atrPct: number;
-	    atrOK: boolean;
-	    season5y: number;
-	    seasonOK: boolean;
-	    seasonMonth: number;
-	}
-
-	export interface CommodityFuturesPanel {
-	    contracts: Array<FuturesContractPanel>;
-	    goldSilverRatio: number | null;
-	    goldSilverPercentile: number | null;
-	    inventories: Array<InventoryItem>;
-	    cot: Array<COTPnl>;
-	    failed: Array<string>;
-	    fetchedAt: string;
-	}
-
-	export interface SignalBoardRow {
-	    code: string;
-	    name: string;
-	    market: string;
-	    price: number;
-	    trend: string;
-	    momentum: string;
-	    breakout: string;
-	    carry: string;
-	    oi: string;
-	    score: number;
-	    verdict: string;
-	    failed: boolean;
-	}
-
-	export interface SignalBoardStats {
-	    bull: number;
-	    neutral: number;
-	    bear: number;
-	}
-
-	export interface CommoditySignalBoard {
-	    rows: Array<SignalBoardRow>;
-	    stats: SignalBoardStats;
-	    fetchedAt: string;
 	}
 
 }

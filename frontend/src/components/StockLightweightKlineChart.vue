@@ -5,7 +5,7 @@ import {
   createChart,
   HistogramSeries,
 } from 'lightweight-charts'
-import { NButton, NFlex, NInput, NSpin, NText, NTooltip } from 'naive-ui'
+import { NButton, NFlex, NInput, NModal, NSpin, NText, NTooltip } from 'naive-ui'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   eastMoneyDayToUnixSeconds, eastMoneyKlineFieldToUnixSeconds,
@@ -173,6 +173,7 @@ const {
 
 
 import { indicatorTips } from './kline/indicators/tips'
+import { allCombos } from './kline/indicators/combos'
 import KlineIndicatorSidebar from './kline/KlineIndicatorSidebar.vue'
 // ---- 十字线信息面板（见 kline/composables/useCrosshairPanel） ----
 const { formatCrosshairTime, findRawRowByChartTime, syncDefaultLatestPanelRow, crosshairPanel } = createCrosshairPanel({
@@ -657,6 +658,45 @@ function onIndicatorToggle(key) {
   if (fn) fn()
 }
 
+// ---- 组合指标预设：一键只开启该组指标（筹码分布不受影响） ----
+const showHelpModal = ref(false)
+const showRefsMap = {
+  ma: showMA, boll: showBOLL, obv: showOBV, macd: showMACD,
+  kdj: showKDJ, rsi: showRSI, atr: showATR, vwap: showVWAP,
+  mfi: showMFI, kama: showKAMA, keltner: showKeltner,
+  supertrend: showSupertrend, ema: showEMA, ichimoku: showIchimoku,
+  cci: showCCI, ttmSqueeze: showTTMSqueeze, sar: showSAR,
+  donchian: showDonchian, adx: showADX, williamsR: showWilliamsR,
+  stochRsi: showStochRSI, cmf: showCMF, aroon: showAroon,
+  cmo: showCMO, forceIndex: showForceIndex, pivot: showPivot,
+  dema: showDEMA, zigzag: showZigZag, sats: showSATS,
+  avgAmp: showAvgAmp, alligator: showAlligator, ao: showAO,
+  hullMa: showHullMA, ad: showAD, trix: showTRIX,
+  roc: showROC, fractal: showFractal, chop: showCHOP,
+  elderRay: showElderRay, chaikinOsc: showChaikinOsc,
+  vwapBands: showVWAPBands, massIndex: showMassIndex,
+  ulcerIndex: showUlcerIndex, coppock: showCoppock, tema: showTEMA,
+  smi: showSMI, signalRatio: showSignalRatio, smc: showSMC,
+}
+
+function applyCombo(combo) {
+  const keys = new Set(combo.keys || [])
+  for (const [k, r] of Object.entries(showRefsMap)) {
+    r.value = keys.has(k)
+  }
+  syncIndicators()
+}
+
+const activeComboKey = computed(() => {
+  const onKeys = Object.keys(showRefsMap).filter((k) => showRefsMap[k].value)
+  for (const c of allCombos) {
+    if (onKeys.length === c.keys.length && c.keys.every((k) => showRefsMap[k].value)) {
+      return c.key
+    }
+  }
+  return ''
+})
+
 
 
 
@@ -722,7 +762,14 @@ watch(
 <template>
   <div class="lw-kline-root" :class="{ 'lw-kline--dark': darkTheme }">
     <div class="lw-kline-body">
-      <KlineIndicatorSidebar :dark-theme="darkTheme" :indicators="indicators" @toggle="onIndicatorToggle" />
+      <KlineIndicatorSidebar
+        :dark-theme="darkTheme"
+        :indicators="indicators"
+        :active-combo="activeComboKey"
+        @toggle="onIndicatorToggle"
+        @apply-combo="applyCombo"
+        @help="showHelpModal = true"
+      />
       <div class="lw-kline-main">
         <NFlex :size="6" wrap style="row-gap: 4px; align-items: center">
           <NText depth="3" style="font-size: 12px; margin-right: 2px">周期</NText>
@@ -1001,6 +1048,60 @@ watch(
         </NFlex>
       </div>
     </div>
+    <NModal
+      v-model:show="showHelpModal"
+      preset="card"
+      title="K线分析 · 使用说明（日线短线）"
+      style="width: 660px; max-width: 94vw"
+      :bordered="false"
+    >
+      <div class="lw-kline-help" :class="{ 'lw-kline-help--dark': darkTheme }">
+        <div class="lw-kline-help__section">
+          <div class="lw-kline-help__title">🎯 适用范围</div>
+          <div class="lw-kline-help__body">
+            本页指标与组合按「日线短线」调校：持仓约 2 天 ~ 3 周，主看日线周期，可用 60 分钟线细化入场点。<br>
+            不建议用于 5/15/30 分钟级超短线（信号噪声大、假突破多），也不适用于周线/月线超长线（信号滞后，应结合基本面与估值）。
+          </div>
+        </div>
+        <div class="lw-kline-help__section">
+          <div class="lw-kline-help__title">🧭 页面功能</div>
+          <div class="lw-kline-help__body">
+            · 周期：默认日线；短线以日线定方向，分钟线仅用于找更优的入场价位<br>
+            · 指标侧栏：点击按钮开关指标，鼠标悬停可查看该指标的用法提示<br>
+            · 十字线数据条：悬停 K 线查看开高低收、涨跌幅、量比、换手率、均幅等<br>
+            · 指标信号汇总：实时统计已开启指标的多空/震荡共识比例，共识越强信号越可靠<br>
+            · 多单价位线：标记开仓/止损/止盈价，可点选 K 线价格快速填入<br>
+            · 筹码：查看成本分布、平均成本与获利比例（部分版本可见）
+          </div>
+        </div>
+        <div class="lw-kline-help__section">
+          <div class="lw-kline-help__title">🧩 组合指标怎么用</div>
+          <div class="lw-kline-help__body">
+            · 点击一个组合 = 只开启该组指标并关闭其余指标，保持图面干净；高亮按钮表示当前组合<br>
+            · 常用组合：逻辑简单、信号直观，适合入门与日常盯盘<br>
+            · 高级组合：多指标互相过滤，假信号更少，但需要先理解其逻辑（悬停查看详细用法）<br>
+            · 建议固定使用 1~2 套组合形成操作纪律，频繁更换会导致买卖标准不一致<br>
+            · 「清空指标」可一键关闭所有指标，恢复纯净 K 线
+          </div>
+        </div>
+        <div class="lw-kline-help__section">
+          <div class="lw-kline-help__title">📋 推荐分析流程（日线短线）</div>
+          <div class="lw-kline-help__body">
+            ① 定趋势：用 MA/EMA 或 Supertrend 判断方向，只做顺势单，逆势不做<br>
+            ② 找时机：回调中 KDJ/RSI 进入低位并拐头，是较好的入场时点<br>
+            ③ 做确认：MACD 金叉 + 成交量放大（OBV/CMF 同步向上）再进场<br>
+            ④ 设风控：用价位线提前设好止损（参考 2×ATR 或前低），破位坚决离场<br>
+            ⑤ 校验共识：看「指标信号汇总」多空占比，看多比例明显占优时胜率更高
+          </div>
+        </div>
+        <div class="lw-kline-help__section">
+          <div class="lw-kline-help__title">⚠️ 风险提示</div>
+          <div class="lw-kline-help__body">
+            技术指标是基于历史数据的概率工具，任何组合都存在失效期；请控制单笔仓位、严格执行止损，盈亏自负。
+          </div>
+        </div>
+      </div>
+    </NModal>
   </div>
 </template>
 
@@ -1369,5 +1470,25 @@ watch(
 .lw-kline-signal-summary--dark .lw-kline-signal-summary__tag--neutral {
   background: #1e293b;
   color: #94a3b8;
+}
+.lw-kline-help {
+  font-size: 13px;
+  line-height: 1.7;
+}
+.lw-kline-help__section {
+  margin-bottom: 12px;
+}
+.lw-kline-help__section:last-child {
+  margin-bottom: 0;
+}
+.lw-kline-help__title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.lw-kline-help__body {
+  color: #475569;
+}
+.lw-kline-help--dark .lw-kline-help__body {
+  color: #cbd5e1;
 }
 </style>
