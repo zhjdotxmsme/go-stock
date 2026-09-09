@@ -253,8 +253,9 @@ func (s *SARTrendStrategy) Score(ctx *StrategyContext) *StrategyResult {
 	stretch := extClamp01((gain5 - 15) / 10) // 15% → 0，25%+ → 1
 	factors["stretch"] = stretch
 
-	// 基础分按翻转新鲜度递减：age 0-4 → 75/70/62/56/50
-	baseByAge := [5]float64{75, 70, 62, 56, 50}
+	// 基础分按翻转新鲜度递减：age 0-5 → 75/70/62/56/50/45
+	// （extFlipAge(bull,5) 返回 [0,5]，表必须 6 项，否则越界 panic）
+	baseByAge := [6]float64{75, 70, 62, 56, 50, 45}
 	score := baseByAge[age]
 	signal := fmt.Sprintf("SAR翻多%d根·5日涨幅%.1f%%", age+1, gain5)
 	if gain5 > 15 {
