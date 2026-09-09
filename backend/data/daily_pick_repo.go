@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"time"
 
 	"go-stock/backend/db"
 	"go-stock/backend/models"
@@ -108,6 +109,29 @@ func (r *DailyPickRepository) CountPicks(ctx context.Context) (int64, int64) {
 func (r *DailyPickRepository) FindReviewed(ctx context.Context) []models.DailyPick {
 	var picks []models.DailyPick
 	r.db.WithContext(ctx).Where("reviewed = ?", true).Find(&picks)
+	return picks
+}
+
+// RecentPicksMissingWindows returns recent reviewed picks whose 3d/5d windows
+// are not yet backfilled (either still 0), within the last `days` calendar days
+// from today. Used by the review backfill pass (idempotent).
+func (r *DailyPickRepository) RecentPicksMissingWindows(ctx context.Context, days int) ([]models.DailyPick, error) {
+	cutoff := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
+	var picks []models.DailyPick
+	err := r.db.WithContext(ctx).
+		Where("reviewed = ? AND trade_date >= ? AND (return3d = 0 OR return5d = 0)", true, cutoff).
+		Order("trade_date DESC").
+		Find(&picks).Error
+	return picks, err
+}
+
+// ReviewedPicksSince returns reviewed picks whose trade_date >= since (YYYY-MM-DD).
+// Used by the strategy auto-weighting pass.
+func (r *DailyPickRepository) ReviewedPicksSince(ctx context.Context, since string) []models.DailyPick {
+	var picks []models.DailyPick
+	r.db.WithContext(ctx).
+		Where("reviewed = ? AND trade_date >= ?", true, since).
+		Find(&picks)
 	return picks
 }
 

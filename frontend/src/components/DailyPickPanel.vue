@@ -74,7 +74,8 @@
     <n-alert type="info" :bordered="false" style="margin-bottom: 8px" collapsible>
       <b>功能说明：</b>
       「运行选股」按当日收盘数据跑完整管线（K线初筛 → 研报抓取 → 综合打分），结果按评分排名落库；
-      「复盘」用次日行情回填每只入选股的实际开收高低与收益（次日收益 = 次日开盘买入→收盘卖出）；
+      「复盘」用次日行情回填每只入选股的实际开收高低与收益（次日收益 = 次日开盘买入→收盘卖出；
+      另有 T+1 可执行口径 = 当日尾盘买入次日收盘卖出，及 3 日 / 5 日持有收益，在"更多指标"中查看）；
       「胜率趋势」展示历史复盘的每日胜率走势。
       <b>短期买卖建议</b>规则：以信号日收盘价为参考——参考买入价 = 收盘价；目标一 = +5%、目标二 = +10%；
       止损 = -3%。建议仅为按固定比例生成的参考，请结合大盘与个股基本面自行决策，不构成投资建议。
@@ -318,9 +319,21 @@ const extraColumns: any[] = [
   { title: '均线因子', key: 'maFactor', width: 70, align: 'center', render: (r: any) => r.maFactor ? r.maFactor.toFixed(2) : '-' },
   { title: '最大收益', key: 'nextMaxReturn', width: 80, align: 'right', render: (r: any) => r.reviewed ? ((r.nextMaxReturn ?? 0) >= 0 ? '+' : '') + (r.nextMaxReturn ?? 0).toFixed(2) + '%' : '-' },
   { title: '最大回撤', key: 'nextMaxDrawdown', width: 80, align: 'right', render: (r: any) => r.reviewed ? (r.nextMaxDrawdown ?? 0).toFixed(2) + '%' : '-' },
+  { title: 'T+1收益', key: 'nextReturnT1', width: 80, align: 'right', render: renderWindowReturn('nextReturnT1') },
+  { title: '3日收益', key: 'return3d', width: 80, align: 'right', render: renderWindowReturn('return3d') },
+  { title: '5日收益', key: 'return5d', width: 80, align: 'right', render: renderWindowReturn('return5d') },
   { title: 'AI 论点', key: 'llmThesis', width: 220, render: (r: any) => renderLongText(r.llmThesis) },
   { title: 'AI 风险', key: 'llmRisk', width: 220, render: (r: any) => renderLongText(r.llmRisk) },
 ]
+
+// 多窗口复盘收益渲染：已回填（≠0）显示带符号百分比，否则 '-'
+function renderWindowReturn(field: string) {
+  return (r: any) => {
+    const v = r[field]
+    if (!r.reviewed || !v) return '-'
+    return (v > 0 ? '+' : '') + v.toFixed(2) + '%'
+  }
+}
 
 const visibleColumns = computed(() => showExtraColumns.value ? [...baseColumns, ...extraColumns] : baseColumns)
 

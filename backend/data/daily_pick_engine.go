@@ -49,11 +49,15 @@ type DailyPickEngine struct {
 	progressHook func(stage string, done, total int)
 
 	// Pre-fetched data (populated once per RunDailyPick)
-	macroScore        float64               // 0-1 macro environment score
-	industryRankMap   map[string]float64    // industryName → score (0-1)
-	stockIndustryMap  map[string]string     // stockCode → industryName
-	stockConceptMap   map[string]string     // stockCode → raw concept string
-	researchReportMap map[string]int        // stockCode → report count (pre-fetched)
+	macroScore        float64            // 0-1 macro environment score
+	industryRankMap   map[string]float64 // industryName → score (0-1)
+	stockIndustryMap  map[string]string  // stockCode → industryName
+	stockConceptMap   map[string]string  // stockCode → raw concept string
+	researchReportMap map[string]int     // stockCode → report count (pre-fetched)
+
+	// strategyMults 策略自动调权系数（复盘 T+1 成绩驱动，见 daily_pick_weighting.go）。
+	// 每次运行开始时加载一次；空 map = 不调权（系数恒 1.0）。
+	strategyMults map[string]float64
 }
 
 // NewDailyPickEngine creates a new engine instance with default strategies.
@@ -71,6 +75,26 @@ func NewDailyPickEngine() *DailyPickEngine {
 			&IndustryStrengthStrategy{},
 			&ResearchReportStrategy{},
 			&MacroEnvironmentStrategy{},
+
+			// ===== 组合策略（K线技术指标组合预设，默认全启用）=====
+			&ComboClassicStrategy{},
+			&ComboTrendSwingStrategy{},
+			&ComboRangeDipStrategy{},
+			&ComboVolPriceStrategy{},
+			&ComboTTMBreakStrategy{},
+			&ComboIchimokuStrategy{},
+			&ComboAlligatorStrategy{},
+			&ComboElderTripleStrategy{},
+			&ComboSATSStrategy{},
+			&ComboSMCStrategy{},
+
+			// ===== 单指标策略（扩展指标集，默认全启用）=====
+			&ADXTrendStrategy{},
+			&SuperTrendFlipStrategy{},
+			&SARTrendStrategy{},
+			&MFIFlowStrategy{},
+			&OBVDivergenceStrategy{},
+			&DonchianBreakoutStrategy{},
 		},
 	}
 }
@@ -148,6 +172,7 @@ func (e *DailyPickEngine) RunDailyPick(ctx context.Context, tradeDate string, to
 	// expensive per-stock call and are deferred to stage 2 (shortlist only).
 	e.prefetchMacroData()
 	e.prefetchIndustryRankings(ctx)
+	e.strategyMults = e.loadStrategyMultipliers(ctx)
 
 	// Stage 1: baseline scoring from K-line data only (one HTTP request per
 	// stock). researchReportMap stays empty so all stocks get a uniform zero
@@ -413,9 +438,9 @@ func (e *DailyPickEngine) scoreStockTech(ctx context.Context, candidate stockCan
 	apiCode := normalizeCode(candidate.Code)
 
 	// Fetch K-line data via Sina API (scale=240 = daily).
-	// Historical date path (EastMoney K-line) is removed because
-	// EastMoney push API is blocked from this network.
-	klineData := NewStockDataApi().GetKLineData(apiCode, "240", 60)
+	// 120 bars: Ichimoku needs 52, SMC swings ~100, Alligator offsets 8 —
+	// 60 was too thin for the extended indicator set (§指标增强 §7).
+	klineData := NewStockDataApi().GetKLineData(apiCode, "240", 120)
 	if klineData == nil || len(*klineData) < 20 {
 		return pick, nil, fmt.Errorf("insufficient kline data: %d bars", lenPtr(klineData))
 	}
@@ -539,6 +564,7 @@ func (e *DailyPickEngine) scoreStockTech(ctx context.Context, candidate stockCan
 	}
 
 	pick.Score = baselineScore
+	pick.StrategyMult = 1 // 基线胜出时无策略系数；策略胜出后覆写为其实际系数
 	pick.Reason = buildReason(pick)
 	pick.IndustryScore = industryRankScore
 	pick.ResearchScore = float64(researchCount)
@@ -563,12 +589,20 @@ func (e *DailyPickEngine) scoreStockTech(ctx context.Context, candidate stockCan
 				pick.Reason = fmt.Sprintf("%s +%s加分", pick.Reason, s.Name())
 			}
 		default:
-			// Technical strategies compete for highest score (existing behavior)
-			if r.Score > pick.Score {
-				pick.Score = r.Score
+			// Technical strategies compete for highest score (existing behavior).
+			// 自动调权：竞争分 = 策略分 × 复盘成绩系数（无数据时恒 1.0）。
+			mult := e.strategyMultFor(s.Code())
+			adjusted := r.Score * mult
+			if adjusted > pick.Score {
+				pick.Score = adjusted
 				pick.StrategyCode = s.Code()
 				pick.StrategyName = s.Name()
-				pick.Reason = fmt.Sprintf("[%s] %s", s.Name(), r.Signal)
+				pick.StrategyMult = mult
+				if mult != 1 {
+					pick.Reason = fmt.Sprintf("[%s ×%.2f] %s", s.Name(), mult, r.Signal)
+				} else {
+					pick.Reason = fmt.Sprintf("[%s] %s", s.Name(), r.Signal)
+				}
 			}
 		}
 	}
@@ -935,6 +969,7 @@ func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, c
 	// Step 2: Pre-fetch data
 	e.prefetchMacroData()
 	e.prefetchIndustryRankings(ctx)
+	e.strategyMults = e.loadStrategyMultipliers(ctx)
 	e.prefetchResearchData(ctx, candidates)
 
 	// Step 3: Filter strategies by config (use local copy, don't mutate e.strategies)
@@ -1148,4 +1183,3 @@ func (e *DailyPickEngine) lookupIndustryRankScore(industryName string) float64 {
 	}
 	return 0
 }
-

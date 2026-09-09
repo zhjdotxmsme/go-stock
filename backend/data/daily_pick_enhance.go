@@ -43,15 +43,20 @@ type PickEnhanceConfig struct {
 	// 但保留在结果中（不改变现有输出数量）；true = 从结果中剔除高风险股票。
 	RiskExcludeEnabled bool `json:"riskExcludeEnabled"`
 
+	// EnableAutoWeights 策略自动调权（默认开）：按复盘 T+1 口径历史成绩为各策略
+	// 生成竞争系数（限幅 [0.6,1.5]，成熟样本<10 不调权），见 daily_pick_weighting.go。
+	// 无复盘数据时全部为 1.0，等价于不调权。
+	EnableAutoWeights bool `json:"enableAutoWeights"`
+
 	// LLMRankMaxCandidates 送入 LLM 排序的候选上限（按 ScreenScore 取前 N，默认 30）。
 	// LLM 调用次数与候选数无关：每模型最多 1+MaxRetries 次。
 	LLMRankMaxCandidates int `json:"llmRankMaxCandidates"`
 
-	Filter      filter.HardFilterConfig       `json:"filter"`
-	Scorer      scoring.ScorerConfig          `json:"scorer"`
-	RiskProfile risk.RiskProfile              `json:"riskProfile"`
-	Ranker      ranking.RankerConfig          `json:"ranker"`
-	Scorecard   postanalysis.ScorecardConfig  `json:"scorecard"`
+	Filter      filter.HardFilterConfig      `json:"filter"`
+	Scorer      scoring.ScorerConfig         `json:"scorer"`
+	RiskProfile risk.RiskProfile             `json:"riskProfile"`
+	Ranker      ranking.RankerConfig         `json:"ranker"`
+	Scorecard   postanalysis.ScorecardConfig `json:"scorecard"`
 	// RemoteAnalyzerURL 远程分析器地址（默认空 = 不启用远程分析）。
 	RemoteAnalyzerURL string `json:"remoteAnalyzerUrl,omitempty"`
 
@@ -88,6 +93,7 @@ func DefaultPickEnhanceConfig() PickEnhanceConfig {
 		EnablePostAnalysis:     true,
 		ApplyPostAnalysisDelta: true,
 		EnableRotation:         false,
+		EnableAutoWeights:      true,
 		LLMRankMaxCandidates:   30,
 		Filter:                 fc,
 		Scorer: scoring.ScorerConfig{Weights: map[string]float64{
@@ -286,8 +292,8 @@ func applyRiskOverlay(pick *models.DailyPick, overlay *risk.RiskOverlay) {
 		MACDState:      risk.MACDState(pick.MacdStatus),
 		RSIState:       risk.RSIState(pick.RsiStatus),
 		// D2 排序先于风控执行（DSA 顺序），LLM 风险标记参与扣分
-		LLMRiskFlags:    parseJSONStringArray(pick.LlmRiskFlags),
-		LLMConfidence:   pick.LlmConfidence,
+		LLMRiskFlags:     parseJSONStringArray(pick.LlmRiskFlags),
+		LLMConfidence:    pick.LlmConfidence,
 		HasLLMConfidence: pick.LlmConfidence > 0,
 	}
 	result := overlay.Evaluate(input)

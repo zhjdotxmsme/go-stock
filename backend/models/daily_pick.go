@@ -64,10 +64,18 @@ type DailyPick struct {
 	NextHigh        float64 `json:"nextHigh"`
 	NextLow         float64 `json:"nextLow"`
 	NextClose       float64 `json:"nextClose"`
-	NextReturn      float64 `json:"nextReturn"`                          // 次日收益率（开盘买入→收盘卖出）
+	NextReturn      float64 `json:"nextReturn"`                          // 次日收益率（开盘买入→收盘卖出，代理口径）
 	NextMaxReturn   float64 `json:"nextMaxReturn"`                       // 次日最大收益率
 	NextMaxDrawdown float64 `json:"nextMaxDrawdown"`                     // 次日最大回撤
 	Reviewed        bool    `json:"reviewed" gorm:"default:false;index"` // 是否已复盘
+
+	// 多窗口复盘（0=未回填；口径均为 %，基准=推荐日收盘价）
+	NextReturnT1 float64 `json:"nextReturnT1"` // T+1 可执行口径：次日收盘/当日收盘-1（尾盘买入，T+1 收盘卖出）
+	Return3D     float64 `json:"return3d"`     // 3 日持有：第3个交易日收盘/当日收盘-1
+	Return5D     float64 `json:"return5d"`     // 5 日持有：第5个交易日收盘/当日收盘-1
+
+	// 选股时应用的策略调权系数（§自动调权审计字段，1=未调权）
+	StrategyMult float64 `json:"strategyMult"`
 
 	// ===== D12 扩展：选股→排名→风控→后分析生命周期（方案 §8.1 D12，纯新增）=====
 
