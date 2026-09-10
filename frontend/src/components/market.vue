@@ -819,7 +819,7 @@ function ReFlesh(source) {
     </template>
   </n-modal>
 
-  <div style="position: fixed;bottom: 18px;right:25px;z-index: 10;" v-if="summaryBTN">
+  <div style="position: fixed;bottom: calc(var(--app-bottombar-h, 68px) + 14px);right:25px;z-index: 10;" v-if="summaryBTN">
     <n-input-group>
       <n-button type="primary" @click="getAiSummary">
         <n-icon :component="PulseOutline"/> &nbsp;AI总结

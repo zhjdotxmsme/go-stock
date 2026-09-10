@@ -24,6 +24,7 @@ import {Add,} from '@vicons/ionicons5'
 
 import {keys, padStart} from "lodash";
 import {useRoute, useRouter} from 'vue-router'
+import {resolveFollowCode} from "../utils/stockCode";
 import MoneyTrend from "./moneyTrend.vue";
 import StockNews from "./StockNews.vue";
 import StockSparkLine from "./stockSparkLine.vue";
@@ -86,6 +87,7 @@ const currentStockTradingPrice = ref({
 })
 const klineAutoCloseTimer = ref(null)
 const addBTN = ref(true)
+const addingStock = ref(false)
 const enableTools = ref(true)
 const thinkingMode = ref(true)
 const formModel = ref({
@@ -317,29 +319,44 @@ function fetchGroupList() {
 }
 
 function AddStock() {
-  if (!data?.code) {
-    message.error("请输入有效股票代码");
-    return;
+  // 后端只认 sh/sz/bj/hk/us 前缀格式，这里先归一化；失败则明确提示而不是静默无响应
+  const code = resolveFollowCode(data.code || data.name)
+  if (!code) {
+    message.warning('请从下拉列表中选择一只股票，或直接输入 6 位股票代码')
+    return
   }
-  if (!stocks.value.includes(data.code)) {
-    stockApi.follow(data.code).then(({data: result}) => {
-      if (result === "关注成功") {
-        if (data.code.startsWith("us")) {
-          data.code = "gb_" + data.code.replace("us", "").toLowerCase()
-        }
-        stocks.value.push(data.code)
-        message.success(result)
-        stockApi.getFollowList(currentGroupId.value).then(({data}) => {
-          followList.value = data
-        })
-        monitor();
-      } else {
-        message.error(result)
-      }
-    })
-  } else {
-    message.error("已经关注了")
+  if (stocks.value.includes(code)) {
+    message.error('已经关注了')
+    return
   }
+  addingStock.value = true
+  stockApi.follow(code).then(({data: result, error}) => {
+    addingStock.value = false
+    if (error || result === null || result === undefined) {
+      message.error('关注失败：' + (error?.message || '服务无响应，请查看 logs/error.log'))
+      return
+    }
+    if (result !== '关注成功') {
+      message.error(result)
+      return
+    }
+    data.code = code
+    // 监控列表沿用美股 gb_xxx 写法（与 onMounted 的加载逻辑保持一致）
+    const monitorCode = code.startsWith('us') ? 'gb_' + code.slice(2).toLowerCase() : code
+    if (!stocks.value.includes(monitorCode)) {
+      stocks.value.push(monitorCode)
+    }
+    message.success(result)
+    refreshFollowList()
+    monitor()
+  })
+}
+
+/** 重新拉取当前分组的自选列表 */
+function refreshFollowList() {
+  stockApi.getFollowList(currentGroupId.value).then(({data: list}) => {
+    followList.value = list || []
+  })
 }
 
 
@@ -360,19 +377,20 @@ function removeMonitor(code, name, key) {
 
 
 function getStockList(value) {
-
-
   // //console.log("getStockList",value)
-  let result;
-  result = stockList.value.filter(item => item.name.includes(value) || item.ts_code.includes(value))
+  const result = stockList.value.filter(item => item.name.includes(value) || item.ts_code.includes(value))
   options.value = result.map(item => {
     return {
       label: item.name + " - " + item.ts_code,
       value: item.ts_code
     }
   })
-  if (value && value.indexOf("-") <= 0) {
-    data.code = value
+
+  // 只有能被识别为股票代码的输入才覆盖 data.code；
+  // 输入中文名称时保留上一次的有效选中，避免把「格力」这种文本当成代码去关注。
+  const resolved = resolveFollowCode(value)
+  if (resolved) {
+    data.code = resolved
   }
 
   //console.log("getStockList-options",data.code)
@@ -384,8 +402,6 @@ function getStockList(value) {
     }
     blinkBorder(findId)
   }
-
-
 }
 
 function blinkBorder(findId) {
@@ -478,16 +494,13 @@ function GetSortKey(sort, code) {
   return padStart(sort, 8, '0') + "_" + code
 }
 
+/** 下拉列表选中回调：把 ts_code 归一化成后端 Follow 认可的格式 */
 function onSelect(item) {
   ////console.log("onSelect",item)
-
-  if (item.indexOf("-") > 0) {
-    item = item.split("-")[1].toLowerCase()
+  const code = resolveFollowCode(item)
+  if (code) {
+    data.code = code
   }
-  if (item.indexOf(".") > 0) {
-    data.code = item.split(".")[1].toLowerCase() + item.split(".")[0]
-  }
-
 }
 
 function openCenteredWindow(url, width, height) {
@@ -928,7 +941,8 @@ window.onerror = function (msg, source, lineno, colno, error) {
 </script>
 
 <template>
-  <n-tabs type="card" style="--wails-draggable:no-drag" animated addable :data-currentGroupId="currentGroupId"
+  <div class="stock-page">
+  <n-tabs type="card" class="stock-group-tabs" style="--wails-draggable:no-drag" animated addable :data-currentGroupId="currentGroupId"
           :value="String(currentGroupId)" @add="addTab" @update:value="updateTab" placement="top" @close="(key)=>{delTab(key)}">
 
     <n-tab-pane closable name="0" :tab="'全部'">
@@ -1244,29 +1258,32 @@ window.onerror = function (msg, source, lineno, colno, error) {
     </n-tab-pane>
   </n-tabs>
 
-  <div style="position: fixed;bottom: 18px;right:5px;z-index: 10;width: 400px">
-    <!--    <n-card :bordered="false">-->
+  <!--
+    快速关注：移到分组标签同一行（右上角），不再浮在窗口底部。
+    旧实现是 position:fixed;bottom:18px;z-index:10，与底部菜单栏
+    （position:fixed;bottom:0;z-index:9）完全重叠：既互相遮挡，加载态下
+    点击还会穿透到菜单栏上，导致「点了关注没反应」。
+  -->
+  <div class="stock-quickadd">
     <n-input-group>
-      <!--        <n-button  type="error" @click="addBTN=!addBTN" > <n-icon :component="Search"/>&nbsp;<n-text  v-if="addBTN">隐藏</n-text></n-button>-->
-
       <n-auto-complete v-model:value="data.name" v-if="addBTN"
                        :input-props="{
                                 autocomplete: 'disabled',
                               }"
                        :options="options"
-                       placeholder="股票指数名称/代码"
+                       placeholder="股票名称/代码"
                        clearable @update-value="getStockList" :on-select="onSelect"/>
 
       <n-popover trigger="manual" :show="showPopover">
         <template #trigger>
-          <n-button type="primary" @click="AddStock" v-if="addBTN">
+          <n-button type="primary" :loading="addingStock" :disabled="addingStock" @click="AddStock" v-if="addBTN">
             <n-icon :component="Add"/> &nbsp;关注
           </n-button>
         </template>
         <span>输入股票名称/代码关键词开始吧~~~</span>
       </n-popover>
     </n-input-group>
-    <!--    </n-card>-->
+  </div>
   </div>
   <StockCostModal v-model:show="modalShow" :form-model="formModel" @save="updateCostPriceAndVolumeNew"/>
 
@@ -1357,6 +1374,26 @@ window.onerror = function (msg, source, lineno, colno, error) {
 </template>
 
 <style scoped>
+/* ===== 页面外壳：让「快速关注」贴在分组标签同一行 ===== */
+.stock-page {
+  position: relative;
+}
+
+.stock-page :deep(.n-tabs-nav) {
+  /* 给右上角的快速关注框留出位置，避免标签过多时被压住 */
+  padding-right: 430px;
+  --wails-draggable: no-drag;
+}
+
+.stock-quickadd {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  z-index: 5;
+  width: 420px;
+  --wails-draggable: no-drag;
+}
+
 /* 添加闪烁效果的CSS类 */
 .blink-border {
   animation: blink-border 1s linear infinite;

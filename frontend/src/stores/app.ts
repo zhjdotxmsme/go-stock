@@ -29,12 +29,18 @@ export interface AppState {
   currentMotto: string
 }
 
+/** 加载态看门狗超时时间：超过该时长未收到 done 事件则强制解除加载态 */
+const LOADING_TIMEOUT_MS = 30000
+
 export const useAppStore = defineStore('app', () => {
   // ========== 状态 ==========
 
   /** 加载状态 */
   const loading = ref<boolean>(true)
   const loadingMsg = ref<string>('加载数据中...')
+
+  /** 加载态看门狗定时器（模块内闭包持有，不进响应式状态） */
+  let loadingWatchdog: ReturnType<typeof setTimeout> | null = null
 
   /** 启用功能 */
   const enableNews = ref<boolean>(false)
@@ -94,6 +100,10 @@ export const useAppStore = defineStore('app', () => {
 
   /**
    * 设置加载状态
+   *
+   * 兜底：loading 只应由后端「loadingMsg: done」清除，一旦 done 事件丢失或
+   * 事件竞态（"检查A股基础信息..." 晚于 "done" 到达），界面会永久停留在
+   * 加载态，全部交互失效。这里为每次进入加载态挂一个看门狗，超时强制解除。
    */
   function setLoading(value: boolean, message: string | null = null): void {
     loading.value = value
@@ -105,6 +115,24 @@ export const useAppStore = defineStore('app', () => {
         loadingMsg.value = message
       }
     }
+    armLoadingWatchdog()
+  }
+
+  /** 进入加载态时启动看门狗，解除时清理 */
+  function armLoadingWatchdog(): void {
+    if (loadingWatchdog) {
+      clearTimeout(loadingWatchdog)
+      loadingWatchdog = null
+    }
+    if (!loading.value) return
+    loadingWatchdog = setTimeout(() => {
+      loadingWatchdog = null
+      if (loading.value) {
+        console.warn('[app] loading 超时未收到 done 事件，已强制解除加载态')
+        loading.value = false
+        loadingMsg.value = '加载完成...'
+      }
+    }, LOADING_TIMEOUT_MS)
   }
 
   /**

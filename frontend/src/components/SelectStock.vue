@@ -9,6 +9,7 @@ import {Environment} from "../../wailsjs/runtime"
 import {BookmarkOutline, TrashOutline, CreateOutline, AddOutline, FlashOutline, TrendingUpOutline, TrendingDownOutline, GitBranchOutline} from "@vicons/ionicons5";
 import {EventsEmit} from "../../wailsjs/runtime";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
+import {resolveRowFollowCode} from "../utils/stockCode";
 
 interface ComboIndicator {
   name: string
@@ -270,6 +271,8 @@ async function Search() {
                 size: 'small',
                 type: 'warning',
                 style: 'font-size: 14px; padding: 0 10px;',
+                loading: followingCodes.value.has(row.SECURITY_CODE || row.stockCode),
+                disabled: followingCodes.value.has(row.SECURITY_CODE || row.stockCode),
                 onClick: () => handleFollow(row)
               },
               {default: () => '关注'}
@@ -318,15 +321,42 @@ function showStockKline(row) {
   if (klineAutoCloseTimer) clearTimeout(klineAutoCloseTimer)
 }
 
+/**
+ * 归一化「市场简称 + 代码」或「ts_code / 纯代码」为后端 Follow 认可的内部格式。
+ * 关键点：MARKET_SHORT_NAME 在 AI 配置选股结果里并不存在（displayAIPickResult
+ * 只写 SECURITY_CODE / SECURITY_SHORT_NAME），旧实现直接
+ * row.MARKET_SHORT_NAME.toLowerCase() 会抛 TypeError —— 在 .then 之外抛出，
+ * 连错误提示都没有，表现就是「点了关注完全没反应」。
+ * 具体规则见 utils/stockCode.js。
+ */
+const resolveRowCode = resolveRowFollowCode
+
+const followingCodes = ref(new Set())
+
 function handleFollow(row) {
-  let code = row.MARKET_SHORT_NAME.toLowerCase() + row.SECURITY_CODE
-  stockApi.follow(code).then(({data: result}) => {
-    if (result === "关注成功") {
-      message.success(result)
-    } else {
-      message.error(result)
+  const code = resolveRowCode(row)
+  if (!code) {
+    message.warning('无法识别该股票代码，暂不支持关注')
+    return
+  }
+  const name = row?.SECURITY_SHORT_NAME || row?.stockName || code
+  const next = new Set(followingCodes.value)
+  next.add((row?.SECURITY_CODE || code))
+  followingCodes.value = next
+  stockApi.follow(code).then(({data: result, error}) => {
+    const done = new Set(followingCodes.value)
+    done.delete(row?.SECURITY_CODE || code)
+    followingCodes.value = done
+    if (error || result === null || result === undefined) {
+      message.error(`关注 ${name} 失败：` + (error?.message || '服务无响应'))
+      return
     }
-  });
+    if (result === "关注成功") {
+      message.success(`${name} ${result}`)
+    } else {
+      message.error(`${name} ${result}`)
+    }
+  })
 }
 
 async function batchFollow() {
@@ -338,25 +368,36 @@ async function batchFollow() {
   batchFollowing.value = true
   let success = 0
   let fail = 0
+  const failedNames = []
   for (let i = 0; i < stocks.length; i++) {
     const row = stocks[i]
-    const code = (row.SECURITY_CODE || row.stockCode)
-    const market = (row.MARKET_SHORT_NAME || 'SZ').toLowerCase()
-    batchFollowProgress.value = `正在关注 (${i+1}/${stocks.length}): ${row.SECURITY_SHORT_NAME || row.stockName}`
+    const name = row.SECURITY_SHORT_NAME || row.stockName || row.SECURITY_CODE
+    batchFollowProgress.value = `正在关注 (${i+1}/${stocks.length}): ${name}`
+    const code = resolveRowCode(row)
+    if (!code) {
+      fail++
+      failedNames.push(name)
+      continue
+    }
     try {
-      const result = (await stockApi.follow(market + code)).data
-      if (result === "关注成功") {
+      const { data: result, error } = await stockApi.follow(code)
+      if (!error && result === "关注成功") {
         success++
       } else {
         fail++
+        failedNames.push(name)
       }
     } catch {
       fail++
+      failedNames.push(name)
     }
   }
   batchFollowing.value = false
   batchFollowProgress.value = ''
   message.success(`批量关注完成：成功 ${success} 只，失败 ${fail} 只`)
+  if (failedNames.length > 0) {
+    message.warning('未成功：' + failedNames.slice(0, 10).join('、') + (failedNames.length > 10 ? ' 等' : ''))
+  }
 }
 
 function onComboClick(combo: StrategyCombo) {

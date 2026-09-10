@@ -167,14 +167,14 @@ export function useNavigation(): UseNavigationReturn {
 
   /**
    * 加载动态群组菜单
-   * 从 GetGroupList 获取用户自定义群组，注入到 stock 菜单的 children 中
+   * 从 GetGroupList 获取用户自定义群组，插入到「自选股」分组中「全部」之后
    */
   async function loadDynamicMenus(): Promise<void> {
     try {
       const groupList = await GetGroupList()
       stockStore.setGroupList(groupList)
 
-      // 动态注入群组子菜单到 stock 菜单
+      // 动态注入群组子菜单到 stock 分组
       menuOptions.value.forEach((item: any) => {
         if (item.key === 'stock') {
           const dynamicChildren = groupList.map((group: any) => ({
@@ -208,7 +208,10 @@ export function useNavigation(): UseNavigationReturn {
               ),
             key: group.ID,
           }))
-          item.children.push(...dynamicChildren)
+          // 「全部」固定在首位，群组插在它之后；重复调用时按 key 去重（幂等）
+          const dynamicKeys = new Set(dynamicChildren.map((c: any) => c.key))
+          const children = (item.children || []).filter((c: any) => !dynamicKeys.has(c.key))
+          item.children = [children[0], ...dynamicChildren, ...children.slice(1)].filter(Boolean)
         }
       })
     } catch (err) {
@@ -221,16 +224,21 @@ export function useNavigation(): UseNavigationReturn {
    * @param {Object} config - GetConfig 返回的配置对象
    */
   function applyConfigVisibility(config: any): void {
+    const agentEnabled = config.enableAgent ?? true
+    const fundEnabled = !!config.enableFund
     menuOptions.value.forEach((item: any) => {
-      if (item.key === 'fund') {
-        item.show = config.enableFund
+      if (item.key === 'agentChat' || item.key === 'systemSkills') {
+        item.show = agentEnabled
       }
-      if (item.key === 'agent') {
-        item.show = config.enableAgent
-      }
-      // 技能管理菜单由配置控制显隐
-      if (item.key === 'systemSkills') {
-        item.show = config.enableAgent ?? true
+      if (Array.isArray(item.children)) {
+        item.children.forEach((child: any) => {
+          if (child.key === 'fundFollow' || child.key === 'fundRanking') {
+            child.show = fundEnabled
+          }
+          if (child.key === 'agentChat' || child.key === 'systemSkills') {
+            child.show = agentEnabled
+          }
+        })
       }
     })
   }

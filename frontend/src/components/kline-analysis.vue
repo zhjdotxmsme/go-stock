@@ -234,7 +234,7 @@ function goBack() {
 }
 .kline-search-bar {
   position: fixed;
-  bottom: 18px;
+  bottom: calc(var(--app-bottombar-h, 68px) + 14px);
   right: 12px;
   z-index: 10;
   width: 320px;

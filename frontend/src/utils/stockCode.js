@@ -210,6 +210,55 @@ export function getPureCode(code) {
   return normalized.substring(2)
 }
 
+/** 市场简称 → 内部前缀 */
+const MARKET_PREFIX = { SH: 'sh', SZ: 'sz', BJ: 'bj', HK: 'hk', US: 'us' }
+
+/**
+ * 归一化成「后端 Follow 能识别的内部格式」，识别不出来时返回空字符串。
+ *
+ * 后端 data.StockDataApi.Follow 只接受 shXXXXXX / szXXXXXX / bjXXXXXX /
+ * hkXXXXX / usXXXX 形式；实测传入裸代码或中文名会直接返回「关注失败」。
+ * 因此调用前必须做一次严格校验，而不是把用户输入原样发出去。
+ *
+ * @param {*} raw - 任意用户输入 / 选股结果字段
+ * @returns {string} sh600519 / sz000001 / hk00700 / usAAPL，无法识别返回 ''
+ */
+export function resolveFollowCode(raw) {
+  if (raw === null || raw === undefined) return ''
+  let text = String(raw).trim()
+  if (!text) return ''
+  // 「名称 - ts_code」形态取横线之后的代码段
+  if (text.indexOf('-') > 0) text = text.split('-').pop().trim()
+  const normalized = normalizeStockCode(text)
+  if (/^(sh|sz|bj)\d{6}$/.test(normalized)) return normalized
+  if (/^hk\d{3,6}$/.test(normalized)) return normalized
+  if (/^us[A-Za-z0-9]{1,10}$/.test(normalized)) return normalized
+  return ''
+}
+
+/**
+ * 从行情/选股结果行里提取可关注代码。
+ *
+ * 注意：AI 配置选股结果行只有 SECURITY_CODE / SECURITY_SHORT_NAME，
+ * 没有 MARKET_SHORT_NAME。旧实现直接 row.MARKET_SHORT_NAME.toLowerCase()
+ * 会抛 TypeError（在 Promise 链外抛出，连错误提示都没有）。
+ *
+ * @param {Object} row - 含 SECURITY_CODE / MARKET_SHORT_NAME 等字段的行
+ * @returns {string} 内部格式代码，无法识别返回 ''
+ */
+export function resolveRowFollowCode(row) {
+  if (!row) return ''
+  const rawCode = String(row.SECURITY_CODE || row.stockCode || row.code || '').trim()
+  if (!rawCode) return ''
+  // 已经是 ts_code 形态（600519.SH / 00700.HK / AAPL.US）
+  if (/\.[A-Za-z]{2}$/.test(rawCode)) return resolveFollowCode(rawCode)
+  const market = String(row.MARKET_SHORT_NAME || row.market || '').trim().toUpperCase()
+  const prefix = MARKET_PREFIX[market]
+  if (prefix) return resolveFollowCode(prefix + rawCode)
+  // 市场字段缺失或为 SSE/SZSE 之类：交给代码首位推断
+  return resolveFollowCode(rawCode)
+}
+
 // --- Internal helpers ---
 
 /**
