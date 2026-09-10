@@ -64,7 +64,11 @@ func handleGetMarketData(o *OpenAi, funcArguments string, ctx *ToolContext) erro
 
 	content.WriteString("\r\n### 其他统计\r\n\r\n")
 	content.WriteString(fmt.Sprintf("- 平盘家数: %d\r\n", dis.FlatCount))
-	content.WriteString(fmt.Sprintf("- 数据来源: 东方财富\r\n"))
+	source := snap.Source
+	if source == "" {
+		source = "东方财富"
+	}
+	content.WriteString(fmt.Sprintf("- 数据来源: %s\r\n", source))
 
 	// 3. 今日申购（暂不可用，东方财富数据源不提供此格式）
 	content.WriteString("\r\n## 今日申购\r\n\r\n")

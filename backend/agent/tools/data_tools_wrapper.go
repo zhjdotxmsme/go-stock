@@ -5017,7 +5017,11 @@ func getMarketDataContent() (string, error) {
 
 	content.WriteString("\r\n### 其他统计\r\n\r\n")
 	content.WriteString(fmt.Sprintf("- 平盘家数: %d\r\n", dis.FlatCount))
-	content.WriteString(fmt.Sprintf("- 数据来源: 东方财富\r\n"))
+	source := snap.Source
+	if source == "" {
+		source = "东方财富"
+	}
+	content.WriteString(fmt.Sprintf("- 数据来源: %s\r\n", source))
 
 	content.WriteString("\r\n## 今日申购\r\n\r\n")
 	content.WriteString("今日申购数据暂不可用（数据源迁移至东方财富）\r\n")

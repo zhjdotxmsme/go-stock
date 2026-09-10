@@ -58,6 +58,7 @@ type emClistItem struct {
 type EMMarketSnapshot struct {
 	IndexQuotes []EMIndexQuote
 	UpDownDis   EMUpDownDis
+	Source      string // 数据来源说明（东财/降级源），用于展示
 }
 
 type EMIndexQuote struct {
@@ -90,9 +91,25 @@ type EMUpDownDis struct {
 	Down10      int     // -8%~-10%
 }
 
-// FetchMarketSnapshot fetches real-time market overview from EastMoney.
+// FetchMarketSnapshot fetches real-time market overview.
+// 优先东方财富；东财接口不可用（部分网络环境会被重置连接）时自动降级到
+// 腾讯（指数报价）+ 新浪（全市场涨跌幅统计），保证工具始终有数据可用。
 func FetchMarketSnapshot() (*EMMarketSnapshot, error) {
-	snap := &EMMarketSnapshot{}
+	snap, err := fetchMarketSnapshotFromEastMoney()
+	if err == nil {
+		return snap, nil
+	}
+	logger.SugaredLogger.Warnf("东方财富市场快照失败(%v)，降级到腾讯+新浪数据源", err)
+	fallbackSnap, fbErr := fetchMarketSnapshotFallback()
+	if fbErr != nil {
+		return nil, fmt.Errorf("eastmoney: %v; fallback: %w", err, fbErr)
+	}
+	return fallbackSnap, nil
+}
+
+// fetchMarketSnapshotFromEastMoney fetches real-time market overview from EastMoney.
+func fetchMarketSnapshotFromEastMoney() (*EMMarketSnapshot, error) {
+	snap := &EMMarketSnapshot{Source: "东方财富"}
 
 	// 1) Index quotes + per-exchange breadth (SH=000001, SZ=399001)
 	ulistURL := "https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f2,f3,f4,f12,f14,f104,f105,f106&secids=1.000001,0.399001"

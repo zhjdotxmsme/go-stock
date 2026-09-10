@@ -2,12 +2,14 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go-stock/backend/agent/tools"
 	"go-stock/backend/data"
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"io"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -143,20 +145,44 @@ func createReactAgent(ctx context.Context, chatModel model.ToolCallingChatModel,
 		ToolsConfig:      aiTools,
 		MaxStep:          maxStep,
 		MessageRewriter: func(ctx context.Context, input []*schema.Message) []*schema.Message {
+			// MessageRewriter 在每一轮模型调用前触发，借此记录调用起点，
+			// 配合 StreamToolCallChecker 的首 chunk/结束日志定位"卡在哪一轮"。
+			logger.SugaredLogger.Infof("LLM 调用开始: messages=%d", len(input))
 			maxTokens := getMaxInputTokens(aiConfig.MaxTokens)
 			return compressMessages(input, maxTokens)
 		},
 		StreamToolCallChecker: func(ctx context.Context, modelOutput *schema.StreamReader[*schema.Message]) (bool, error) {
+			// eino 契约：handler 返回前必须 Close 流。
+			defer modelOutput.Close()
+
+			roundStart := time.Now()
+			chunkCount := 0
+			firstChunkLogged := false
 			hasToolCall := false
 			for {
 				msg, err := modelOutput.Recv()
 				if err != nil {
-					break
+					if errors.Is(err, io.EOF) {
+						break
+					}
+					// 如实上报流错误（中断/超时/API 错误），而不是伪装成
+					// "无工具调用"让 Agent 静默地产出空答案（旧行为会把
+					// context.Canceled 吞掉，前端只能看到"没有任何结果"）。
+					logger.SugaredLogger.Errorf("模型流读取失败: %v (chunks=%d, 本轮耗时=%s)",
+						err, chunkCount, time.Since(roundStart).Round(time.Millisecond))
+					return hasToolCall, fmt.Errorf("模型流读取失败: %w", err)
+				}
+				chunkCount++
+				if !firstChunkLogged {
+					firstChunkLogged = true
+					logger.SugaredLogger.Infof("LLM 首 chunk 到达: 等待=%s", time.Since(roundStart).Round(time.Millisecond))
 				}
 				if len(msg.ToolCalls) > 0 {
 					hasToolCall = true
 				}
 			}
+			logger.SugaredLogger.Infof("LLM 本轮结束: chunks=%d toolCall=%v 耗时=%s",
+				chunkCount, hasToolCall, time.Since(roundStart).Round(time.Millisecond))
 			return hasToolCall, nil
 		},
 	})

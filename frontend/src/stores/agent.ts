@@ -26,7 +26,7 @@ import {
 import { loadPrefs, savePrefs } from '../components/agent/agentPrefs.js'
 
 /** 流式无响应看门狗：超过该时长没有收到任何 chunk 即判定超时 */
-const STREAM_TIMEOUT_MS = 120000
+const STREAM_TIMEOUT_MS = 300000
 
 /** 默认系统提示词为空时的兜底会话数 */
 const MEMORY_COUNT_OPTIONS = [
