@@ -1,6 +1,7 @@
 /**
  * AI 内容的复制/社区分享/导出图片（自 FloatingAgentAssistant.vue 原样搬迁）。
  * messages/darkTheme 经 ctx 传入（ref 共享引用）。
+ * tipVisible/tipText 可选注入：由 stores/agent.ts 持有，使 abortStream 等动作能复用同一提示条。
  */
 import { ref, nextTick } from 'vue'
 import { useMessage } from 'naive-ui'
@@ -9,13 +10,13 @@ import * as systemApi from '../../api/system'
 import * as stockApi from '../../api/stock'
 
 export function useShareExport(ctx) {
-  const { messages, darkTheme } = ctx
+  const { messages, darkTheme, tipVisible, tipText } = ctx
   const message = useMessage()
 
   const shareLoading = ref(false)
   const exportImageKey = ref('')
-  const shareTipVisible = ref(false)
-  const shareTipText = ref('')
+  const shareTipVisible = tipVisible ?? ref(false)
+  const shareTipText = tipText ?? ref('')
 
   async function copyAiContent(msg) {
     const text = (msg?.content ?? '').trim()

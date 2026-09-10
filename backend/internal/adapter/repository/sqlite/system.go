@@ -15,6 +15,12 @@ import (
 // maxSavedMessages 与原 data 层一致。
 const maxSavedMessages = 65535 * 10000
 
+// maxSessionTitleRunes 会话标题最大字数（按 rune 计，避免截断中文）。
+const maxSessionTitleRunes = 30
+
+// defaultSessionListLimit 会话列表默认返回上限。
+const defaultSessionListLimit = 50
+
 // SystemRepository implements repository.SystemRepository.
 // 查询条件/分页默认值/排序/错误语义逐项复刻原 data/agent 层实现。
 type SystemRepository struct{}
@@ -340,12 +346,86 @@ func (r *SystemRepository) SaveAiAssistantSession(ctx context.Context, sessionId
 	var existing system.AiAssistantSession
 	err = db.Dao.Model(&system.AiAssistantSession{}).Where("session_id = ?", sessionId).First(&existing).Error
 	if err == nil {
-		return db.Dao.Model(&system.AiAssistantSession{}).Where("session_id = ?", sessionId).Updates(map[string]interface{}{
+		updates := map[string]interface{}{
 			"messages":   payload,
 			"updated_at": time.Now(),
-		}).Error
+		}
+		// 标题只在首次（或原先为空）时派生，避免每次保存覆盖已有标题
+		if strings.TrimSpace(existing.Title) == "" {
+			updates["title"] = deriveSessionTitle(toSave)
+		}
+		return db.Dao.Model(&system.AiAssistantSession{}).Where("session_id = ?", sessionId).Updates(updates).Error
 	}
-	return db.Dao.Create(&system.AiAssistantSession{SessionId: sessionId, Messages: payload}).Error
+	return db.Dao.Create(&system.AiAssistantSession{
+		SessionId: sessionId,
+		Title:     deriveSessionTitle(toSave),
+		Messages:  payload,
+	}).Error
+}
+
+// deriveSessionTitle 从消息列表派生会话标题：取首条 user 消息，按 rune 截断到 30 字。
+// 没有 user 消息（仅有欢迎语）时返回「新对话」。
+func deriveSessionTitle(messages []system.AiAssistantMessage) string {
+	for i := range messages {
+		if messages[i].Role != "user" {
+			continue
+		}
+		title := strings.TrimSpace(messages[i].Content)
+		if title == "" {
+			continue
+		}
+		runes := []rune(title)
+		if len(runes) > maxSessionTitleRunes {
+			return string(runes[:maxSessionTitleRunes]) + "…"
+		}
+		return string(runes)
+	}
+	return "新对话"
+}
+
+func (r *SystemRepository) ListAiAssistantSessions(ctx context.Context, limit int) ([]system.AiAssistantSessionSummary, error) {
+	if limit <= 0 {
+		limit = defaultSessionListLimit
+	}
+	var rows []system.AiAssistantSession
+	if err := db.Dao.Model(&system.AiAssistantSession{}).Order("updated_at DESC").Limit(limit).Find(&rows).Error; err != nil {
+		return []system.AiAssistantSessionSummary{}, nil
+	}
+	out := make([]system.AiAssistantSessionSummary, 0, len(rows))
+	for i := range rows {
+		msgs := decodeSavedMessages(rows[i].Messages)
+		title := strings.TrimSpace(rows[i].Title)
+		if title == "" {
+			// 兼容 title 列引入之前保存的旧会话：读时派生，无需数据回填
+			title = deriveSessionTitle(msgs)
+		}
+		out = append(out, system.AiAssistantSessionSummary{
+			SessionId:    rows[i].SessionId,
+			Title:        title,
+			UpdatedAt:    rows[i].UpdatedAt,
+			MessageCount: len(msgs),
+		})
+	}
+	return out, nil
+}
+
+func (r *SystemRepository) DeleteAiAssistantSession(ctx context.Context, sessionId string) error {
+	if strings.TrimSpace(sessionId) == "" {
+		return nil
+	}
+	return db.Dao.Where("session_id = ?", sessionId).Delete(&system.AiAssistantSession{}).Error
+}
+
+// decodeSavedMessages 反序列化已存消息；JSON 损坏时返回空切片（列表不应因此报错）。
+func decodeSavedMessages(raw string) []system.AiAssistantMessage {
+	if raw == "" {
+		return []system.AiAssistantMessage{}
+	}
+	var list []system.AiAssistantMessage
+	if err := json.Unmarshal([]byte(raw), &list); err != nil {
+		return []system.AiAssistantMessage{}
+	}
+	return list
 }
 
 // ---------------------------------------------------------------------------
@@ -626,14 +706,16 @@ func AiAssistantMessagesToDomain(list []models.AiAssistantMessage) []system.AiAs
 	for i := range list {
 		m := &list[i]
 		out = append(out, system.AiAssistantMessage{
-			Role:        m.Role,
-			Content:     m.Content,
-			Reasoning:   m.Reasoning,
-			Time:        m.Time,
-			ModelName:   m.ModelName,
-			ToolCalls:   m.ToolCalls,
-			ToolResults: m.ToolResults,
-			Timeline:    m.Timeline,
+			Role:         m.Role,
+			Content:      m.Content,
+			Reasoning:    m.Reasoning,
+			Time:         m.Time,
+			ModelName:    m.ModelName,
+			Steps:        m.Steps,
+			JsonMarkdown: m.JsonMarkdown,
+			ToolCalls:    m.ToolCalls,
+			ToolResults:  m.ToolResults,
+			Timeline:     m.Timeline,
 		})
 	}
 	return out
@@ -645,14 +727,30 @@ func AiAssistantMessagesFromDomain(list []system.AiAssistantMessage) []models.Ai
 	for i := range list {
 		m := &list[i]
 		out = append(out, models.AiAssistantMessage{
-			Role:        m.Role,
-			Content:     m.Content,
-			Reasoning:   m.Reasoning,
-			Time:        m.Time,
-			ModelName:   m.ModelName,
-			ToolCalls:   m.ToolCalls,
-			ToolResults: m.ToolResults,
-			Timeline:    m.Timeline,
+			Role:         m.Role,
+			Content:      m.Content,
+			Reasoning:    m.Reasoning,
+			Time:         m.Time,
+			ModelName:    m.ModelName,
+			Steps:        m.Steps,
+			JsonMarkdown: m.JsonMarkdown,
+			ToolCalls:    m.ToolCalls,
+			ToolResults:  m.ToolResults,
+			Timeline:     m.Timeline,
+		})
+	}
+	return out
+}
+
+// AiAssistantSessionSummariesFromDomain maps domain summaries to the models slice.
+func AiAssistantSessionSummariesFromDomain(list []system.AiAssistantSessionSummary) []models.AiAssistantSessionSummary {
+	out := make([]models.AiAssistantSessionSummary, 0, len(list))
+	for i := range list {
+		out = append(out, models.AiAssistantSessionSummary{
+			SessionId:    list[i].SessionId,
+			Title:        list[i].Title,
+			UpdatedAt:    list[i].UpdatedAt,
+			MessageCount: list[i].MessageCount,
 		})
 	}
 	return out

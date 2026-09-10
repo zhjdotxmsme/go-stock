@@ -794,6 +794,20 @@ func (h *SystemHandler) SaveAiAssistantSession(sessionId string, messages []mode
 	return h.svc.SaveAiAssistantSession(h.currentCtx(), sessionId, sqlite.AiAssistantMessagesToDomain(messages))
 }
 
+// ListAiAssistantSessions 返回会话列表（最近优先），供 /agent 页会话侧栏使用。
+func (h *SystemHandler) ListAiAssistantSessions(limit int) []models.AiAssistantSessionSummary {
+	list, err := h.svc.ListAiAssistantSessions(h.currentCtx(), limit)
+	if err != nil {
+		return []models.AiAssistantSessionSummary{}
+	}
+	return sqlite.AiAssistantSessionSummariesFromDomain(list)
+}
+
+// DeleteAiAssistantSession 删除指定会话。
+func (h *SystemHandler) DeleteAiAssistantSession(sessionId string) error {
+	return h.svc.DeleteAiAssistantSession(h.currentCtx(), sessionId)
+}
+
 // -------------------- Cron --------------------
 
 func (h *SystemHandler) InitCronTasks() {

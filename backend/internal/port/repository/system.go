@@ -55,6 +55,12 @@ type SystemRepository interface {
 	// GetAiAssistantSession sessionId 非空按 session_id 取，否则取最新（updated_at DESC）；
 	// 与原 data 层一致：任何错误/空内容/反序列化失败都返回非 nil 的空 resp 和 nil error。
 	GetAiAssistantSession(ctx context.Context, sessionId string) (*system.AiAssistantSessionResp, error)
-	// SaveAiAssistantSession len==0 直接返回 nil；超长截尾；按 session_id upsert。
+	// SaveAiAssistantSession len==0 直接返回 nil；超长截尾；按 session_id upsert；
+	// 首次保存时由首条 user 消息自动派生 Title（已存在则不覆盖）。
 	SaveAiAssistantSession(ctx context.Context, sessionId string, messages []system.AiAssistantMessage) error
+	// ListAiAssistantSessions 按 updated_at DESC 返回会话摘要；limit<=0 时取默认上限（50）；
+	// 每条只计数消息、不返回完整 messages。
+	ListAiAssistantSessions(ctx context.Context, limit int) ([]system.AiAssistantSessionSummary, error)
+	// DeleteAiAssistantSession 按 session_id 删除；会话不存在视为成功（幂等）。
+	DeleteAiAssistantSession(ctx context.Context, sessionId string) error
 }

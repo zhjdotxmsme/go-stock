@@ -42,6 +42,10 @@ export function CreateSkill(arg1) {
   return window['go']['handler']['SystemHandler']['CreateSkill'](arg1);
 }
 
+export function DeleteAiAssistantSession(arg1) {
+  return window['go']['handler']['SystemHandler']['DeleteAiAssistantSession'](arg1);
+}
+
 export function DeleteCronTask(arg1) {
   return window['go']['handler']['SystemHandler']['DeleteCronTask'](arg1);
 }
@@ -164,6 +168,10 @@ export function GetVersionInfo() {
 
 export function InitCronTasks() {
   return window['go']['handler']['SystemHandler']['InitCronTasks']();
+}
+
+export function ListAiAssistantSessions(arg1) {
+  return window['go']['handler']['SystemHandler']['ListAiAssistantSessions'](arg1);
 }
 
 export function OpenURL(arg1) {

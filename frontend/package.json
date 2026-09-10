@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:stockcode": "node scripts/check-stock-code.mjs"
+    "test:stockcode": "node scripts/check-stock-code.mjs",
+    "test:agent": "node scripts/check-agent-core.mjs"
   },
   "dependencies": {
     "@lezer/highlight": "^1.2.1",

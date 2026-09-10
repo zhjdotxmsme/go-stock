@@ -25,6 +25,8 @@ export function CreateMCPServer(arg1:models.MCPServer):Promise<string>;
 
 export function CreateSkill(arg1:models.Skill):Promise<string>;
 
+export function DeleteAiAssistantSession(arg1:string):Promise<void>;
+
 export function DeleteCronTask(arg1:number):Promise<string>;
 
 export function DeleteMCPServer(arg1:number):Promise<string>;
@@ -86,6 +88,8 @@ export function GetUserManual():Promise<string>;
 export function GetVersionInfo():Promise<models.VersionInfo>;
 
 export function InitCronTasks():Promise<void>;
+
+export function ListAiAssistantSessions(arg1:number):Promise<Array<models.AiAssistantSessionSummary>>;
 
 export function OpenURL(arg1:string):Promise<void>;
 

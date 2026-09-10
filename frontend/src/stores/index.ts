@@ -6,3 +6,4 @@
 export { useAppStore } from './app'
 export { useStockStore } from './stock'
 export { useSettingsStore } from './settings'
+export { useAgentStore } from './agent'

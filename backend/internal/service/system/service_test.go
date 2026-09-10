@@ -50,6 +50,12 @@ type stubRepo struct {
 	savedSessionID string
 	savedMessages  []system.AiAssistantMessage
 	saveSessionErr error
+
+	sessionList      []system.AiAssistantSessionSummary
+	sessionListErr   error
+	sessionListLimit int
+	deletedSessionID string
+	deleteSessionErr error
 }
 
 func (s *stubRepo) UpdateCronTask(ctx context.Context, t *system.CronTask) error {
@@ -135,6 +141,19 @@ func (s *stubRepo) SaveAiAssistantSession(ctx context.Context, sessionId string,
 	}
 	s.savedSessionID = sessionId
 	s.savedMessages = messages
+	return nil
+}
+
+func (s *stubRepo) ListAiAssistantSessions(ctx context.Context, limit int) ([]system.AiAssistantSessionSummary, error) {
+	s.sessionListLimit = limit
+	return s.sessionList, s.sessionListErr
+}
+
+func (s *stubRepo) DeleteAiAssistantSession(ctx context.Context, sessionId string) error {
+	if s.deleteSessionErr != nil {
+		return s.deleteSessionErr
+	}
+	s.deletedSessionID = sessionId
 	return nil
 }
 
@@ -354,6 +373,44 @@ func TestSessionPassthrough(t *testing.T) {
 		repo := &stubRepo{saveSessionErr: errors.New("db locked")}
 		svc := NewService(repo)
 		err := svc.SaveAiAssistantSession(ctx, "s2", []system.AiAssistantMessage{{Role: "user"}})
+		if err == nil || err.Error() != "db locked" {
+			t.Errorf("err=%v", err)
+		}
+	})
+	t.Run("列表透传limit与结果", func(t *testing.T) {
+		list := []system.AiAssistantSessionSummary{{SessionId: "s1", Title: "茅台分析", MessageCount: 3}}
+		repo := &stubRepo{sessionList: list}
+		svc := NewService(repo)
+		got, err := svc.ListAiAssistantSessions(ctx, 20)
+		if err != nil || len(got) != 1 || got[0].SessionId != "s1" {
+			t.Errorf("got=%+v err=%v", got, err)
+		}
+		if repo.sessionListLimit != 20 {
+			t.Errorf("limit=%d want 20", repo.sessionListLimit)
+		}
+	})
+	t.Run("列表错误透传", func(t *testing.T) {
+		repo := &stubRepo{sessionListErr: errors.New("db busy")}
+		svc := NewService(repo)
+		_, err := svc.ListAiAssistantSessions(ctx, 0)
+		if err == nil || err.Error() != "db busy" {
+			t.Errorf("err=%v", err)
+		}
+	})
+	t.Run("删除参数透传", func(t *testing.T) {
+		repo := &stubRepo{}
+		svc := NewService(repo)
+		if err := svc.DeleteAiAssistantSession(ctx, "s9"); err != nil {
+			t.Fatal(err)
+		}
+		if repo.deletedSessionID != "s9" {
+			t.Errorf("deleted=%q want s9", repo.deletedSessionID)
+		}
+	})
+	t.Run("删除错误透传", func(t *testing.T) {
+		repo := &stubRepo{deleteSessionErr: errors.New("db locked")}
+		svc := NewService(repo)
+		err := svc.DeleteAiAssistantSession(ctx, "s9")
 		if err == nil || err.Error() != "db locked" {
 			t.Errorf("err=%v", err)
 		}

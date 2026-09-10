@@ -412,6 +412,24 @@ export async function getAiAssistantSession(key: string): Promise<any> {
   return callApi(SystemHandler.GetAiAssistantSession, key)
 }
 
+/**
+ * 会话列表（最近优先），供 /agent 页会话侧栏使用
+ * Go: ListAiAssistantSessions(limit int) []models.AiAssistantSessionSummary
+ * @param limit 返回上限；<=0 时后端取默认值 50
+ */
+export async function listAiAssistantSessions(limit = 50): Promise<any> {
+  return callApi(SystemHandler.ListAiAssistantSessions, limit)
+}
+
+/**
+ * 删除指定会话
+ * Go: DeleteAiAssistantSession(sessionId string) error
+ * 会话不存在视为成功（幂等）。
+ */
+export async function deleteAiAssistantSession(sessionId: string): Promise<any> {
+  return callApi(SystemHandler.DeleteAiAssistantSession, sessionId)
+}
+
 // ========== 分享 ==========
 
 /**
@@ -731,6 +749,8 @@ export default {
   // AI 助手会话
   saveAiAssistantSession,
   getAiAssistantSession,
+  listAiAssistantSessions,
+  deleteAiAssistantSession,
 
   // 分享
   shareText,

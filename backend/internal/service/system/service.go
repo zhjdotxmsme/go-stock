@@ -162,7 +162,17 @@ func (s *Service) GetAiAssistantSession(ctx context.Context, sessionId string) (
 	return s.repo.GetAiAssistantSession(ctx, sessionId)
 }
 
-// SaveAiAssistantSession 保存会话消息（upsert）。
+// SaveAiAssistantSession 保存会话消息（upsert）；首次保存时自动派生标题。
 func (s *Service) SaveAiAssistantSession(ctx context.Context, sessionId string, messages []system.AiAssistantMessage) error {
 	return s.repo.SaveAiAssistantSession(ctx, sessionId, messages)
+}
+
+// ListAiAssistantSessions 会话列表（updated_at DESC）；repo 出错时返回空列表而非错误。
+func (s *Service) ListAiAssistantSessions(ctx context.Context, limit int) ([]system.AiAssistantSessionSummary, error) {
+	return s.repo.ListAiAssistantSessions(ctx, limit)
+}
+
+// DeleteAiAssistantSession 删除会话；不存在视为成功。
+func (s *Service) DeleteAiAssistantSession(ctx context.Context, sessionId string) error {
+	return s.repo.DeleteAiAssistantSession(ctx, sessionId)
 }

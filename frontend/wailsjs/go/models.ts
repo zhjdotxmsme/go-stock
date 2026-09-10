@@ -2669,6 +2669,8 @@ export namespace models {
 	    reasoning: string;
 	    time: string;
 	    modelName?: string;
+	    steps?: string[];
+	    jsonMarkdown?: string;
 	    toolCalls?: number[];
 	    toolResults?: number[];
 	    timeline?: number[];
@@ -2684,6 +2686,8 @@ export namespace models {
 	        this.reasoning = source["reasoning"];
 	        this.time = source["time"];
 	        this.modelName = source["modelName"];
+	        this.steps = source["steps"];
+	        this.jsonMarkdown = source["jsonMarkdown"];
 	        this.toolCalls = source["toolCalls"];
 	        this.toolResults = source["toolResults"];
 	        this.timeline = source["timeline"];
@@ -2701,6 +2705,43 @@ export namespace models {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.messages = this.convertValues(source["messages"], AiAssistantMessage);
 	        this.sessionId = source["sessionId"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AiAssistantSessionSummary {
+	    sessionId: string;
+	    title: string;
+	    // Go type: time
+	    updatedAt: any;
+	    messageCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AiAssistantSessionSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sessionId = source["sessionId"];
+	        this.title = source["title"];
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	        this.messageCount = source["messageCount"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -3491,6 +3532,10 @@ export namespace models {
 	    nextMaxReturn: number;
 	    nextMaxDrawdown: number;
 	    reviewed: boolean;
+	    nextReturnT1: number;
+	    return3d: number;
+	    return5d: number;
+	    strategyMult: number;
 	    finalScore: number;
 	    screenScore: number;
 	    llmScore: number;
@@ -3609,6 +3654,10 @@ export namespace models {
 	        this.nextMaxReturn = source["nextMaxReturn"];
 	        this.nextMaxDrawdown = source["nextMaxDrawdown"];
 	        this.reviewed = source["reviewed"];
+	        this.nextReturnT1 = source["nextReturnT1"];
+	        this.return3d = source["return3d"];
+	        this.return5d = source["return5d"];
+	        this.strategyMult = source["strategyMult"];
 	        this.finalScore = source["finalScore"];
 	        this.screenScore = source["screenScore"];
 	        this.llmScore = source["llmScore"];
