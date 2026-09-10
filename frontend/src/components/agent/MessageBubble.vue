@@ -1,23 +1,25 @@
 <script setup>
+import { computed } from 'vue'
 import { MdPreview } from 'md-editor-v3'
 import { NButton, NIcon, NSpin } from 'naive-ui'
 import {
   PersonCircleOutline, SparklesOutline, ChevronDownOutline, ChevronForwardOutline,
   ChevronUpOutline, CopyOutline, ImageOutline, ShareSocialOutline,
 } from '@vicons/ionicons5'
+import { currentStepSummary, resolveExpanded } from './agentStreamCore.js'
 
 const props = defineProps({
   group: { type: Object, required: true },
   groupIndex: { type: Number, required: true },
   theme: { type: String, default: 'light' },
-  // 容错：展开状态缺失时退化为「全部折叠」，而不是让整个消息列表渲染崩掉
+  // 容错：展开状态缺失时退化为「按 density 默认」，而不是让整个消息列表渲染崩掉
   reasoningExpandedMap: { type: Object, default: () => ({}) },
   expanded: { type: Boolean, default: false },
   isStreamLoad: { type: Boolean, default: false },
   isLastGroup: { type: Boolean, default: false },
   /** 该条回答是否被手动中断（显示角标；不持久化） */
   aborted: { type: Boolean, default: false },
-  /** 'page' | 'panel'：页面模式显示更多细节 */
+  /** 'page' | 'panel'：页面模式默认展开各分区，侧边抽屉默认折叠 */
   density: { type: String, default: 'panel' },
   shareLoading: { type: Boolean, default: false },
   exportImageKey: { type: String, default: '' },
@@ -29,10 +31,36 @@ const emit = defineEmits([
   'md-html-changed',
 ])
 
+/** 页面模式默认展开执行步骤/思考过程/分析报告；抽屉模式默认只留标题与计数 */
+const sectionsOpenByDefault = computed(() => props.density === 'page')
+const assistantIndex = computed(() => props.group.assistantIndex)
+
+const openSteps = computed(() =>
+  resolveExpanded(props.reasoningExpandedMap, assistantIndex.value, sectionsOpenByDefault.value)
+)
+const openReasoning = computed(() =>
+  resolveExpanded(props.reasoningExpandedMap, 'r-' + assistantIndex.value, sectionsOpenByDefault.value)
+)
+const openJsonMd = computed(() =>
+  resolveExpanded(props.reasoningExpandedMap, 'j-' + assistantIndex.value, sectionsOpenByDefault.value)
+)
+
+const title = computed(() => {
+  const text = String(props.group?.userMsg?.content ?? '')
+  return text.length > 50 ? text.slice(0, 50) + '...' : text
+})
+
+/** 当前步骤摘要：折叠状态下也能看出 AI 正在做什么 */
+const currentStep = computed(() => currentStepSummary(props.group?.assistantMsg?.steps))
+const showCurrentStep = computed(
+  () => !!currentStep.value && ((props.isStreamLoad && props.isLastGroup) || !openSteps.value)
+)
+
 function getStepDotClass(step) {
-  if (step.startsWith('✅')) return 'step-done'
-  if (step.startsWith('❌')) return 'step-error'
-  if (step.startsWith('⏳')) return 'step-running'
+  const s = String(step ?? '')
+  if (s.startsWith('✅')) return 'step-done'
+  if (s.startsWith('❌')) return 'step-error'
+  if (s.startsWith('⏳')) return 'step-running'
   return 'step-pending'
 }
 
@@ -66,7 +94,7 @@ function onMdHtmlChanged() {
     <div class="message-group-header" @click="onToggleGroup">
       <div class="message-group-summary">
         <NIcon :component="expanded ? ChevronDownOutline : ChevronForwardOutline" size="16" />
-        <span class="message-group-title">{{ group.userMsg.content.slice(0, 50) }}{{ group.userMsg.content.length > 50 ? '...' : '' }}</span>
+        <span class="message-group-title">{{ title }}</span>
         <span class="message-group-time">{{ group.userMsg.time }}</span>
       </div>
     </div>
@@ -97,13 +125,18 @@ function onMdHtmlChanged() {
         </div>
         <div class="msg-bubble">
           <div class="msg-content">
+            <!-- 当前步骤摘要：流式进行中或分区折叠时，一眼看出 AI 在做什么 -->
+            <div v-if="showCurrentStep" class="msg-current-step">
+              <NSpin v-if="isStreamLoad && isLastGroup" size="small" />
+              <span class="msg-current-step-text">{{ currentStep }}</span>
+            </div>
             <div v-if="group.assistantMsg.steps && group.assistantMsg.steps.length > 0" class="msg-steps-wrapper">
-              <div class="msg-steps-header" @click="onToggleReasoning(group.assistantIndex)">
-                <NIcon :component="reasoningExpandedMap[group.assistantIndex] ? ChevronDownOutline : ChevronForwardOutline" size="14" />
+              <div class="msg-steps-header" @click="onToggleReasoning(assistantIndex)">
+                <NIcon :component="openSteps ? ChevronDownOutline : ChevronForwardOutline" size="14" />
                 <span class="msg-steps-title">📋 执行步骤</span>
                 <span class="msg-steps-count">{{ group.assistantMsg.steps.length }}</span>
               </div>
-              <div v-show="reasoningExpandedMap[group.assistantIndex]" class="msg-steps-content">
+              <div v-show="openSteps" class="msg-steps-content">
                 <div v-for="(step, si) in group.assistantMsg.steps" :key="si" class="msg-step-item">
                   <div class="msg-step-dot" :class="getStepDotClass(step)"></div>
                   <span class="msg-step-text">{{ step }}</span>
@@ -111,11 +144,11 @@ function onMdHtmlChanged() {
               </div>
             </div>
             <div v-if="group.assistantMsg.reasoning" class="msg-reasoning-wrapper">
-              <div class="msg-reasoning-header" @click="onToggleReasoning('r-' + group.assistantIndex)">
-                <NIcon :component="reasoningExpandedMap['r-' + group.assistantIndex] ? ChevronDownOutline : ChevronForwardOutline" size="14" />
+              <div class="msg-reasoning-header" @click="onToggleReasoning('r-' + assistantIndex)">
+                <NIcon :component="openReasoning ? ChevronDownOutline : ChevronForwardOutline" size="14" />
                 <span class="msg-reasoning-title">💭 思考过程</span>
               </div>
-              <div v-show="reasoningExpandedMap['r-' + group.assistantIndex]" class="msg-reasoning-content">
+              <div v-show="openReasoning" class="msg-reasoning-content">
                 <MdPreview
                   :theme="theme"
                   :style="{ textAlign: 'left' }"
@@ -126,11 +159,11 @@ function onMdHtmlChanged() {
               </div>
             </div>
             <div v-if="group.assistantMsg.jsonMarkdown" class="msg-json-md-wrapper">
-              <div class="msg-json-md-header" @click="onToggleReasoning('j-' + group.assistantIndex)">
-                <NIcon :component="reasoningExpandedMap['j-' + group.assistantIndex] ? ChevronDownOutline : ChevronForwardOutline" size="14" />
+              <div class="msg-json-md-header" @click="onToggleReasoning('j-' + assistantIndex)">
+                <NIcon :component="openJsonMd ? ChevronDownOutline : ChevronForwardOutline" size="14" />
                 <span class="msg-json-md-title">📊 分析报告</span>
               </div>
-              <div v-show="reasoningExpandedMap['j-' + group.assistantIndex]" class="msg-json-md-content">
+              <div v-show="openJsonMd" class="msg-json-md-content">
                 <MdPreview
                   :theme="theme"
                   :style="{ textAlign: 'left' }"
@@ -310,6 +343,39 @@ function onMdHtmlChanged() {
   width: 100%;
   min-width: 0;
   flex: 1;
+}
+
+/* 当前步骤摘要：流式进行中、或步骤区折叠时的一行状态 */
+.msg-current-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--n-color-embedded);
+  font-size: 12px;
+  color: var(--n-text-color-2);
+}
+.msg-current-step-text {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 已中断角标 */
+.msg-aborted-tag {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--n-text-color-3);
+  background: var(--n-color-embedded);
+  border: 1px solid var(--n-border-color);
 }
 .msg-reasoning-wrapper {
   margin-bottom: 12px;

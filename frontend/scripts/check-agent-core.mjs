@@ -16,6 +16,7 @@ import {
   finalizeAssistantMessage,
   currentStepSummary,
   lastAssistantContent,
+  resolveExpanded,
 } from '../src/components/agent/agentStreamCore.js'
 import {
   PREFS_KEY,
@@ -156,6 +157,24 @@ function ok(label, cond) {
   eq('跳过空白找最后一条非空', lastAssistantContent(list), '最终答案')
   eq('空列表', lastAssistantContent([]), '')
   eq('非数组', lastAssistantContent(null), '')
+}
+
+// ---------------------------------------------------------------- 展开规则（density 默认值 + 用户覆盖）
+{
+  // 未覆盖 → 用默认值
+  eq('无覆盖 + fallback=true', resolveExpanded({}, 0, true), true)
+  eq('无覆盖 + fallback=false', resolveExpanded({}, 0, false), false)
+  // 显式覆盖优先于默认值（两种方向都要）
+  eq('覆盖 false 胜过 fallback=true', resolveExpanded({ 0: false }, 0, true), false)
+  eq('覆盖 true 胜过 fallback=false', resolveExpanded({ 0: true }, 0, false), true)
+  // 字符串键（'r-0' / 'j-0'）与数字键互不干扰
+  eq('字符串键独立', resolveExpanded({ 'r-0': true }, 'r-0', false), true)
+  eq('数字键不受字符串键影响', resolveExpanded({ 'r-0': true }, 0, false), false)
+  eq('未定义键回落默认值', resolveExpanded({ 1: true }, 2, true), true)
+  // 容错
+  eq('map 为 null', resolveExpanded(null, 0, true), true)
+  eq('map 为 undefined', resolveExpanded(undefined, 0, false), false)
+  eq('空 map', resolveExpanded({}, 'r-3', true), true)
 }
 
 // ---------------------------------------------------------------- 首选项

@@ -16,12 +16,12 @@ import { EventsOn } from '../../wailsjs/runtime'
 import * as systemApi from '../api/system'
 import {
   applyChunkToAssistant,
-  currentStepSummary,
   finalizeAssistantMessage,
   isDoneChunk,
   lastAssistantContent,
   newAssistantMessage,
   newUserMessage,
+  resolveExpanded,
 } from '../components/agent/agentStreamCore.js'
 import { loadPrefs, savePrefs } from '../components/agent/agentPrefs.js'
 
@@ -98,8 +98,9 @@ export const useAgentStore = defineStore('agent', () => {
     userPromptTemplates.value.map((t) => ({ label: t.name ?? '', value: t.ID ?? t.id }))
   )
 
-  // 展开状态
-  const expandedGroups = ref(new Set())
+  // 展开状态：只记录「用户显式切换过」的项；未记录时由宿主的 density 决定默认值
+  // （page 默认展开各分区，panel 默认只展开最新一组）
+  const groupExpandOverride = ref({})
   const reasoningExpandedMap = ref({})
 
   // ------------------------------------------------- 依赖注入（宿主提供）
@@ -164,39 +165,25 @@ export const useAgentStore = defineStore('agent', () => {
     return groups
   })
 
-  const latestSteps = computed(() => {
-    const last = messages.value[messages.value.length - 1]
-    return currentStepSummary(last?.steps)
-  })
-
-  function isGroupExpanded(groupIndex) {
-    return expandedGroups.value.has(groupIndex)
+  /** 分组是否展开；fallback 由宿主按 density 传入（page=true / panel=仅最新一组） */
+  function isGroupExpanded(groupIndex, fallback = false) {
+    return resolveExpanded(groupExpandOverride.value, groupIndex, fallback)
   }
-  function toggleGroup(groupIndex) {
-    const next = new Set(expandedGroups.value)
-    if (next.has(groupIndex)) next.delete(groupIndex)
-    else next.add(groupIndex)
-    expandedGroups.value = next
+  function toggleGroup(groupIndex, fallback = false) {
+    groupExpandOverride.value = {
+      ...groupExpandOverride.value,
+      [groupIndex]: !isGroupExpanded(groupIndex, fallback),
+    }
   }
-  function toggleReasoning(index) {
+  /** 折叠区（执行步骤 / 思考过程 / 分析报告）是否展开 */
+  function isSectionExpanded(key, fallback = false) {
+    return resolveExpanded(reasoningExpandedMap.value, key, fallback)
+  }
+  function toggleReasoning(index, fallback = false) {
     reasoningExpandedMap.value = {
       ...reasoningExpandedMap.value,
-      [index]: !reasoningExpandedMap.value[index],
+      [index]: !isSectionExpanded(index, fallback),
     }
-  }
-  /** 首次进入时展开最后一组 */
-  function initDefaultExpanded() {
-    if (messageGroups.value.length > 0 && expandedGroups.value.size === 0) {
-      expandedGroups.value = new Set([messageGroups.value.length - 1])
-    }
-  }
-  /** 新一轮提问时确保该组展开 */
-  function ensureLatestGroupExpanded() {
-    if (messageGroups.value.length === 0) return
-    const last = messageGroups.value.length - 1
-    const next = new Set(expandedGroups.value)
-    next.add(last)
-    expandedGroups.value = next
   }
 
   /** 某条消息是否被中断（气泡角标用） */
@@ -293,7 +280,7 @@ export const useAgentStore = defineStore('agent', () => {
     const list = resp?.messages
     if (Array.isArray(list) && list.length > 0) {
       messages.value = list.map(mapHistoryMessage)
-      nextTick(initDefaultExpanded)
+      nextTick(scrollToBottom)
     }
   }
 
@@ -314,7 +301,7 @@ export const useAgentStore = defineStore('agent', () => {
     }
     sessionId.value = id
     messages.value = []
-    expandedGroups.value = new Set()
+    groupExpandOverride.value = {}
     reasoningExpandedMap.value = {}
     abortedIndexes.value = new Set()
     await loadHistory(id)
@@ -372,7 +359,7 @@ export const useAgentStore = defineStore('agent', () => {
     }
     messages.value = []
     sessionId.value = Date.now().toString()
-    expandedGroups.value = new Set()
+    groupExpandOverride.value = {}
     reasoningExpandedMap.value = {}
     abortedIndexes.value = new Set()
     ensureGreeting()
@@ -383,10 +370,7 @@ export const useAgentStore = defineStore('agent', () => {
     if (!sessionId.value) sessionId.value = Date.now().toString()
     ensureGreeting()
     loadSessions()
-    nextTick(() => {
-      initDefaultExpanded()
-      scrollToBottom()
-    })
+    nextTick(scrollToBottom)
   }
   function closePanel() {
     panelVisible.value = false
@@ -478,15 +462,7 @@ export const useAgentStore = defineStore('agent', () => {
     armWatchdog()
     saveHistory()
     nextTick(() => {
-      ensureLatestGroupExpanded()
-      const lastGroup = messageGroups.value[messageGroups.value.length - 1]
-      if (lastGroup) {
-        reasoningExpandedMap.value = {
-          ...reasoningExpandedMap.value,
-          [lastGroup.assistantIndex]: true,
-          ['j-' + lastGroup.assistantIndex]: true,
-        }
-      }
+      // 折叠区的展开/收起交给宿主的 density 默认值 + 用户覆盖，这里只负责滚到底部
       scrollToBottom()
     })
     systemApi
@@ -599,10 +575,10 @@ export const useAgentStore = defineStore('agent', () => {
     thinkingMode, memoryMode, memoryCount, agentMode,
     memoryCountOptions, agentModeOptions, sysPromptOptions, userPromptOptions,
     // 派生
-    messageGroups, latestSteps,
-    // 展开状态（宿主需要透传给 MessageBubble；漏导出会让气泡渲染直接抛错）
-    expandedGroups, reasoningExpandedMap,
-    isGroupExpanded, toggleGroup, toggleReasoning, initDefaultExpanded, ensureLatestGroupExpanded,
+    messageGroups,
+    // 展开状态：覆盖表 + 宿主传入的默认值（见 isGroupExpanded / isSectionExpanded）
+    groupExpandOverride, reasoningExpandedMap,
+    isGroupExpanded, toggleGroup, isSectionExpanded, toggleReasoning,
     isMessageAborted, modelLabelForConfig,
     // 依赖注入
     registerNotifier, registerScroller,
@@ -616,3 +592,4 @@ export const useAgentStore = defineStore('agent', () => {
     lastAssistantContent: () => lastAssistantContent(messages.value),
   }
 })
+

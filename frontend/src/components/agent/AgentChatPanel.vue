@@ -39,6 +39,24 @@ const {
 const theme = computed(() => (darkTheme.value ? 'dark' : 'light'))
 const canSend = computed(() => !!inputValue.value.trim())
 
+/**
+ * 展开默认值（按 density 区分）：
+ * - page：所有分组与分区默认展开（页面够宽，过程信息直接可见）
+ * - panel：只展开最新一组，各分区默认折叠（抽屉空间小）
+ * 用户手动点过的项记在 store 的覆盖表里，优先于这里的默认值。
+ */
+const isPage = computed(() => props.density === 'page')
+function groupExpanded(groupIndex) {
+  const isLatest = groupIndex === messageGroups.value.length - 1
+  return agentStore.isGroupExpanded(groupIndex, isPage.value || isLatest)
+}
+function onToggleGroup(groupIndex) {
+  agentStore.toggleGroup(groupIndex, isPage.value || groupIndex === messageGroups.value.length - 1)
+}
+function onToggleSection(key) {
+  agentStore.toggleReasoning(key, isPage.value)
+}
+
 // 面板自己持有分享/导出（依赖具体 DOM 节点做截图）
 const {
   shareLoading, exportImageKey,
@@ -95,15 +113,15 @@ defineExpose({
           :group-index="groupIndex"
           :theme="theme"
           :reasoning-expanded-map="reasoningExpandedMap"
-          :expanded="agentStore.isGroupExpanded(groupIndex)"
+          :expanded="groupExpanded(groupIndex)"
           :is-stream-load="isStreamLoad"
           :is-last-group="groupIndex === messageGroups.length - 1"
           :aborted="agentStore.isMessageAborted(group.assistantIndex)"
           :density="props.density"
           :share-loading="shareLoading"
           :export-image-key="exportImageKey"
-          @toggle-group="agentStore.toggleGroup"
-          @toggle-reasoning="agentStore.toggleReasoning"
+          @toggle-group="onToggleGroup"
+          @toggle-reasoning="onToggleSection"
           @copy="copyAiContent"
           @export-image="exportAiReplyImage"
           @share="shareAiContent"

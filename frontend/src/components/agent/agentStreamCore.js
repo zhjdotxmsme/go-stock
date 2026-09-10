@@ -124,3 +124,19 @@ export function lastAssistantContent(messages) {
   }
   return ''
 }
+
+/**
+ * 解析某个折叠区的展开状态：显式覆盖优先，未覆盖时用传入的默认值。
+ *
+ * 页面模式（density='page'）希望默认展开各分区，侧边浮窗（'panel'）希望默认折叠，
+ * 但用户手动点开关后必须记住 —— 用「覆盖表 + 默认值」表达，而不是把默认值写死进表。
+ *
+ * @param {Object} overrideMap 形如 { 3: true, 'r-3': false } 的覆盖表
+ * @param {string|number} key 折叠区标识
+ * @param {boolean} fallback 未覆盖时的默认值
+ */
+export function resolveExpanded(overrideMap, key, fallback) {
+  const v = (overrideMap ?? {})[key]
+  if (v === undefined || v === null) return !!fallback
+  return !!v
+}
