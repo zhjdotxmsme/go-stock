@@ -82,15 +82,17 @@ func (receiver StockAiAgent) ChatWithContext(ctx context.Context, question strin
 	ch := make(chan *schema.Message, 1024)
 
 	go func() {
+		// ch 的唯一关闭者：只能在这里关闭，内部 run* 函数一律不许 close(ch)，
+		// 否则降级路径（PlanExecute→React 等）会双重 close 导致进程崩溃。
 		defer func() {
 			if r := recover(); r != nil {
 				logger.SugaredLogger.Errorf("panic in ChatWithContext: %v", r)
-				ch <- &schema.Message{
+				safeSend(ch, &schema.Message{
 					Role:    schema.Assistant,
 					Content: fmt.Sprintf("❌ 内部错误: %v", r),
-				}
-				close(ch)
+				})
 			}
+			close(ch)
 		}()
 
 		var sessionIDOverride string
@@ -109,7 +111,6 @@ func (receiver StockAiAgent) ChatWithContext(ctx context.Context, question strin
 				Role:    schema.Assistant,
 				Content: "❌ AI 配置不存在或无效，请检查 AI 配置",
 			}
-			close(ch)
 			return
 		}
 
@@ -221,7 +222,6 @@ func runReact(ctx context.Context, stockAiAgent *StockAiAgent, messages []*schem
 			Role:    schema.Assistant,
 			Content: "❌ React Agent 实例无效",
 		}
-		close(ch)
 		return
 	}
 
@@ -245,8 +245,6 @@ func runReact(ctx context.Context, stockAiAgent *StockAiAgent, messages []*schem
 	}()
 
 	func() {
-		defer close(ch)
-
 		sr, err := reactAgent.Stream(ctx, messages, agentOption...)
 		if err != nil {
 			logger.SugaredLogger.Errorf("stream error: %v", err)
@@ -349,8 +347,8 @@ func runReact(ctx context.Context, stockAiAgent *StockAiAgent, messages []*schem
 }
 
 func runPlanExecuteWithFallback(ctx context.Context, stockAiAgent *StockAiAgent, messages []*schema.Message, ch chan *schema.Message, memoryService *ChatMemoryService, historyMessages []*schema.Message, sysPrompt string, question string, aiConfigId int) {
-	defer close(ch)
-
+	// 注意：不要在这里 close(ch)——ch 由 ChatWithContext 统一关闭，
+	// 否则 PlanExecute→React 降级路径会双重 close 导致进程崩溃。
 	planExecuteSuccess := tryPlanExecute(ctx, stockAiAgent, messages, ch, memoryService, aiConfigId)
 
 	if !planExecuteSuccess {
@@ -549,8 +547,6 @@ func runReactWithAgent(ctx context.Context, reactAgent *react.Agent, messages []
 	}()
 
 	func() {
-		defer close(ch)
-
 		sr, err := reactAgent.Stream(ctx, messages, agentOption...)
 		if err != nil {
 			logger.SugaredLogger.Errorf("stream error: %v", err)
