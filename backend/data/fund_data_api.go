@@ -49,6 +49,11 @@ type FollowedFund struct {
 	NetUnitValuePrev *float64 `json:"netUnitValuePrev"`
 	NetActualRate    *float64 `json:"netActualRate"`
 
+	// 场内基金（ETF/LOF）专属：溢价率=(市价−单位净值)/单位净值×100，正=溢价负=折价；
+	// Shares 为基金总份额（份）。场外基金两字段恒为空。
+	PremiumRate *float64 `json:"premiumRate"`
+	Shares      *float64 `json:"shares"`
+
 	FundBasic FundBasic `json:"fundBasic" gorm:"foreignKey:Code;references:Code"`
 }
 
@@ -793,7 +798,7 @@ func (f *FundApi) batchCrawlFundData(funds []FollowedFund) {
 		wg.Add(1)
 		go func(c string) {
 			defer wg.Done()
-			f.crawlOnExchangeFundNetUnitValue(c)
+			f.crawlEtfQuoteExtra(c)
 		}(code)
 		if _, ok := parsedStock[code]; !ok {
 			wg.Add(1)
@@ -808,6 +813,11 @@ func (f *FundApi) batchCrawlFundData(funds []FollowedFund) {
 }
 
 func computeFundRates(fund *FollowedFund) {
+	// 场内基金：NetUnitValue 是真实公布净值而非昨收市价，市价−净值算出的是溢价率
+	// 而非涨跌幅；涨跌幅已由行情抓取直接写入，这里不再重算。
+	if IsOnExchangeFund(fund.Code) {
+		return
+	}
 	if fund.NetEstimatedUnit != nil && fund.NetUnitValuePrev != nil && *fund.NetUnitValuePrev > 0 {
 		rate := (*(fund.NetEstimatedUnit) - *(fund.NetUnitValuePrev)) / *(fund.NetUnitValuePrev) * 100
 		rate = mathutil.RoundToFloat(rate, 2)
@@ -1096,25 +1106,36 @@ func (f *FundApi) crawlFundEstimatedViaSina(code string) {
 	f.crawlFundEstimatedViaMobileAPI(code)
 }
 
-func (f *FundApi) crawlFundEstimatedViaMobileAPI(code string) {
-	type MobileFundInfo struct {
-		FCODE     string  `json:"FCODE"`
-		SHORTNAME string  `json:"SHORTNAME"`
-		PDATE     string  `json:"PDATE"`
-		NAV       string  `json:"NAV"`
-		ACCNAV    string  `json:"ACCNAV"`
-		NAVCHGRT  string  `json:"NAVCHGRT"`
-		GSZ       *string `json:"GSZ"`
-		GSZZL     *string `json:"GSZZL"`
-		GZTIME    *string `json:"GZTIME"`
-	}
-	type MobileAPIResponse struct {
-		Datas   []MobileFundInfo `json:"Datas"`
-		ErrCode int              `json:"ErrCode"`
-		Success bool             `json:"Success"`
-	}
+type MobileFundInfo struct {
+	FCODE     string  `json:"FCODE"`
+	SHORTNAME string  `json:"SHORTNAME"`
+	PDATE     string  `json:"PDATE"`
+	NAV       string  `json:"NAV"`
+	ACCNAV    string  `json:"ACCNAV"`
+	NAVCHGRT  string  `json:"NAVCHGRT"`
+	GSZ       *string `json:"GSZ"`
+	GSZZL     *string `json:"GSZZL"`
+	GZTIME    *string `json:"GZTIME"`
+	// 场内基金（ETF/LOF）请求时才有的行情字段
+	NEWPRICE    string `json:"NEWPRICE"`
+	CHANGERATIO string `json:"CHANGERATIO"`
+	HQDATE      string `json:"HQDATE"`
+}
 
-	url := fmt.Sprintf("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=1&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=1&Ession=1&Fcodes=%s", code)
+type MobileAPIResponse struct {
+	Datas   []MobileFundInfo `json:"Datas"`
+	ErrCode int              `json:"ErrCode"`
+	Success bool             `json:"Success"`
+}
+
+// fundMobileInfoURL 东财基金移动端接口。注意 pageSize 必须大于请求的基金数量，
+// 否则场内基金（ETF/LOF）会返回空 Datas（实测 pageSize=1 查单只 ETF 无数据）。
+func fundMobileInfoURL(code string) string {
+	return fmt.Sprintf("https://fundmobapi.eastmoney.com/FundMNewApi/FundMNFInfo?pageIndex=1&pageSize=20&plat=Android&appType=ttjj&product=EFund&Version=1&deviceid=1&Ession=1&Fcodes=%s", code)
+}
+
+func (f *FundApi) crawlFundEstimatedViaMobileAPI(code string) {
+	url := fundMobileInfoURL(code)
 	resp, err := f.client.SetTimeout(time.Duration(f.config.CrawlTimeOut)*time.Second).R().
 		SetHeader("User-Agent", getRandomUA()).
 		Get(url)
@@ -1222,7 +1243,9 @@ func (f *FundApi) crawlOnExchangeFundQuote(code string) {
 
 func (f *FundApi) CrawlFundNetUnitValue(code string) {
 	if IsOnExchangeFund(code) {
-		f.crawlOnExchangeFundNetUnitValue(code)
+		// 场内基金：单位净值/溢价率/份额走 ETF 专用抓取（FundMNFInfo + push2），
+		// 不再用 K 线收盘价冒充单位净值。
+		f.crawlEtfQuoteExtra(code)
 		return
 	}
 	url := fmt.Sprintf("http://hq.sinajs.cn/rn=%d&list=f_%s", time.Now().UnixMilli(), code)
@@ -1253,37 +1276,6 @@ func (f *FundApi) CrawlFundNetUnitValue(code string) {
 		}
 	}
 	f.crawlFundNetUnitValueViaEastMoney(code)
-}
-
-func (f *FundApi) crawlOnExchangeFundNetUnitValue(code string) {
-	klineApi := NewFundKLineApi()
-	result := klineApi.GetFundKLine(code, "101", 3)
-	if result == nil || result.Data == nil || len(*result.Data) < 1 {
-		return
-	}
-	data := *result.Data
-	latest := data[len(data)-1]
-	val, err := convertor.ToFloat(latest.Close)
-	if err != nil || val == 0 {
-		return
-	}
-	date := latest.Day
-	if strings.Contains(date, " ") {
-		date = strings.Split(date, " ")[0]
-	}
-	fund := &FollowedFund{
-		Code:             code,
-		NetUnitValue:     &val,
-		NetUnitValueDate: date,
-	}
-	if len(data) >= 2 {
-		prev := data[len(data)-2]
-		prevVal, err := convertor.ToFloat(prev.Close)
-		if err == nil && prevVal > 0 {
-			fund.NetUnitValuePrev = &prevVal
-		}
-	}
-	db.Dao.Model(fund).Where("code=?", fund.Code).Updates(fund)
 }
 
 func (f *FundApi) crawlFundNetUnitValueViaEastMoney(code string) {
@@ -1368,11 +1360,38 @@ func IsOnExchangeFund(code string) bool {
 	}
 	prefix := code[:2]
 	switch prefix {
-	case "15", "16", "50", "51", "52":
+	case "15", "16", "50", "51", "52", "56", "58":
 		return true
 	default:
 		return false
 	}
+}
+
+// PureFundCode 去掉市场前缀（如 sh510300 → 510300），裸代码原样返回。
+func PureFundCode(code string) string {
+	c := strings.TrimSpace(code)
+	if len(c) > 6 {
+		c = c[len(c)-6:]
+	}
+	return c
+}
+
+// IsOnExchangeFundCode 支持带市场前缀（sh510300/sz159915）或裸 6 位代码的场内基金判定。
+func IsOnExchangeFundCode(code string) bool {
+	return IsOnExchangeFund(PureFundCode(code))
+}
+
+// 标的品种分类（多智能体等消费方据此分流数据源与 Prompt 框架）。
+const (
+	InstrumentKindStock = "stock"
+	InstrumentKindETF   = "etf"
+)
+
+func InstrumentKindOf(code string) string {
+	if IsOnExchangeFundCode(code) {
+		return InstrumentKindETF
+	}
+	return InstrumentKindStock
 }
 
 func (f *FundApi) getOnExchangeFundHistoryNetValue(fundCode string, pageSize int) ([]FundHistoryNetValue, error) {

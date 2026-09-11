@@ -123,6 +123,37 @@ func TestNormalize_EdgeCases(t *testing.T) {
 	}
 }
 
+func TestNormalize_ExchangeFund(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		// 场内基金：沪市 5 开头 → sh
+		{"510300", "sh510300"},
+		{"588000", "sh588000"}, // 科创ETF
+		{"561560", "sh561560"},
+		{"518880", "sh518880"},
+		// 场内基金：深市 15/16/18 开头 → sz
+		{"159915", "sz159915"},
+		{"161725", "sz161725"}, // LOF
+		// 深市可转债等 1 开头非基金代码仍不猜测
+		{"123456", "123456"},
+		{"110038", "110038"},
+		// 带前缀原样规整
+		{"sh510300", "sh510300"},
+		{"sz159915", "sz159915"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := Normalize(tt.input)
+			if got != tt.want {
+				t.Errorf("Normalize(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseStockCode(t *testing.T) {
 	tests := []struct {
 		input     string

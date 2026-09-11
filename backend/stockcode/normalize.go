@@ -254,8 +254,15 @@ func guessAPrefix(code string) string {
 	switch code[0:1] {
 	case "6":
 		return "sh"
+	case "5": // 沪市基金：50/51/52/56/58（含 588 科创ETF）
+		return "sh"
 	case "0", "3":
 		return "sz"
+	case "1": // 深市基金：15x ETF / 16x LOF / 18x
+		if len(code) >= 2 && (code[1] == '5' || code[1] == '6' || code[1] == '8') {
+			return "sz"
+		}
+		return "" // Unknown, don't guess
 	case "4", "8", "9": // 43xxx, 83xxx, 92xxx are all Beijing Stock Exchange
 		return "bj"
 	default:
