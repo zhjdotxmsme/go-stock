@@ -248,9 +248,10 @@ func TestNormalizeAPICode(t *testing.T) {
 		"000001.SZ":        "sz000001",
 		"430047.BJ":        "bj430047",
 		"sh600519 - 贵州茅台": "sh600519",
-		// 注意:len==6 的规则优先于 0/3 前缀,裸 6 位代码一律补 sh(与 data 层行为一致)
 		"600519": "sh600519",
-		"300750": "sh300750",
+		"300750": "sz300750", // 0/3 前缀走深市
+		"161226": "sz161226", // 深市 LOF
+		"510300": "sh510300", // 沪市 ETF
 	}
 	for in, want := range cases {
 		if got := normalizeAPICode(in); got != want {

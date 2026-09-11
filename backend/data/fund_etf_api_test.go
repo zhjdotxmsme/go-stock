@@ -87,6 +87,32 @@ func TestInstrumentKindOf(t *testing.T) {
 	}
 }
 
+func TestNormalizeTradingRecordAPI(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"161226", "sz161226"},   // 国投白银LOF（深市 16 前缀）
+		{"159915", "sz159915"},   // 深ETF
+		{"161725", "sz161725"},   // 深LOF
+		{"510300", "sh510300"},   // 沪ETF
+		{"588000", "sh588000"},   // 科创ETF
+		{"500001", "sh500001"},   // 沪老封闭基金
+		{"sz161226", "sz161226"}, // 已带前缀
+		{"SZ161226", "sz161226"}, // 大写前缀
+		{"161226 - 国投白银LOF", "sz161226"},
+		{"600519", "sh600519"}, // 沪市股票
+		{"000001", "sz000001"}, // 深市股票
+		{"300750", "sz300750"}, // 创业板
+		{"832566", "bj832566"}, // 北交所
+	}
+	for _, tt := range tests {
+		if got := normalizeTradingRecordAPI(tt.input); got != tt.want {
+			t.Errorf("normalizeTradingRecordAPI(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestCalcEtfPremiumRate(t *testing.T) {
 	tests := []struct {
 		name  string
