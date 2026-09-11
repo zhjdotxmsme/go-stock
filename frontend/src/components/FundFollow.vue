@@ -8,6 +8,7 @@ import * as systemApi from "../api/system";
 import {Environment} from "../../wailsjs/runtime";
 import vueDanmaku from 'vue3-danmaku'
 import FundKlineChart from "./FundKlineChart.vue";
+import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
 
 const danmus = ref([])
 const ws = ref(null)
@@ -259,7 +260,20 @@ function loadNetValueHistory(code) {
 
 function isOnExchangeFund(code) {
   const p = code?.substring(0, 2)
-  return ['15', '16', '50', '51', '52'].includes(p)
+  return ['15', '16', '50', '51', '52', '56', '58'].includes(p)
+}
+
+// 场内基金 K 线复用股票图表组件（东财代码格式：510300.SH / 159915.SZ）
+function toEastMoneyCode(code) {
+  return /^(5|6)/.test(code) ? code + '.SH' : code + '.SZ'
+}
+
+// 溢价率 tag 颜色：高溢价（|rate|≥5%）红色警示，正溢价橙色，折价蓝色
+function premiumType(rate) {
+  if (Math.abs(rate) >= 5) return 'error'
+  if (rate > 0) return 'warning'
+  if (rate < 0) return 'info'
+  return 'default'
 }
 
 function rateType(rate) {
@@ -378,6 +392,15 @@ function blinkBorder(findId) {
               </template>
             </n-flex>
 
+            <n-flex v-if="isOnExchangeFund(info.code) && (info.premiumRate != null || info.shares != null)" :size="4" :wrap="true" style="margin-top: 4px;">
+              <n-tag v-if="info.premiumRate != null" size="tiny" :bordered="false" :type="premiumType(info.premiumRate)">
+                {{ info.premiumRate > 0 ? '溢价' : '折价' }} {{ Math.abs(info.premiumRate).toFixed(2) }}%
+              </n-tag>
+              <n-tag v-if="info.shares != null" size="tiny" :bordered="false">
+                份额 {{ (info.shares / 1e8).toFixed(1) }}亿份
+              </n-tag>
+            </n-flex>
+
             <n-flex :size="4" style="margin-top: 8px;" :wrap="true">
               <n-tag size="tiny" :type="growthType(info.fundBasic?.netGrowth1)" :bordered="false" v-if="info.fundBasic?.netGrowth1">近1月 {{ info.fundBasic.netGrowth1 }}%</n-tag>
               <n-tag size="tiny" :type="growthType(info.fundBasic?.netGrowth3)" :bordered="false" v-if="info.fundBasic?.netGrowth3">近3月 {{ info.fundBasic.netGrowth3 }}%</n-tag>
@@ -438,7 +461,7 @@ function blinkBorder(findId) {
               <n-button size="tiny" :loading="refreshing" @click="manualRefresh">
                 <template #icon><n-icon :component="RefreshOutline"/></template>
               </n-button>
-              <n-button size="tiny" type="error" @click="showChart(info.code, info.name)">历史净值</n-button>
+              <n-button size="tiny" type="error" @click="showChart(info.code, info.name)">{{ isOnExchangeFund(info.code) ? 'K线' : '历史净值' }}</n-button>
               <n-button size="tiny" type="warning" @click="search(info.code)">详情</n-button>
               <n-button size="tiny" @click="unFollow(info.code)">取消关注</n-button>
             </n-flex>
@@ -459,8 +482,16 @@ function blinkBorder(findId) {
     style="width: 90vw; max-width: 1100px;"
     :mask-closable="true"
   >
+    <StockLightweightKlineChart
+      v-if="chartFundCode && isOnExchangeFund(chartFundCode)"
+      :key="'etf-' + chartFundCode"
+      :code="toEastMoneyCode(chartFundCode)"
+      :stock-name="chartFundName"
+      :dark-theme="darkTheme"
+      :chart-height="400"
+    />
     <FundKlineChart
-      v-if="chartFundCode"
+      v-else-if="chartFundCode"
       :key="chartFundCode"
       :fund-code="chartFundCode"
       :fund-name="chartFundName"
