@@ -7,7 +7,10 @@ package multi
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
+
+	"go-stock/backend/data"
 )
 
 const (
@@ -113,14 +116,18 @@ func CheckDataPack(pack *DataPack, now time.Time) *DataCheckReport {
 		add("kline_fresh", true, fmt.Sprintf("latest=%s age=%dd", latest.Format("2006-01-02"), ageDays))
 	}
 
-	// 4) 四类核心数据聚合完整率
+	// 4) 核心数据聚合完整率（个股四类 / ETF 三类）
 	rep.Completeness = completenessOf(pack)
 	if rep.Completeness < minCompleteness {
 		// 打破常量折叠：直接 int(常量表达式) 会在编译期因精度丢失报错
 		minRatio := minCompleteness
-		minBars := int(minRatio*4 + 0.5)
+		total := 4
+		if isEtfPack(pack) {
+			total = 3
+		}
+		minBars := int(minRatio*float64(total) + 0.5)
 		add("completeness", false, fmt.Sprintf(
-			"数据完整率 %.0f%% 低于阈值 %.0f%%（K线/技术指标/财报/资金流历史至少 %d 类可用）",
+			"数据完整率 %.0f%% 低于阈值 %.0f%%（至少 %d 类核心数据可用）",
 			rep.Completeness*100, minCompleteness*100, minBars))
 		rep.Passed = false
 	} else {
@@ -130,8 +137,41 @@ func CheckDataPack(pack *DataPack, now time.Time) *DataCheckReport {
 	return rep
 }
 
-// completenessOf 统计四类核心数据的可用率（0~1）。
+// isEtfPack 判断 DataPack 是否属于场内基金（ETF/LOF）。
+func isEtfPack(pack *DataPack) bool {
+	return pack != nil && data.InstrumentKindOf(pack.StockCode) == data.InstrumentKindETF
+}
+
+// hasUsableReports 财务报告是否存在非空内容。
+// 旧实现用 len(*reports)>0 判定，会把爬取失败返回的 []string{""} 误判为可用。
+func hasUsableReports(reports *[]string) bool {
+	if reports == nil {
+		return false
+	}
+	for _, r := range *reports {
+		if strings.TrimSpace(r) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// completenessOf 统计核心数据可用率（0~1）：个股按 K线/技术指标/财报/资金流历史
+// 四类；ETF 无财报与个股资金流，按 K线/技术指标/ETF快照 三类。
 func completenessOf(pack *DataPack) float64 {
+	if isEtfPack(pack) {
+		available := 0
+		if pack.KLineDaily != nil && len(*pack.KLineDaily) > 0 {
+			available++
+		}
+		if pack.TechnicalIndicators != nil {
+			available++
+		}
+		if pack.EtfQuote != nil {
+			available++
+		}
+		return float64(available) / 3
+	}
 	available := 0
 	if pack.KLineDaily != nil && len(*pack.KLineDaily) > 0 {
 		available++
@@ -139,7 +179,7 @@ func completenessOf(pack *DataPack) float64 {
 	if pack.TechnicalIndicators != nil {
 		available++
 	}
-	if pack.FinancialReports != nil && len(*pack.FinancialReports) > 0 {
+	if hasUsableReports(pack.FinancialReports) {
 		available++
 	}
 	if len(pack.HistoryMoneyData) > 0 {

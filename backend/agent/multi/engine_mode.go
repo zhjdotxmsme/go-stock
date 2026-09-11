@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"go-stock/backend/data"
 	"go-stock/backend/logger"
 
 	"github.com/cloudwego/eino/schema"
@@ -120,6 +121,14 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 	emitFinalReport(ctx, ch, ac.FinalReport)
 }
 
+// etfAllowedRoles ETF/LOF 品种在模式管线（quick 等子集选择）中允许的分析师角色，
+// 与 etfAnalystRunners（standard 全量路径）保持一致。
+var etfAllowedRoles = map[string]bool{
+	"technical": true,
+	"news":      true,
+	"sentiment": true,
+}
+
 // runAnalystsSubset 并行执行选定的分析师子集（并发模式与 runParallelAnalysts 一致）。
 func (e *MultiAgentEngine) runAnalystsSubset(ctx context.Context, ac *AgentContext, roles []string) []AgentReport {
 	type result struct {
@@ -127,8 +136,12 @@ func (e *MultiAgentEngine) runAnalystsSubset(ctx context.Context, ac *AgentConte
 		err    error
 	}
 
+	isEtf := ac.InstrumentKind == data.InstrumentKindETF
 	var selected []func(context.Context, *AgentContext) (*AgentReport, error)
 	for _, role := range roles {
+		if isEtf && !etfAllowedRoles[role] {
+			continue
+		}
 		if runner, ok := analystRunners[role]; ok {
 			selected = append(selected, runner)
 		} else {

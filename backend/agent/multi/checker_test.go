@@ -106,3 +106,58 @@ func TestCheckDataPack_ExactlyHalfCompletenessPasses(t *testing.T) {
 		t.Fatalf("completeness 50%% should pass, got: %s", rep.Summary())
 	}
 }
+
+func etfPack(kline *[]data.KLineData, quote *data.EtfQuoteSnapshot) *DataPack {
+	return &DataPack{
+		StockCode:           "sh510300",
+		KLineDaily:          kline,
+		TechnicalIndicators: &data.IndicatorResult{},
+		EtfQuote:            quote,
+	}
+}
+
+func TestCheckDataPack_EtfFullCompleteness(t *testing.T) {
+	// ETF 三类核心数据齐全（K线/指标/ETF快照）：完整率 100%
+	rep := CheckDataPack(etfPack(klineBars("2026-09-07"), &data.EtfQuoteSnapshot{Code: "510300", Price: 4.5, Nav: 4.6}), checkNow)
+	if !rep.Passed {
+		t.Fatalf("healthy etf pack should pass, got: %s", rep.Summary())
+	}
+	if rep.Completeness != 1.0 {
+		t.Errorf("completeness = %v, want 1.0", rep.Completeness)
+	}
+}
+
+func TestCheckDataPack_EtfWithoutQuotePasses(t *testing.T) {
+	// ETF 无快照（2/3 ≈ 67% > 50%）：财务/资金流对 ETF 不预取，不应因缺快照阻断
+	rep := CheckDataPack(etfPack(klineBars("2026-09-07"), nil), checkNow)
+	if !rep.Passed {
+		t.Fatalf("etf pack without quote should pass, got: %s", rep.Summary())
+	}
+	if rep.Completeness < 0.5 {
+		t.Errorf("completeness = %v, want >= 0.5", rep.Completeness)
+	}
+}
+
+func TestCheckDataPack_EtfOnlyKlineFails(t *testing.T) {
+	// ETF 只有 K 线（1/3 ≈ 33% < 50%）：完整率不足应拦截
+	pack := &DataPack{
+		StockCode:  "sh510300",
+		KLineDaily: klineBars("2026-09-07"),
+	}
+	rep := CheckDataPack(pack, checkNow)
+	if rep.Passed {
+		t.Fatalf("etf pack with only kline should fail, got: %s", rep.Summary())
+	}
+}
+
+func TestCompletenessOf_EmptyStringReportsNotCounted(t *testing.T) {
+	// 回归修复：爬取失败返回的 []string{""} 不应被误判为「财报可用」
+	pack := &DataPack{
+		StockCode:        "sh600519",
+		KLineDaily:       klineBars("2026-09-07"),
+		FinancialReports: &[]string{""},
+	}
+	if got := completenessOf(pack); got != 0.25 {
+		t.Errorf("completeness = %v, want 0.25（空字符串财报不应计数）", got)
+	}
+}

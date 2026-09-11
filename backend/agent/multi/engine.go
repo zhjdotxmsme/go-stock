@@ -8,6 +8,7 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -63,8 +64,12 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 			UserQuery:          userQuery,
 			StrategyCode:       strategyCode,
 			AIConfigID:         e.aiConfigID,
+			InstrumentKind:     data.InstrumentKindOf(stockCode),
 			StreamCh:           ch,
 			MemoryInjectionOff: e.config.normalize().MemoryInjectionOff,
+		}
+		if ac.InstrumentKind == data.InstrumentKindETF {
+			logger.SugaredLogger.Infof("instrument %s classified as on-exchange fund (ETF/LOF)", stockCode)
 		}
 
 		// 测试专用 panic 注入：验证 recover 护栏（生产 TestPanicHook 为 nil，无影响）。
@@ -199,52 +204,51 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 	return ch
 }
 
-// runParallelAnalysts executes all 4 analyst nodes concurrently using goroutines.
+// etfAnalystRunners ETF/LOF 适用分析师：基本面（ROE/财报）、游资（龙虎榜）、
+// 解禁对基金完全无意义，照跑只会产出幻觉内容并浪费 token。
+var etfAnalystRunners = []func(context.Context, *AgentContext) (*AgentReport, error){
+	RunTechnicalAnalyst,
+	RunNewsAnalyst,
+	RunSentimentAnalyst,
+}
+
+// stockAnalystRunners 个股全量分析师。
+var stockAnalystRunners = []func(context.Context, *AgentContext) (*AgentReport, error){
+	RunFundamentalAnalyst,
+	RunTechnicalAnalyst,
+	RunSentimentAnalyst,
+	RunNewsAnalyst,
+	RunPolicyAnalyst,
+	RunHotMoneyAnalyst,
+	RunLockupAnalyst,
+}
+
+// analystRunnersFor 按标的品种返回分析师执行列表。
+func analystRunnersFor(ac *AgentContext) []func(context.Context, *AgentContext) (*AgentReport, error) {
+	if ac.InstrumentKind == data.InstrumentKindETF {
+		return etfAnalystRunners
+	}
+	return stockAnalystRunners
+}
+
+// runParallelAnalysts executes analyst nodes concurrently using goroutines.
 func (e *MultiAgentEngine) runParallelAnalysts(ctx context.Context, ac *AgentContext) []AgentReport {
 	type result struct {
 		report *AgentReport
 		err    error
 	}
 
-	resultCh := make(chan result, 7)
+	runners := analystRunnersFor(ac)
+	resultCh := make(chan result, len(runners))
 	var wg sync.WaitGroup
-	wg.Add(7)
-
-	go func() {
-		defer wg.Done()
-		r, err := RunFundamentalAnalyst(ctx, ac)
-		resultCh <- result{r, err}
-	}()
-	go func() {
-		defer wg.Done()
-		r, err := RunTechnicalAnalyst(ctx, ac)
-		resultCh <- result{r, err}
-	}()
-	go func() {
-		defer wg.Done()
-		r, err := RunSentimentAnalyst(ctx, ac)
-		resultCh <- result{r, err}
-	}()
-	go func() {
-		defer wg.Done()
-		r, err := RunNewsAnalyst(ctx, ac)
-		resultCh <- result{r, err}
-	}()
-	go func() {
-		defer wg.Done()
-		r, err := RunPolicyAnalyst(ctx, ac)
-		resultCh <- result{r, err}
-	}()
-	go func() {
-		defer wg.Done()
-		r, err := RunHotMoneyAnalyst(ctx, ac)
-		resultCh <- result{r, err}
-	}()
-	go func() {
-		defer wg.Done()
-		r, err := RunLockupAnalyst(ctx, ac)
-		resultCh <- result{r, err}
-	}()
+	wg.Add(len(runners))
+	for _, run := range runners {
+		go func(run func(context.Context, *AgentContext) (*AgentReport, error)) {
+			defer wg.Done()
+			r, err := run(ctx, ac)
+			resultCh <- result{r, err}
+		}(run)
+	}
 
 	wg.Wait()
 	close(resultCh)
@@ -357,8 +361,18 @@ func (e *MultiAgentEngine) runSimpleQuery(ctx context.Context, ac *AgentContext,
 		"label": "快速查询中...",
 	})
 
-	// Try to get real-time price
-	price, priceTime := data.GetRealTimeStockPriceInfo(ctx, ac.StockCode)
+	// Try to get real-time price（ETF/LOF 走基金行情，个股页爬取对基金无效）
+	var price, priceTime string
+	if ac.InstrumentKind == data.InstrumentKindETF {
+		if snap := data.NewFundApi().GetEtfQuoteSnapshot(ac.StockCode); snap != nil {
+			if snap.Price > 0 {
+				price = strconv.FormatFloat(snap.Price, 'f', 3, 64)
+			}
+			priceTime = snap.QuoteTime
+		}
+	} else {
+		price, priceTime = data.GetRealTimeStockPriceInfo(ctx, ac.StockCode)
+	}
 
 	answer := fmt.Sprintf("**%s(%s)** 快速查询结果：\n\n", ac.StockName, ac.StockCode)
 	if price != "" {

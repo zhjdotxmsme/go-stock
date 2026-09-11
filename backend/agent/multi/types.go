@@ -109,9 +109,12 @@ type AgentContext struct {
 	UserQuery    string // the user's original question
 	StrategyCode string // 空=全分析模式, 非空=策略Code（如 "moving_average"）
 	AIConfigID   int
-	Reports      []AgentReport
-	Debate       *DebateResult
-	FinalReport  *FinalReport
+	// InstrumentKind 标的品种（data.InstrumentKindStock/ETF），engine.Run 入口判定。
+	// 分析师与数据预取据此分流数据源与 Prompt 框架；空值按 stock 处理（兼容测试/自定义管线）。
+	InstrumentKind string
+	Reports        []AgentReport
+	Debate         *DebateResult
+	FinalReport    *FinalReport
 
 	// A3 增强状态（仅模式管线填充；standard 管线不触碰，保持行为不变）
 	DisagreementClass string                        // D6 分歧分类结果
