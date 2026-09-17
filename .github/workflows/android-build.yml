@@ -1,8 +1,11 @@
 name: Android APK
 
 # go-stock Android 移动端(mobile/ 目录, Wails v3)云端打包:
-# 手动触发,产出 release APK(无正式签名时用 debug keystore 签名,可直接安装)。
+# 产出 release APK(无正式签名时用 debug keystore 签名,可直接安装)。
 # 架构说明: arm64=绝大多数真机; amd64=Android 模拟器; fat=arm64+x86_64 通用包。
+# push 触发的原因: 本仓库默认分支为 dev,特性分支上仅有 workflow_dispatch 的
+# workflow 不会出现在 Actions 列表里;有过一次运行后才会列出并出现手动按钮。
+# 验证期先按路径过滤自动构建,稳定后可按需移除 push 触发。
 on:
   workflow_dispatch:
     inputs:
@@ -15,6 +18,12 @@ on:
           - arm64
           - amd64
           - fat
+  push:
+    branches:
+      - '**'
+    paths:
+      - '.github/workflows/android-build.yml'
+      - 'mobile/**'
 
 permissions:
   contents: read
@@ -28,6 +37,9 @@ jobs:
   build-apk:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # push 触发时 inputs.arch 为空,回退 arm64(覆盖绝大多数真机)
+      ARCH: ${{ inputs.arch || 'arm64' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,18 +78,18 @@ jobs:
           go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      - name: Build APK (arch=${{ inputs.arch }})
+      - name: Build APK (arch=${{ env.ARCH }})
         working-directory: mobile
         run: |
-          if [ "${{ inputs.arch }}" = "fat" ]; then
+          if [ "$ARCH" = "fat" ]; then
             wails3 task android:package:fat
           else
-            wails3 task android:package ARCH=${{ inputs.arch }}
+            wails3 task android:package ARCH="$ARCH"
           fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: go-stock-android-${{ inputs.arch }}
+          name: go-stock-android-${{ env.ARCH }}
           path: mobile/bin/*.apk
           if-no-files-found: error
