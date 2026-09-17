@@ -1,1 +1,0 @@
-assistant: ❌ AI 配置不存在或无效，请检查 AI 配置

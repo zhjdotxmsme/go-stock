@@ -142,3 +142,6 @@ mobile/build/android/app/src/main/jniLibs/*/libwails.so
 mobile/build/windows/
 mobile/build/darwin/
 mobile/frontend/bindings/
+
+# 运行时生成的 AI 输出（流式调试内容），不入库
+data/result.md
