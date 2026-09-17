@@ -84,7 +84,10 @@ jobs:
 
       - name: Install wails3 CLI
         run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
+          # CLI 仅用于 task/bindings/overlay 生成,CGO_ENABLED=0 纯 Go 构建即可;
+          # 否则 Linux 下会因缺 gtk4/webkitgtk-6.0 系统库而编译失败。
+          # Android 交叉编译由 Taskfile 自行设置 NDK 工具链与 CGO_ENABLED=1,不受此影响。
+          CGO_ENABLED=0 go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Build APK (arch=${{ env.ARCH }})
