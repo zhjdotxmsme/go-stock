@@ -3,6 +3,8 @@ module go-stock/mobile
 go 1.26.0
 
 require (
+	github.com/coocood/freecache v1.2.7
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/wailsapp/wails/v3 v3.0.0-beta.20
 	go-stock v0.0.0
 )
@@ -57,7 +59,6 @@ require (
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.17 // indirect
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/cohesion-org/deepseek-go v1.4.0 // indirect
-	github.com/coocood/freecache v1.2.7 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/duke-git/lancet/v2 v2.3.9 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -117,7 +118,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/robertkrimen/otto v0.5.1 // indirect
-	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/samber/lo v1.53.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/sergeymakinen/go-bmp v1.0.0 // indirect
