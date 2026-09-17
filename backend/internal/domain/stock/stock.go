@@ -206,6 +206,19 @@ type TradingRecordStatistics struct {
 	StockCount      int64   `json:"stockCount"`
 }
 
+// HoldingsPosition 单只股票的当前持仓明细（FIFO 推算，供持仓 AI 总结与前端展示）
+type HoldingsPosition struct {
+	StockCode     string  `json:"stockCode"`
+	StockName     string  `json:"stockName"`
+	Volume        int64   `json:"volume"`        // 当前持仓数量（股）
+	CostPrice     float64 `json:"costPrice"`     // 成本均价
+	CostAmount    float64 `json:"costAmount"`    // 持仓成本额
+	CurrentPrice  float64 `json:"currentPrice"`  // 最新价（实时获取，0 表示获取失败）
+	MarketValue   float64 `json:"marketValue"`   // 持仓市值
+	ProfitAmount  float64 `json:"profitAmount"`  // 浮动盈亏额
+	ProfitPercent float64 `json:"profitPercent"` // 浮动盈亏率 %
+}
+
 // StockChangeItem 实时异动项(来自外部数据源,非 DB 模型)。
 // service 的外部拉取函数注入使用该类型,字段与 data 层异动项一一对应。
 type StockChangeItem struct {

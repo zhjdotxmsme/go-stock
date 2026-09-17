@@ -26,6 +26,9 @@ import {
 } from 'naive-ui'
 import sparkLine from "./stockSparkLine.vue";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
+import StockIndicatorsModal from "./trading/StockIndicatorsModal.vue";
+import HoldingsAiSummaryModal from "./trading/HoldingsAiSummaryModal.vue";
+import HoldingsSummaryHistoryModal from "./trading/HoldingsSummaryHistoryModal.vue";
 
 const message = useMessage()
 const notify = useNotification()
@@ -37,6 +40,12 @@ const longStopLossPrice = ref(0)
 const longTakeProfitPrice = ref(0)
 const costPrice = ref(0)
 const darkTheme = ref(false)
+
+const showIndicatorsModal = ref(false)
+const indicatorsCode = ref('')
+const indicatorsName = ref('')
+const showAiSummaryModal = ref(false)
+const showSummaryHistory = ref(false)
 
 const dataRef = ref([])
 const loadingRef = ref(true)
@@ -229,6 +238,12 @@ function openKlineChart(row) {
   costPrice.value = row.Price || 0
 }
 
+function openIndicators(row) {
+  indicatorsCode.value = toEastMoneyCode(row.StockCode)
+  indicatorsName.value = row.StockName || ''
+  showIndicatorsModal.value = true
+}
+
 
 
 function formatRowTradingTime(row) {
@@ -269,7 +284,10 @@ function query({ page, pageSize = 12, keyword = '', direction = '', startDate = 
       startDate,
       endDate
     })
-      .then(({data: res}) => {
+      .then(({data: res, error}) => {
+        if (!res) {
+          throw new Error(error?.message || '查询交易日志失败')
+        }
         const raw = res.list ?? []
         const list = raw.map(normalizeTradingRecordRow)
         const total = res.total ?? 0
@@ -285,7 +303,10 @@ function query({ page, pageSize = 12, keyword = '', direction = '', startDate = 
   })
 }
 
-/** 定时静默刷新当前列表与统计，不占用 loadingRef，避免与上次请求重叠时整页停更 */
+let silentRefreshFailing = false
+
+/** 定时静默刷新当前列表与统计，不占用 loadingRef，避免与上次请求重叠时整页停更；
+ * 连续失败期间只提示一次，恢复成功后自动重置 */
 function silentRefreshCurrentPage() {
   query({
     page: paginationReactive.page,
@@ -296,11 +317,17 @@ function silentRefreshCurrentPage() {
     endDate: paginationReactive.range ? formatDate(paginationReactive.range[1]) : ''
   })
     .then((data) => {
+      silentRefreshFailing = false
       dataRef.value = data.data
       paginationReactive.pageCount = data.pageCount
       paginationReactive.itemCount = data.total
     })
-    .catch(() => {})
+    .catch((e) => {
+      if (!silentRefreshFailing) {
+        silentRefreshFailing = true
+        message.warning(e?.message || '交易日志自动刷新失败，将自动重试')
+      }
+    })
   fetchStatistics()
 }
 
@@ -579,9 +606,19 @@ const columnsRef = ref([
   },
   {
     title: '操作',
-    width: 200,
+    width: 260,
     render(row) {
       return [
+        h(
+          NTag,
+          {
+            strong: true,
+            tertiary: true,
+            type: 'success',
+            onClick: () => openIndicators(row)
+          },
+          { default: () => '技术指标' }
+        ),
         h(
           NTag,
           {
@@ -675,6 +712,11 @@ onUnmounted(() => {
     <n-button @click="resetFilter">重置</n-button>
     <n-button type="primary" ghost @click="openAddModal">添加记录</n-button>
   </n-input-group>
+
+  <n-flex justify="end" align="center" style="margin-top: 10px">
+    <n-button type="primary" secondary @click="showAiSummaryModal = true">AI 分析持仓</n-button>
+    <n-button secondary @click="showSummaryHistory = true">历史总结</n-button>
+  </n-flex>
 
   <n-grid :cols="6" :x-gap="12" style="margin-top: 12px; padding: 12px; border-radius: 4px">
     <n-grid-item>
@@ -919,6 +961,10 @@ onUnmounted(() => {
       :costPrice="costPrice"
     />
   </n-modal>
+
+  <StockIndicatorsModal v-model:show="showIndicatorsModal" :code="indicatorsCode" :name="indicatorsName" />
+  <HoldingsAiSummaryModal v-model:show="showAiSummaryModal" />
+  <HoldingsSummaryHistoryModal v-model:show="showSummaryHistory" />
 </template>
 
 <style scoped></style>

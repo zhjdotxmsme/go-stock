@@ -946,6 +946,8 @@ export namespace data {
 	    netEstimatedRate?: number;
 	    netUnitValuePrev?: number;
 	    netActualRate?: number;
+	    premiumRate?: number;
+	    shares?: number;
 	    fundBasic: FundBasic;
 	
 	    static createFrom(source: any = {}) {
@@ -968,6 +970,8 @@ export namespace data {
 	        this.netEstimatedRate = source["netEstimatedRate"];
 	        this.netUnitValuePrev = source["netUnitValuePrev"];
 	        this.netActualRate = source["netActualRate"];
+	        this.premiumRate = source["premiumRate"];
+	        this.shares = source["shares"];
 	        this.fundBasic = this.convertValues(source["fundBasic"], FundBasic);
 	    }
 	
@@ -1342,6 +1346,128 @@ export namespace data {
 	
 	
 	
+	export class HoldingsPosition {
+	    stockCode: string;
+	    stockName: string;
+	    volume: number;
+	    costPrice: number;
+	    costAmount: number;
+	    currentPrice: number;
+	    marketValue: number;
+	    profitAmount: number;
+	    profitPercent: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new HoldingsPosition(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stockCode = source["stockCode"];
+	        this.stockName = source["stockName"];
+	        this.volume = source["volume"];
+	        this.costPrice = source["costPrice"];
+	        this.costAmount = source["costAmount"];
+	        this.currentPrice = source["currentPrice"];
+	        this.marketValue = source["marketValue"];
+	        this.profitAmount = source["profitAmount"];
+	        this.profitPercent = source["profitPercent"];
+	    }
+	}
+	export class HoldingsSummaryPageData {
+	    list: models.HoldingsDailySummary[];
+	    total: number;
+	    page: number;
+	    pageSize: number;
+	    totalPages: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new HoldingsSummaryPageData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.list = this.convertValues(source["list"], models.HoldingsDailySummary);
+	        this.total = source["total"];
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.totalPages = source["totalPages"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class IndicatorResult {
+	    macd?: Record<string, number>;
+	    rsi?: Record<string, number>;
+	    kdj?: Record<string, number>;
+	    boll?: Record<string, number>;
+	    ma?: Record<string, number>;
+	    sma?: number;
+	    atr?: number;
+	    obv?: number;
+	    cci?: number;
+	    wr?: number;
+	    bias?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new IndicatorResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.macd = source["macd"];
+	        this.rsi = source["rsi"];
+	        this.kdj = source["kdj"];
+	        this.boll = source["boll"];
+	        this.ma = source["ma"];
+	        this.sma = source["sma"];
+	        this.atr = source["atr"];
+	        this.obv = source["obv"];
+	        this.cci = source["cci"];
+	        this.wr = source["wr"];
+	        this.bias = source["bias"];
+	    }
+	}
+	export class IndicatorSummary {
+	    Trend: string;
+	    MACDSignal: string;
+	    RSIValue: number;
+	    RSIStatus: string;
+	    KDJSignal: string;
+	    BollStatus: string;
+	    Summary: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new IndicatorSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Trend = source["Trend"];
+	        this.MACDSignal = source["MACDSignal"];
+	        this.RSIValue = source["RSIValue"];
+	        this.RSIStatus = source["RSIStatus"];
+	        this.KDJSignal = source["KDJSignal"];
+	        this.BollStatus = source["BollStatus"];
+	        this.Summary = source["Summary"];
+	    }
+	}
 	
 	export class KLineData {
 	    day: string;
@@ -1810,6 +1936,40 @@ export namespace data {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.totalCount = source["totalCount"];
 	        this.data = this.convertValues(source["data"], StockChangeItem);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class StockIndicatorsResult {
+	    code: string;
+	    indicators?: IndicatorResult;
+	    summary?: IndicatorSummary;
+	
+	    static createFrom(source: any = {}) {
+	        return new StockIndicatorsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.indicators = this.convertValues(source["indicators"], IndicatorResult);
+	        this.summary = this.convertValues(source["summary"], IndicatorSummary);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -3833,6 +3993,56 @@ export namespace models {
 	        this.avgMaxReturn = source["avgMaxReturn"];
 	        this.avgMaxDrawdown = source["avgMaxDrawdown"];
 	    }
+	}
+	export class HoldingsDailySummary {
+	    id: number;
+	    summaryDate: string;
+	    content: string;
+	    modelName: string;
+	    holdingsSnapshot: string;
+	    stockCount: number;
+	    totalProfit: number;
+	    profitRate: number;
+	    // Go type: time
+	    createdAt: any;
+	    // Go type: time
+	    updatedAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new HoldingsDailySummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.summaryDate = source["summaryDate"];
+	        this.content = source["content"];
+	        this.modelName = source["modelName"];
+	        this.holdingsSnapshot = source["holdingsSnapshot"];
+	        this.stockCount = source["stockCount"];
+	        this.totalProfit = source["totalProfit"];
+	        this.profitRate = source["profitRate"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class MCPServer {
 	    id: number;

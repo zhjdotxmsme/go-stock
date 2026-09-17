@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>持仓股票技术指标与 AI 每日总结 — 设计文档</title>
+<style>
+  :root { --accent:#2f6fed; --bg:#f6f8fb; --card:#ffffff; --text:#1f2933; --muted:#6b7787; --line:#e4e9f0; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif; background:var(--bg); color:var(--text); line-height:1.7; }
+  .wrap { max-width:900px; margin:0 auto; padding:40px 24px 80px; }
+  header.hero { background:linear-gradient(135deg,#1e3a8a,#2f6fed); color:#fff; border-radius:14px; padding:32px 36px; margin-bottom:32px; }
+  header.hero h1 { margin:0 0 8px; font-size:26px; }
+  header.hero p { margin:0; opacity:.85; }
+  h2 { font-size:20px; margin:36px 0 12px; padding-bottom:6px; border-bottom:2px solid var(--line); }
+  h3 { font-size:16px; margin:22px 0 8px; color:var(--accent); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:18px 22px; margin:12px 0; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; font-size:14px; }
+  th,td { border:1px solid var(--line); padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:#eef3fb; }
+  code { background:#eef1f5; border-radius:4px; padding:1px 6px; font-size:13px; font-family:Consolas,monospace; }
+  pre { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:14px 16px; overflow-x:auto; font-size:13px; }
+  pre code { background:none; padding:0; color:inherit; }
+  .tag { display:inline-block; background:#e8f0fe; color:var(--accent); border-radius:12px; padding:1px 10px; font-size:12px; margin-right:6px; }
+  .muted { color:var(--muted); font-size:13px; }
+  .ok { color:#16803c; } .warn { color:#b45309; }
+  ul { margin:6px 0; padding-left:22px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>持仓股票技术指标与 AI 每日总结</h1>
+  <p>交易日志页增强 · 设计文档 · 2026-09-17</p>
+</header>
+
+<h2>1. 背景与目标</h2>
+<div class="card">
+<p>交易日志页（<code>TradingRecordManager.vue</code>）目前只展示持仓的汇总数字（成本、市值、收益）。目标是为持仓股票增加：</p>
+<ul>
+  <li><strong>技术指标</strong>：逐行按钮，弹窗展示该股全套技术指标（MACD/RSI/KDJ/BOLL/均线等）数值与文字解读；</li>
+  <li><strong>AI 每日总结</strong>：页面级按钮，点击后对全部持仓做<strong>组合级单次</strong> AI 分析，生成详细丰富、带总结性观点的当日总结；</li>
+  <li><strong>历史总结</strong>：列表可点击查看以往每天的总结全文与当时的持仓快照。</li>
+</ul>
+<p><span class="tag">已确认</span>AI 粒度 = 组合级单次总结；<span class="tag">已确认</span>仅手动触发（当天已生成可重新生成覆盖）；按钮位置 = 技术指标逐行 + AI 分析页面级。</p>
+</div>
+
+<h2>2. 范围</h2>
+<div class="card">
+<ul>
+  <li><span class="ok">做</span>：持仓明细 FIFO 推算接口、单股技术指标接口、AI 流式总结接口（生成完自动落库）、总结历史列表/详情、三个前端弹窗。</li>
+  <li><span class="warn">不做（本期非目标）</span>：收盘后定时自动总结、每股单独深度分析、总结的编辑/删除 UI、推送通知。</li>
+</ul>
+</div>
+
+<h2>3. 方案选型</h2>
+<div class="card">
+<table>
+<tr><th>方案</th><th>结论</th></tr>
+<tr><td><strong>A. TradingRecordHandler 加专用接口 + 独立总结表</strong></td><td><strong>采用</strong>。FIFO 逻辑已在 trading service，扩展成逐股明细最自然；AI 流式复用成熟的 <code>SummaryStockNews</code> 自定义事件名模式；独立表按天存总结+持仓快照，历史查询干净。</td></tr>
+<tr><td>B. 复用 ai_response_result + 多智能体引擎</td><td>否。多智能体面向单股深挖，做组合总结慢且贵；魔法标记值过滤历史，快照无处放。</td></tr>
+<tr><td>C. 前端组装一切</td><td>否。FIFO 要在前端重写，prompt 散落前端，历史管理混乱。</td></tr>
+</table>
+</div>
+
+<h2>4. 架构与数据流</h2>
+<div class="card">
+<pre><code>点击「AI分析」
+  └─ SummarizeHoldings(aiConfigId, eventName)        [TradingRecordHandler]
+       ├─ svc.GetHoldingsDetail(ctx)                 [trading service，FIFO+priceFn 现价]
+       │    └─ 每股 GetTechnicalIndicators → GetIndicatorSummary 文字摘要   [data]
+       ├─ 组装详细 prompt（持仓明细 + 指标摘要 + 输出结构要求）
+       ├─ openai_stream 流式 channel → goroutine EventsEmit(eventName, msg)
+       │    └─ 前端 MdPreview 增量渲染，收到 "DONE" 结束
+       └─ 流结束时落库 HoldingsDailySummary（同日覆盖）→ 再发 "DONE"
+
+点击行内「技术指标」
+  └─ GetStockTechnicalIndicators(code) → 全套指标数值 + 文字解读 → 弹窗展示</code></pre>
+</div>
+
+<h2>5. 后端接口设计（挂在现有 TradingRecordHandler，无需改 main.go Bind）</h2>
+<div class="card">
+<h3>5.1 持仓明细</h3>
+<p><code>GetHoldingsDetail() ([]data.HoldingsPosition, error)</code> — trading service 新增 <code>GetHoldingsDetail(ctx)</code>：复用现有 FIFO 循环（<code>service.go:141-189</code>），逐股输出 代码/名称/持仓量/成本均价/成本额/现价(priceFn)/市值/盈亏额/盈亏率。</p>
+<h3>5.2 技术指标</h3>
+<p><code>GetStockTechnicalIndicators(code) (*data.IndicatorResult, summary, error)</code> — data 层新增公共封装（内部做代码规范化），调 <code>GetTechnicalIndicators(ctx, code, "101", 60)</code> + <code>GetIndicatorSummary</code>。</p>
+<h3>5.3 AI 总结</h3>
+<ul>
+  <li><code>SummarizeHoldings(aiConfigId int, eventName string) error</code> — 组装 prompt（要求：整体概述 → 每股一段技术面解读与短期观点 → 组合总结性观点：仓位评价/风险点/明日关注/操作建议），流式推送，结束落库后发 DONE；</li>
+  <li><code>AbortSummarizeHoldings(eventName)</code> — 中断，不落库；</li>
+  <li><code>GetHoldingsSummaryList(page, pageSize)</code> / <code>GetHoldingsSummaryDetail(id)</code>。</li>
+</ul>
+</div>
+
+<h2>6. 数据模型</h2>
+<div class="card">
+<pre><code>// backend/models/models.go，注册进 backend/db/chat_memory.go 的 AutoMigrate
+type HoldingsDailySummary struct {
+    gorm.Model
+    SummaryDate      string  `gorm:"index;unique"` // yyyy-MM-dd，一天一份
+    Content          string  `gorm:"type:text"`    // AI 总结全文 markdown
+    ModelName        string                        // 使用的 AI 模型
+    HoldingsSnapshot string  `gorm:"type:text"`    // 生成时持仓明细 JSON（回放用）
+    StockCount       int64
+    TotalProfit      float64
+    ProfitRate       float64
+}
+func (HoldingsDailySummary) TableName() string { return "holdings_daily_summaries" }</code></pre>
+<p class="muted">保存策略：按 SummaryDate upsert，重新生成覆盖当天记录。</p>
+</div>
+
+<h2>7. 前端交互设计（TradingRecordManager.vue + 三个子组件）</h2>
+<div class="card">
+<ul>
+  <li>顶部统计区右侧加「AI 分析」「历史总结」按钮；表格「操作」列前加「技术指标」按钮（逐行）。</li>
+  <li><strong>AI 分析弹窗</strong>（<code>trading/HoldingsAiSummaryModal.vue</code>）：打开先查当天是否已有总结（有则直接展示 + 可重新生成）；生成中 MdPreview 流式渲染 + 中断按钮；AI 配置下拉仿 market.vue（系统设置取列表，默认第一条）。事件名固定 <code>tradingHoldingsSummary</code>，弹窗关闭即 EventsOff。</li>
+  <li><strong>技术指标弹窗</strong>（<code>trading/StockIndicatorsModal.vue</code>）：指标数值表 + 文字解读（MdPreview）。</li>
+  <li><strong>历史总结弹窗</strong>（<code>trading/HoldingsSummaryHistoryModal.vue</code>）：日期/股票数/收益率/摘要列表 → 点击进详情（全文 + 当时持仓快照表格）。</li>
+  <li>API 包装统一加到 <code>frontend/src/api/trade.ts</code>（callApi 模式）。</li>
+</ul>
+</div>
+
+<h2>8. 错误处理</h2>
+<div class="card">
+<ul>
+  <li>无持仓：点「AI 分析」直接 message 提示并返回，不发起 AI 调用；</li>
+  <li>个别股指标获取失败：prompt 中标注"该股指标获取失败"，不阻塞整体总结；</li>
+  <li>未配置 AI：弹窗内提示前往设置页配置；</li>
+  <li>流中断/网络断：Abort 不落库，前端提示；生成中关闭弹窗自动 Abort。</li>
+</ul>
+</div>
+
+<h2>9. 测试与验收</h2>
+<div class="card">
+<ul>
+  <li>service 层：FIFO 持仓明细单测（买入/卖出/多批次，仿 service_test.go 现有模式）；</li>
+  <li>数据层：总结同日覆盖 upsert 单测；</li>
+  <li>全量 <code>go build ./... && go vet</code>、<code>vite build</code>；</li>
+  <li>验收：交易日志页可见两处按钮；技术指标弹窗有数值与解读；AI 分析流式输出且完成后历史列表出现当天记录；重新生成覆盖同日记录。</li>
+</ul>
+</div>
+
+<h2>10. 实施顺序</h2>
+<div class="card">
+<ol>
+  <li>后端：模型 + AutoMigrate 注册 → service 持仓明细 → data 层指标封装与总结 CRUD → handler 五个方法 → build/vet/test</li>
+  <li>绑定：wails generate module（失败则手写 wailsjs 薄封装）</li>
+  <li>前端：api/trade.ts → 三个弹窗组件 → TradingRecordManager.vue 接线 → vite build</li>
+</ol>
+</div>
+
+</div>
+</body>
+</html>

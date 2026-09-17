@@ -1778,3 +1778,21 @@ type ConceptFundFlowPoint struct {
 	SnapTime  string `json:"snapTime"`
 	NetInflow int64  `json:"netInflow"`
 }
+
+// HoldingsDailySummary 持仓 AI 每日总结，一天一份（重新生成覆盖当天）
+type HoldingsDailySummary struct {
+	ID               uint      `json:"id" gorm:"primarykey"`
+	SummaryDate      string    `json:"summaryDate" gorm:"uniqueIndex;size:10"` // yyyy-MM-dd
+	Content          string    `json:"content" gorm:"type:text"`               // AI 总结全文 markdown
+	ModelName        string    `json:"modelName" gorm:"size:120"`              // 使用的 AI 模型
+	HoldingsSnapshot string    `json:"holdingsSnapshot" gorm:"type:text"`      // 生成时持仓明细 JSON（回放用）
+	StockCount       int64     `json:"stockCount"`                             // 持仓股票数
+	TotalProfit      float64   `json:"totalProfit"`                            // 当日浮动盈亏额
+	ProfitRate       float64   `json:"profitRate"`                             // 当日浮动盈亏率 %
+	CreatedAt        time.Time `json:"createdAt"`
+	UpdatedAt        time.Time `json:"updatedAt"`
+}
+
+func (HoldingsDailySummary) TableName() string {
+	return "holdings_daily_summaries"
+}

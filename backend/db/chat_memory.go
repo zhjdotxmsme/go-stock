@@ -66,4 +66,5 @@ func AutoMigrate() {
 	// AI 助手会话：历史上未被任何 AutoMigrate 覆盖，旧库靠早期版本建表残留，
 	// 全新安装会缺表导致会话保存静默失败（前端 .catch 吞掉）。
 	Dao.AutoMigrate(&models.AiAssistantSession{})
+	Dao.AutoMigrate(&models.HoldingsDailySummary{})
 }

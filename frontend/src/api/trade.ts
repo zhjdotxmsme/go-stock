@@ -75,6 +75,56 @@ export async function getStockRealTimePrice(code: string) {
   return callApi(StockHandler.GetStockRealTimePrice, code)
 }
 
+// ========== 持仓明细 / 技术指标 / AI 每日总结 ==========
+
+/**
+ * 获取逐股持仓明细（FIFO 推算 + 实时现价）
+ * Go: GetHoldingsDetail() []data.HoldingsPosition
+ */
+export async function getHoldingsDetail() {
+  return callApi(TradingRecordHandler.GetHoldingsDetail)
+}
+
+/**
+ * 获取单股全套技术指标与文字解读
+ * Go: GetStockTechnicalIndicators(code string) *data.StockIndicatorsResult
+ */
+export async function getStockTechnicalIndicators(code: string) {
+  return callApi(TradingRecordHandler.GetStockTechnicalIndicators, code)
+}
+
+/**
+ * 流式生成持仓 AI 每日总结（结果通过 Wails 事件 eventName 推送，结束发 "DONE"，完成自动落库）
+ * Go: SummarizeHoldings(aiConfigId int, eventName string)
+ */
+export async function summarizeHoldings(aiConfigId: number, eventName: string) {
+  return callApi(TradingRecordHandler.SummarizeHoldings, aiConfigId, eventName)
+}
+
+/**
+ * 中断进行中的持仓 AI 总结（不落库）
+ * Go: AbortSummarizeHoldings()
+ */
+export async function abortSummarizeHoldings() {
+  return callApi(TradingRecordHandler.AbortSummarizeHoldings)
+}
+
+/**
+ * 持仓总结历史列表（按日期倒序，content 为预览）
+ * Go: GetHoldingsSummaryList(page, pageSize int) *data.HoldingsSummaryPageData
+ */
+export async function getHoldingsSummaryList(page = 1, pageSize = 20) {
+  return callApi(TradingRecordHandler.GetHoldingsSummaryList, page, pageSize)
+}
+
+/**
+ * 单条持仓总结全文（含持仓快照）
+ * Go: GetHoldingsSummaryDetail(id uint) *models.HoldingsDailySummary
+ */
+export async function getHoldingsSummaryDetail(id: number) {
+  return callApi(TradingRecordHandler.GetHoldingsSummaryDetail, id)
+}
+
 export default {
   getTradingRecordList,
   addTradingRecord,
@@ -84,4 +134,10 @@ export default {
   getTradingRecordStatistics,
   checkFrequentTrading,
   getStockRealTimePrice,
+  getHoldingsDetail,
+  getStockTechnicalIndicators,
+  summarizeHoldings,
+  abortSummarizeHoldings,
+  getHoldingsSummaryList,
+  getHoldingsSummaryDetail,
 }

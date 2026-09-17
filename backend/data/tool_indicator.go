@@ -28,13 +28,13 @@ type IndicatorResult struct {
 
 // IndicatorSummary is a human-readable summary of key technical signals.
 type IndicatorSummary struct {
-	Trend      string // 多头 / 空头 / 震荡
-	MACDSignal string // 金叉 / 死叉 / 零轴上方 / 零轴下方
-	RSIValue   float64
-	RSIStatus  string // 超买 / 超卖 / 正常
-	KDJSignal  string // 金叉 / 死叉
-	BollStatus string // 上轨 / 中轨 / 下轨
-	Summary    string
+	Trend      string  `json:"trend"`      // 多头 / 空头 / 震荡
+	MACDSignal string  `json:"macdSignal"` // 金叉 / 死叉 / 零轴上方 / 零轴下方
+	RSIValue   float64 `json:"rsiValue"`
+	RSIStatus  string  `json:"rsiStatus"`  // 超买 / 超卖 / 正常
+	KDJSignal  string  `json:"kdjSignal"`  // 金叉 / 死叉
+	BollStatus string  `json:"bollStatus"` // 上轨 / 中轨 / 下轨
+	Summary    string  `json:"summary"`
 }
 
 // GetTechnicalIndicators computes technical indicators from K-line data and returns them.

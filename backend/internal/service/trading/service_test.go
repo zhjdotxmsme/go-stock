@@ -259,3 +259,67 @@ func TestNormalizeAPICode(t *testing.T) {
 		}
 	}
 }
+
+func TestGetHoldingsDetail_FIFOAndPricing(t *testing.T) {
+	base := time.Now().AddDate(0, 0, -2)
+	repo := &stubRepo{records: []stock.TradingRecord{
+		buyRecord("sh600519", 10, 100, base),          // 持有 100 股 @10
+		buyRecord("sz000001", 5, 200, base),           // 买入 200 股 @5
+		{StockCode: "sz000001", StockName: "sz000001", Direction: "卖出", Price: 6, Volume: 100, TradingTime: base.AddDate(0, 0, 1)}, // 剩 100 股 @5
+	}}
+	// sh600519 有实时价；sz000001 现价获取失败
+	priceFn := func(code string) (float64, error) {
+		if code == "sh600519" {
+			return 12, nil
+		}
+		return 0, errors.New("no price")
+	}
+	svc := NewService(repo, priceFn)
+
+	positions, err := svc.GetHoldingsDetail(context.Background())
+	if err != nil {
+		t.Fatalf("GetHoldingsDetail() error = %v", err)
+	}
+	if len(positions) != 2 {
+		t.Fatalf("GetHoldingsDetail() len = %d, want 2", len(positions))
+	}
+
+	byCode := make(map[string]stock.HoldingsPosition, len(positions))
+	for _, p := range positions {
+		byCode[p.StockCode] = p
+	}
+
+	moutai := byCode["sh600519"]
+	if moutai.Volume != 100 || moutai.CostPrice != 10 || moutai.CurrentPrice != 12 {
+		t.Errorf("sh600519 = %+v", moutai)
+	}
+	if moutai.MarketValue != 1200 || moutai.ProfitAmount != 200 || moutai.ProfitPercent != 20 {
+		t.Errorf("sh600519 profit = %+v", moutai)
+	}
+
+	bank := byCode["sz000001"]
+	if bank.Volume != 100 || bank.CostPrice != 5 {
+		t.Errorf("sz000001 = %+v", bank)
+	}
+	// 现价获取失败：市值与盈亏按 0 返回，不虚构
+	if bank.CurrentPrice != 0 || bank.MarketValue != 0 || bank.ProfitAmount != 0 {
+		t.Errorf("sz000001 price-missing fields = %+v", bank)
+	}
+}
+
+func TestGetHoldingsDetail_EmptyWhenFullySold(t *testing.T) {
+	base := time.Now().AddDate(0, 0, -2)
+	repo := &stubRepo{records: []stock.TradingRecord{
+		buyRecord("sh600000", 8, 100, base),
+		{StockCode: "sh600000", StockName: "sh600000", Direction: "卖出", Price: 9, Volume: 100, TradingTime: base.AddDate(0, 0, 1)},
+	}}
+	svc := NewService(repo, nil)
+
+	positions, err := svc.GetHoldingsDetail(context.Background())
+	if err != nil {
+		t.Fatalf("GetHoldingsDetail() error = %v", err)
+	}
+	if len(positions) != 0 {
+		t.Fatalf("GetHoldingsDetail() len = %d, want 0", len(positions))
+	}
+}

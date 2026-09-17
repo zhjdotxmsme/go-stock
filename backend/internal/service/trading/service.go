@@ -8,6 +8,7 @@ package trading
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -210,6 +211,85 @@ func (s *Service) GetTradingRecordStatistics(ctx context.Context) (*stock.Tradin
 		CurrentValue:    holdingsValue,
 		StockCount:      stockCount,
 	}, nil
+}
+
+// GetHoldingsDetail 逐股持仓明细（FIFO 成本法，与 GetTradingRecordStatistics 同口径）。
+// 现价通过 priceFn 实时获取；获取失败时 CurrentPrice/市值/盈亏按 0 返回，由调用方标注。
+func (s *Service) GetHoldingsDetail(ctx context.Context) ([]stock.HoldingsPosition, error) {
+	records, err := s.repo.ListAllTradingRecords(ctx)
+	if err != nil {
+		logger.SugaredLogger.Errorf("获取持仓明细失败: %s", err.Error())
+		return nil, err
+	}
+
+	type lot struct {
+		Volume int64
+		Price  float64
+	}
+	stockMap := make(map[string][]lot)
+	stockNames := make(map[string]string)
+
+	for _, r := range records {
+		if r.StockName != "" {
+			stockNames[r.StockCode] = r.StockName
+		}
+		if r.Direction == "买入" {
+			stockMap[r.StockCode] = append(stockMap[r.StockCode], lot{Volume: r.Volume, Price: r.Price})
+		} else if r.Direction == "卖出" {
+			remaining := r.Volume
+			for i := range stockMap[r.StockCode] {
+				if remaining == 0 {
+					break
+				}
+				rec := &stockMap[r.StockCode][i]
+				if rec.Volume <= remaining {
+					remaining -= rec.Volume
+					rec.Volume = 0
+				} else {
+					rec.Volume -= remaining
+					remaining = 0
+				}
+			}
+		}
+	}
+
+	positions := make([]stock.HoldingsPosition, 0, len(stockMap))
+	for code, lots := range stockMap {
+		volume := int64(0)
+		cost := 0.0
+		for _, l := range lots {
+			if l.Volume > 0 {
+				volume += l.Volume
+				cost += float64(l.Volume) * l.Price
+			}
+		}
+		if volume <= 0 {
+			continue
+		}
+		pos := stock.HoldingsPosition{
+			StockCode:  code,
+			StockName:  stockNames[code],
+			Volume:     volume,
+			CostPrice:  cost / float64(volume),
+			CostAmount: cost,
+		}
+		if s.priceFn != nil {
+			price, err := s.priceFn(normalizeAPICode(code))
+			if err == nil && price > 0 {
+				pos.CurrentPrice = price
+				pos.MarketValue = price * float64(volume)
+				pos.ProfitAmount = pos.MarketValue - cost
+				pos.ProfitPercent = (price - pos.CostPrice) / pos.CostPrice * 100
+			}
+		}
+		positions = append(positions, pos)
+	}
+
+	// map 遍历无序，按市值降序输出保证结果稳定（大仓位在前）
+	sort.Slice(positions, func(i, j int) bool {
+		return positions[i].MarketValue > positions[j].MarketValue
+	})
+	return positions, nil
 }
 
 // normalizeAPICode 将交易日志中的代码转为实时/K 线接口使用的代码。
