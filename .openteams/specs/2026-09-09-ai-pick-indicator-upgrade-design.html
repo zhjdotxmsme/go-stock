@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI选股技术指标增强 + 复盘多窗口与自动调权 — 设计规格</title>
+<style>
+  :root { --ink:#1f2937; --sub:#6b7280; --line:#e5e7eb; --brand:#18a058; --brand2:#2080f0; --warn:#d97706; --bg:#f8fafc; --card:#ffffff; }
+  * { box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei","PingFang SC",-apple-system,sans-serif; color:var(--ink); background:var(--bg); margin:0; line-height:1.7; }
+  .wrap { max-width:960px; margin:0 auto; padding:32px 24px 80px; }
+  header.hero { background:linear-gradient(135deg,#0f172a 0%,#14532d 100%); color:#fff; border-radius:14px; padding:28px 32px; margin-bottom:28px; }
+  header.hero h1 { margin:0 0 8px; font-size:24px; }
+  header.hero p { margin:4px 0; color:#cbd5e1; font-size:13.5px; }
+  .badge { display:inline-block; background:rgba(255,255,255,.15); border-radius:999px; padding:2px 12px; font-size:12px; margin-right:8px; }
+  h2 { font-size:19px; border-left:4px solid var(--brand); padding-left:10px; margin:36px 0 12px; }
+  h3 { font-size:15.5px; margin:22px 0 8px; color:#0f172a; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 20px; margin:12px 0; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; font-size:13.5px; background:var(--card); }
+  th,td { border:1px solid var(--line); padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:#f1f5f9; font-weight:600; }
+  code { background:#eef2f7; border-radius:4px; padding:1px 6px; font-family:Consolas,monospace; font-size:12.5px; color:#0f766e; }
+  pre { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:14px 16px; overflow-x:auto; font-size:12.5px; line-height:1.6; }
+  .tip { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 14px; font-size:13.5px; }
+  .warn { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:10px 14px; font-size:13.5px; }
+  .muted { color:var(--sub); font-size:13px; }
+  .flow { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:10px 0; }
+  .flow .step { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:6px 12px; font-size:13px; }
+  .flow .arr { color:var(--sub); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:720px){ .grid2{grid-template-columns:1fr;} }
+  footer { margin-top:48px; color:var(--sub); font-size:12.5px; border-top:1px solid var(--line); padding-top:16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>AI选股技术指标增强 + 复盘多窗口与自动调权</h1>
+  <p>
+    <span class="badge">2026-09-09</span>
+    <span class="badge">分支 feat/multi-agent-analysis</span>
+    <span class="badge">状态：待用户评审</span>
+  </p>
+  <p>让选股引擎用上 K 线技术指标模块的扩展指标集与 10 套组合预设；复盘升级为多窗口验证，并按复盘成绩自动调整策略权重。</p>
+</header>
+
+<h2>1. 背景与目标</h2>
+<div class="card">
+  <p>前端 K 线「技术指标」模块已有约 50 个指标与 10 套组合预设（<code>combos.ts</code>，每套含明确买卖规则），但 AI 选股引擎（Go 后端）只实现了 11 个指标、6 因子 + 8 策略。大多数新指标「只能看、不能选股」。</p>
+  <p><b>目标</b>：① 把缺失指标移植到 Go，纳入选股评分；② 10 套组合预设实现为可直接选择的组合策略；③ 复盘升级为多窗口口径；④ 按复盘成绩对策略自动调权。</p>
+  <p class="muted">用户已确认的决策：两个选股入口（每日选股 + AI配置选股）同时生效；指标 + 组合预设都做；新策略默认加入每日选股竞争；复盘多窗口 + 自动调权都要。</p>
+</div>
+
+<h2>2. 现状与差距</h2>
+<table>
+  <tr><th>层</th><th>现状</th><th>差距</th></tr>
+  <tr><td>前端指标库 <code>calc.ts</code></td><td>~50 指标 + 10 组合预设（含 tips 规则）</td><td>—（作为移植基准）</td></tr>
+  <tr><td>Go 指标库 <code>tool_indicator.go</code></td><td>SMA、MACD、EMA、RSI、KDJ、BOLL、WR、CCI、ATR、OBV、BIAS（11 个）</td><td>缺 ~22 个关键指标</td></tr>
+  <tr><td>选股评分 <code>daily_pick_engine.go</code></td><td>6 因子基线 + 8 策略竞争（ma_trend / oversold_reversal / momentum / channel_breakout / kdj_short / industry / research / macro）</td><td>新指标无策略承载</td></tr>
+  <tr><td>复盘 <code>daily_pick_review.go</code></td><td>单窗口：次日开盘买→次日收盘卖；<b>取最后一根 K 线当次日（晚跑会错位）</b></td><td>无 T+1 可执行口径；无 3/5 日窗口；日期索引 bug</td></tr>
+  <tr><td>策略权重</td><td>固定竞争（高分者上位），无反馈回路</td><td>无自动调权</td></tr>
+</table>
+
+<h2>3. 方案总览</h2>
+<div class="flow">
+  <span class="step">K线 120 根</span><span class="arr">→</span>
+  <span class="step">indicator 纯函数包（~22 新指标）</span><span class="arr">→</span>
+  <span class="step">6 因子基线（不动）</span><span class="arr">→</span>
+  <span class="step">策略竞争 ×24（原 8 + 组合 10 + 单指标 6，×复盘调权系数）</span><span class="arr">→</span>
+  <span class="step">D1/D2/D3 增强层（不动）</span><span class="arr">→</span>
+  <span class="step">落库</span><span class="arr">→</span>
+  <span class="step">复盘多窗口回填</span><span class="arr">→</span>
+  <span class="step">调权系数更新（闭环）</span>
+</div>
+<div class="tip">架构原则：新指标全部进独立纯函数包 <code>backend/data/indicator/</code>（无 init 副作用，沿用 <code>scoring/indicators.go</code> 先例）；组合/单指标策略实现既有 <code>ScoringStrategy</code> 接口，引擎竞争机制零改动。</div>
+
+<h2>4. Go 指标库（新增 <code>backend/data/indicator/</code>）</h2>
+<div class="card">
+<p>从前端 <code>calc.ts</code> 按同一算法与默认参数移植，输出「序列 + 最新值 + ok 标志」；数据不足时 ok=false，调用方跳过该规则（不 panic、不计分）。</p>
+<table>
+  <tr><th>类别</th><th>指标（默认参数与 calc.ts 一致）</th></tr>
+  <tr><td>趋势/动量</td><td>ADX(+DI/−DI,14)、Aroon(25)、CMO(14)、ROC(12)、TRIX(15)、AO(5/34)、SMI(14/3/3)、Fractal(2，顶/底分形)</td></tr>
+  <tr><td>通道/波动</td><td>Keltner(20/10/1.5)、Donchian(20)、SuperTrend(10/3)、TTM Squeeze(20/2/20/10/1.5)</td></tr>
+  <tr><td>系统类</td><td>Ichimoku(9/26/52)、Alligator(13/8/5+偏移)、SAR(0.02/0.2)、SATS（红绿线+TQI 精简版）、SMC（摆动高低点 + BOS/CHoCH，5/50）、Elder Ray(13)</td></tr>
+  <tr><td>量能</td><td>OBV 序列、MFI(14)、CMF(20)、AD、Force Index(13)、Chaikin Osc(3/10)</td></tr>
+  <tr><td>均线族</td><td>EMA 序列、HMA(9)、KAMA(10/2/30)</td></tr>
+</table>
+<p class="muted">现有 <code>calcSMA/calcMACD/...</code> 保持不动（旧策略/旧因子继续用），新策略一律走 indicator 包。</p>
+</div>
+
+<h2>5. 组合策略 ×10（新文件 <code>strategy_combos.go</code>）</h2>
+<div class="card">
+<p>把 <code>combos.ts</code> 每套预设的使用规则（tips）翻译成打分逻辑，实现既有 <code>ScoringStrategy</code> 接口：</p>
+<ul>
+  <li><b>共振计分</b>：每条规则命中计分，<code>Score = base + Σ命中分</code>（0–100）；规则未命中不计分，数据不足的规则跳过并在 Signal 注明。</li>
+  <li><b>Signal 文本</b>写命中详情，如「挤压释放·动量柱&gt;0·ADX 28.3」。</li>
+  <li><b>参数</b>可通过 <code>Overrides</code> 覆盖（如 <code>adx_threshold</code>）。</li>
+</ul>
+<table>
+  <tr><th>code</th><th>名称</th><th>核心规则（译自 tips）</th></tr>
+  <tr><td><code>combo_classic</code></td><td>经典入门</td><td>MA20 方向 + BOLL 位置 + MACD 零轴上金叉 + KDJ 低位金叉，四指标同向加分</td></tr>
+  <tr><td><code>combo_trend_swing</code></td><td>趋势波段</td><td>EMA12&gt;EMA21 + ADX&gt;25 + MACD 柱放大 = 波段买点；EMA 死叉离场（负分）</td></tr>
+  <tr><td><code>combo_range_dip</code></td><td>震荡低吸</td><td>BOLL 收口（震荡确认）+ 触下轨 + KDJ&lt;20 金叉低吸；触上轨+RSI&gt;70 拐头为高抛（负分）</td></tr>
+  <tr><td><code>combo_vol_price</code></td><td>量价确认</td><td>突破日 OBV 同步上行 + CMF&gt;0 + MFI 不过热（80），至少两条配合算有效突破</td></tr>
+  <tr><td><code>combo_ttm_break</code></td><td>TTM挤压突破</td><td>BOLL 进入 Keltner（挤压≥5根）后释放 + 动量柱&gt;0 转向 + 放量确认</td></tr>
+  <tr><td><code>combo_ichimoku</code></td><td>一目均衡趋势</td><td>价格在云上方 + 转换线上穿基准线 + ADX&gt;25 过滤假突破；跌回云内负分</td></tr>
+  <tr><td><code>combo_alligator</code></td><td>鳄鱼动量</td><td>三线发散张嘴 + AO 同向放大 + 突破最近顶分形；缠绕期零分</td></tr>
+  <tr><td><code>combo_elder_triple</code></td><td>Elder三重过滤</td><td>EMA 方向定势 + Force Index 回落（回调到位）+ BearPower 收窄回升</td></tr>
+  <tr><td><code>combo_sats</code></td><td>自适应趋势</td><td>SATS 转红 + TQI 趋势质量 + ADX 走强；转绿负分（2×ATR 止损提示写入 Signal）</td></tr>
+  <tr><td><code>combo_smc</code></td><td>聪明钱结构</td><td>BOS 结构突破顺趋势 + CHoCH 后回踩 + MACD 同向；跌破结构低点负分</td></tr>
+</table>
+</div>
+
+<h2>6. 单指标策略 ×6（新文件 <code>strategy_technical_ext.go</code>）</h2>
+<div class="card">
+<table>
+  <tr><th>code</th><th>名称</th><th>规则</th></tr>
+  <tr><td><code>adx_trend</code></td><td>ADX趋势跟随</td><td>ADX&gt;25 且 +DI&gt;−DI 且 ADX 上行；参数 <code>adx_threshold</code>(25)</td></tr>
+  <tr><td><code>supertrend_flip</code></td><td>超级趋势翻多</td><td>SuperTrend 翻多 ≤3 根内 + 收盘价在线上方；Signal 附 ATR 止损位</td></tr>
+  <tr><td><code>sar_trend</code></td><td>SAR抛物线</td><td>SAR 翻至价格下方 ≤5 根内且趋势未拉伸过度（防追高）</td></tr>
+  <tr><td><code>mfi_flow</code></td><td>MFI资金流</td><td>MFI&lt;20 回升（低吸）或 MFI 30–60 上穿 40 且 CMF&gt;0</td></tr>
+  <tr><td><code>obv_divergence</code></td><td>OBV量价背离</td><td>价创新低而 OBV 不创新低 = 底背离（正分）；顶背离（负分不计入选，仅 Signal 提示）</td></tr>
+  <tr><td><code>donchian_breakout</code></td><td>唐奇安突破</td><td>收盘破 20 日上轨 + 量比 ≥1.3；参数 <code>donchian_period</code>(20)</td></tr>
+</table>
+<p class="muted">CCI/WR/RSI 反转已有 <code>oversold_reversal</code>，不重复实现。</p>
+</div>
+
+<h2>7. K 线窗口 60 → 120 根</h2>
+<div class="card">
+<p><code>scoreStockTech</code> 的 <code>GetKLineData(apiCode,"240",60)</code> 改为 <b>120</b>：Ichimoku 需 52 根、SMC 摆动需 ~100 根、Alligator 偏移 8 根，60 根太薄。每只多 ~15KB JSON，管线结构不变；指标计算纯 CPU，无额外请求。</p>
+</div>
+
+<h2>8. LLM 策略菜单（<code>daily_pick_config.go</code>）</h2>
+<div class="card">
+<p><code>strategyDescs</code> 表追加 16 行（10 组合 + 6 单指标），描述写清触发条件与可调参数；参数说明段补 <code>adx_threshold</code>、<code>donchian_period</code>、<code>mfi_period</code> 等。<code>RunWithConfig</code> 按 code 启用/加权的机制现成，零改动——AI 配置选股里说「用 TTM 挤压突破选股」即可命中 <code>combo_ttm_break</code>。</p>
+</div>
+
+<h2>9. 复盘多窗口（<code>daily_pick_review.go</code> + <code>models.DailyPick</code>）</h2>
+<div class="card">
+<h3>9.1 新口径</h3>
+<table>
+  <tr><th>字段（新增列，AutoMigrate 自动建）</th><th>口径</th><th>含义</th></tr>
+  <tr><td><code>NextReturnT1</code></td><td>次日收盘 / 当日收盘 − 1</td><td><b>可执行口径</b>：当日尾盘买入，T+1 收盘卖出（含隔夜跳空，符合 A 股 T+1）</td></tr>
+  <tr><td><code>Return3D</code></td><td>第3日收盘 / 当日收盘 − 1</td><td>3 日持有收益</td></tr>
+  <tr><td><code>Return5D</code></td><td>第5日收盘 / 当日收盘 − 1</td><td>5 日持有收益（波段策略公平验证）</td></tr>
+  <tr><td><code>StrategyMult</code></td><td>选股时应用的调权系数</td><td>审计用（§10）</td></tr>
+</table>
+<p class="muted">0 = 未回填（哨兵值）。现有 <code>NextReturn/NextMaxReturn/NextMaxDrawdown</code>（次日开盘→收盘代理口径）保留不动，历史数据可比。</p>
+<h3>9.2 修复日期索引 bug</h3>
+<p><code>reviewOne</code> 改为拉 20 根 K 线并<b>按日期索引</b>定位 TradeDate 之后的第 1/3/5 根，替代「直接取最后一根」；对应窗口 K 线不存在时留 0 待下次回填（复盘可重复执行，幂等）。3/5 日窗口未到期时部分回填、到期自动补齐。</p>
+<h3>9.3 汇总</h3>
+<p><code>GetReviewSummary</code> 扩展为按窗口输出 平均收益 + 胜率；每日选股面板复盘卡片增加 T+1 / 3日 / 5日 三列展示（前端小改）。</p>
+</div>
+
+<h2>10. 策略自动调权（新文件 <code>daily_pick_weighting.go</code>）</h2>
+<div class="card">
+<h3>10.1 机制</h3>
+<p>每次选股运行前加载一次复盘历史（Reviewed=true 且 StrategyCode≠空，近 60 天），按策略聚合：</p>
+<pre>mult(s) = clamp( 1 + 0.1 × (avgT1(s) − overallAvgT1), 0.6, 1.5 )
+
+avgT1(s)      = 策略 s 全部成熟样本的 T+1 口径平均收益
+overallAvgT1  = 全部复盘股的 T+1 平均收益（市场基线）
+成熟样本      = TradeDate 距今 ≥ 5 个交易日（三窗口均已回填）</pre>
+<ul>
+  <li>竞争阶段：策略得分 × mult（只作用于技术类竞争策略；行业/研报/宏观三个 bonus 叠加层不调权）。</li>
+  <li>审计：<code>StrategyMult</code> 列记录当次系数；Reason 前缀「[策略名 ×1.25]」。</li>
+  <li>开关：<code>PickEnhanceConfig</code> 增加 <code>EnableAutoWeights</code>（默认开，可关）。</li>
+</ul>
+<h3>10.2 防过拟合护栏</h3>
+<div class="warn">
+  <ul style="margin:4px 0;">
+    <li><b>最小样本</b>：策略成熟样本 &lt; 10 条 → mult 恒为 1.0，不参与调权</li>
+    <li><b>硬限幅</b>：系数永远落在 [0.6, 1.5]，落后策略不会被饿死，领先策略不会一家独大</li>
+    <li><b>单一口径</b>：只用 T+1 可执行口径调权（3/5 日窗口仅展示，避免窗口间信号打架）</li>
+    <li><b>零和基线</b>：减去全体均值后再缩放，牛市普涨不会全体加权</li>
+  </ul>
+</div>
+</div>
+
+<h2>11. 不变的部分</h2>
+<div class="card">
+<p>Baseline 六因子及权重、D1 九因子、D2 LLM 二次排序、D3 风控、D10 后分析、数据库既有列语义、策略回测面板、组合预设的 K 线图 UI——全部不动。<b>唯一前端改动</b>：每日选股面板的复盘汇总卡片增加 T+1 / 3日 / 5日 三列（§9.3）。</p>
+</div>
+
+<h2>12. 测试策略</h2>
+<div class="card">
+<ul>
+  <li><b>指标黄金值对照</b>：node（24 支持 TS strip）直接运行 <code>calc.ts</code> 同名函数，对同一份合成 OHLCV 生成期望值 JSON → Go 单测逐一比对（容差 1e-6），保证前后端算法一致。SATS/SMC/Ichimoku 等复杂指标全走此通道。</li>
+  <li><b>组合策略单测</b>：构造典型形态（多头排列、挤压后突破、超卖反弹、顶背离），断言命中规则与分数区间；数据不足路径断言跳过不 panic。</li>
+  <li><b>复盘窗口单测</b>：固定 K 线序列验证 T+1/3/5 日索引与到期部分回填；晚跑多日场景验证日期索引不再错位。</li>
+  <li><b>调权单测</b>：样本不足 → 全 1.0；极端赢家 → 封顶 1.5；输家 → 下限 0.6；bonus 层不受影响。</li>
+  <li><b>回归</b>：现有引擎/增强层测试全绿；真实跑一次选股确认新策略出现在结果与 Reason 中。</li>
+</ul>
+</div>
+
+<h2>13. 实施顺序</h2>
+<div class="card">
+<ol>
+  <li><code>indicator</code> 包 + 黄金值对照测试（最大块，纯函数可并行移植）</li>
+  <li>组合策略 ×10 + 单指标策略 ×6 + 引擎注册（默认全启用）</li>
+  <li>LLM 菜单 16 行 + K 线窗口 120</li>
+  <li>复盘多窗口 + 日期索引修复 + 面板展示</li>
+  <li>自动调权 + 护栏单测</li>
+  <li>全量验证（go vet / 全测试 / 真实选股）→ 重建带图标 exe</li>
+</ol>
+</div>
+
+<h2>14. 风险与缓解</h2>
+<table>
+  <tr><th>风险</th><th>缓解</th></tr>
+  <tr><td>移植算法与前端不一致</td><td>黄金值对照测试逐函数比对，容差 1e-6</td></tr>
+  <tr><td>自动调权过拟合（近期运气当规律）</td><td>最小样本 10 + 硬限幅 [0.6,1.5] + 单一口径 + 零和基线；可一键关闭</td></tr>
+  <tr><td>新浪 K 线 120 根接口限制</td><td>接口本身支持任意条数；失败沿用现有降级（跳过该股并记日志）</td></tr>
+  <tr><td>策略数量翻倍导致 Reason 冗长</td><td>竞争制只留胜者 Reason；Signal 控制在单行</td></tr>
+  <tr><td>复盘晚跑/漏跑</td><td>按日期索引 + 幂等可重复执行 + 到期自动补齐</td></tr>
+</table>
+
+<footer>go-stock · AI选股技术指标增强设计规格 · 2026-09-09 · 待评审</footer>
+</div>
+</body>
+</html>

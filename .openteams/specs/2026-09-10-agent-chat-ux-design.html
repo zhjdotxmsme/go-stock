@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 智能体交互重构 — 设计文档</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel2: #1d2129;
+    --line: #2a2f3a;
+    --text: #e6e9ef;
+    --dim: #9aa4b2;
+    --accent: #4f9cf9;
+    --warn: #e6a23c;
+    --bad: #e88080;
+    --good: #67c23a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 0 80px;
+    background: var(--bg); color: var(--text);
+    font: 15px/1.7 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 24px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: .5px; }
+  .sub { color: var(--dim); margin-bottom: 34px; font-size: 14px; }
+  h2 {
+    font-size: 21px; margin: 44px 0 14px; padding-left: 12px;
+    border-left: 4px solid var(--accent);
+  }
+  h3 { font-size: 16px; margin: 26px 0 10px; color: #cfd6e2; }
+  p, li { color: #d3d9e3; }
+  code {
+    background: #232833; padding: 2px 6px; border-radius: 4px;
+    font: 13px/1.5 "Cascadia Mono", Consolas, monospace; color: #9fd0ff;
+  }
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 16px 18px; overflow-x: auto;
+    font: 13px/1.65 "Cascadia Mono", Consolas, monospace; color: #cdd6e4;
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 9px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--panel2); color: #cfd6e2; font-weight: 600; }
+  tr:nth-child(even) td { background: rgba(255,255,255,.015); }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px 20px; margin: 16px 0;
+  }
+  .card.bad { border-left: 4px solid var(--bad); }
+  .card.good { border-left: 4px solid var(--good); }
+  .card.warn { border-left: 4px solid var(--warn); }
+  .card h3 { margin-top: 0; }
+  .tag {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    background: #223047; color: #7fb2ee; margin-right: 6px; vertical-align: middle;
+  }
+  .tag.bad { background: #3a2328; color: #f0938f; }
+  .tag.good { background: #1f3324; color: #86d97a; }
+  .tag.warn { background: #3a3223; color: #e8bd6f; }
+  .muted { color: var(--dim); font-size: 13px; }
+  ul { padding-left: 22px; }
+  .flow { font: 13px/1.9 "Cascadia Mono", Consolas, monospace; color: #b9c6d8; }
+  .ok { color: var(--good); }
+  .no { color: var(--bad); }
+  hr { border: none; border-top: 1px solid var(--line); margin: 40px 0; }
+  .kbd {
+    border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px;
+    padding: 1px 6px; font-size: 12px; color: #cfd6e2;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>AI 智能体交互重构</h1>
+<div class="sub">
+  话题：把 <code>/agent</code> 页与侧边「AI 助手」浮窗合并到一套实现，修掉 A–E 五项交互缺陷<br>
+  日期：2026-09-10 &nbsp;·&nbsp; 分支：<code>feat/multi-agent-analysis</code> &nbsp;·&nbsp; 状态：待用户评审
+</div>
+
+<h2>1. 问题与实测证据</h2>
+
+<p>用户诉求（A–E 全选）：优化 <code>/agent</code>（菜单「AI 能力 → Ai智能体」）的交互。以下每条都是**读源码 + 在真实构建产物上实测**得到的，不是主观感受。</p>
+
+<table>
+  <thead>
+    <tr><th style="width:64px">编号</th><th>问题</th><th>证据</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="tag bad">A</span></td>
+      <td><b>流式期间输入框被禁用，且「发送」照常显示却点了没反应</b></td>
+      <td>
+        TDesign <code>@tdesign-vue-next/chat@0.4.5</code> 内部：<code>showStopBtn = loading || stopDisabled</code>，
+        而 textarea 的 <code>disabled = disabled || showStopBtn</code>。页面传 <code>:stop-disabled="isStreamLoad"</code>
+        → 整个流式过程 textarea 被 disable。同时自定义 <code>#suffix</code> 的「发送」按钮不受该开关影响照常渲染，
+        而 <code>inputEnter()</code> 开头 <code>if (isStreamLoad.value) return;</code> 直接静默返回；
+        输入为空时 <code>if (!inputValue.value) return;</code> 同样静默。
+      </td>
+    </tr>
+    <tr>
+      <td><span class="tag bad">B</span></td>
+      <td><b>停止按钮点了停不下来，停止后内容还在悄悄追加</b></td>
+      <td>
+        <code>agent-chat.vue</code> 的 <code>onStop()</code> 只清本地格式化计时器；<code>fetchCancel.value</code>
+        代码里<b>从未赋值</b>，永远是 <code>null</code>，后端 <code>AgentHandler.AbortChatWithAgent()</code> 从未被调用。
+        后端流继续，后续 <code>agent-message</code> 仍会往 <code>chatList[0]</code> 追加，而 UI 已显示"未在流式"。
+      </td>
+    </tr>
+    <tr>
+      <td><span class="tag bad">C</span></td>
+      <td><b>看不见「在干什么」</b></td>
+      <td>
+        <code>t-chat-reasoning</code> 是个 <code>Collapse</code>，页面只塞了 <code>&lt;t-chat-loading v-if="isStreamLoad"&gt;</code>
+        与 <code>&lt;t-chat-content&gt;</code> 到默认插槽，<b>没有给 <code>#header</code></b>（折叠头为空），
+        且 <code>isStreamLoad</code> 是全局标志（不是按消息索引）→ 思考中/思维链都藏在默认折叠的面板里。
+      </td>
+    </tr>
+    <tr>
+      <td><span class="tag bad">D</span></td>
+      <td><b>执行步骤 / 思维链 / 分析报告 三块硬堆在一个气泡里</b></td>
+      <td><code>agent-chat.vue</code> 的 <code>#content</code> 插槽把三块依次渲染，无分区标题、无折叠层次。</td>
+    </tr>
+    <tr>
+      <td><span class="tag bad">E</span></td>
+      <td><b>没有会话与上下文</b></td>
+      <td>
+        <code>chatWithAgent(...)</code> 调用处只传了 7 个参数，<b>sessionID 缺失</b>（后端签名要求第 8 个）→ 记忆无法按会话隔离；
+        无历史列表、切页面即丢；模型/模式每次重选。
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="card bad">
+  <h3><span class="tag bad">附加缺陷 1</span>跨组件事件泄漏（已核实 Wails 源码）</h3>
+  <p>
+    <code>agent-chat.vue</code> 的 <code>onBeforeUnmount</code> 调用 <code>EventsOff("agent-message")</code>。
+    Wails v2.13 的实现是
+    <code>unRegisterListener(name) { delete(e.listeners, eventName) }</code> ——
+    <b>按事件名一次清空所有监听者</b>，不是只注销自己。
+  </p>
+  <p>
+    而 <code>FloatingAgentAssistant.vue</code> 挂在 app 根、永不卸载，也监听同名事件。
+    结果：<b>只要打开过 <code>/agent</code> 页再离开，侧边 AI 助手的流式回复就彻底收不到，直到重启应用。</b>
+    <code>useAgentStream</code> 在 onBeforeUnmount 里也有同样的 <code>EventsOff</code>。
+  </p>
+</div>
+
+<div class="card warn">
+  <h3><span class="tag warn">附加缺陷 2</span>持久化模型缺字段 → 恢复会话会丢数据</h3>
+  <p>
+    前端保存的消息带 <code>steps</code>（执行步骤）与 <code>jsonMarkdown</code>（分析报告），
+    但后端 <code>models.AiAssistantMessage</code> 结构体只有
+    <code>Role / Content / Reasoning / Time / ModelName / ToolCalls / ToolResults / Timeline</code>
+    —— <b>没有这两个字段</b>，序列化时被丢弃。恢复历史后「执行步骤」「分析报告」全部消失。
+  </p>
+</div>
+
+<div class="card warn">
+  <h3><span class="tag warn">附加缺陷 3</span>新装环境缺少建表</h3>
+  <p>
+    <code>ai_assistant_sessions</code> 表<b>不在任何 AutoMigrate 列表里</b>
+    （<code>backend/db/chat_memory.go</code> 只迁移 <code>ChatMemory</code> / <code>StockChangeHistory</code> / <code>MarketStatistic</code>）。
+    现有两个库里有这张表，是历史版本留下的。全新安装的机器上保存会失败，而前端
+    <code>saveHistory()</code> 的 <code>.catch(() =&gt; {})</code> 会静默吞掉。
+  </p>
+</div>
+
+<h2>2. 现状盘点：两套实现，能力不对等</h2>
+
+<p><code>/agent</code> 页是遗留实现（TDesign <code>t-chat</code>，809 行内联逻辑）；侧边浮窗 + <code>components/agent/*</code> 是重构后的实现。<b>用户需要的能力后端全都有，浮窗也基本都用了，是 <code>/agent</code> 页没用。</b></p>
+
+<table>
+  <thead>
+    <tr><th>能力</th><th>后端</th><th>侧边浮窗</th><th><code>/agent</code> 页</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>真中断</td><td class="ok">✅ <code>AbortChatWithAgent()</code></td><td class="ok">✅ 并带 <code>isAborted</code> 守卫</td><td class="no">❌ 只停本地计时器</td></tr>
+    <tr><td>会话隔离</td><td class="ok">✅ <code>ChatWithAgent(..., sessionID)</code></td><td class="ok">✅ 传了 sessionId</td><td class="no">❌ 参数缺失</td></tr>
+    <tr><td>会话持久化</td><td class="ok">✅ <code>ai_assistant_sessions</code> 表 + upsert</td><td class="ok">✅ 保存/恢复已接线</td><td class="no">❌ 无</td></tr>
+    <tr><td>步骤/思维链/报告分区</td><td>—</td><td class="ok">✅ 有标题与计数、自动展开</td><td class="no">❌ 折叠头为空</td></tr>
+    <tr><td>流式中继续输入</td><td>—</td><td class="no">❌ <code>:disabled="isStreamLoad"</code></td><td class="no">❌ 更糟（组件内部锁死）</td></tr>
+    <tr><td>会话列表</td><td class="no">❌ 无 List 接口</td><td class="no">❌ 单会话</td><td class="no">❌ 无</td></tr>
+  </tbody>
+</table>
+
+<h2>3. 方案（已选：方案 1）</h2>
+
+<div class="card good">
+  <p><b>抽一个共享面板 <code>AgentChatPanel.vue</code> + 一个 pinia store 作为会话唯一真源</b>，<code>/agent</code> 页与侧边浮窗共用。</p>
+  <ul>
+    <li>A 在共享层修一次 → 两个入口同时生效</li>
+    <li>B/C/D/E 直接继承浮窗已验证的实现，不重写</li>
+    <li>彻底摆脱 TDesign <code>t-chat</code> 的 <code>showStopBtn</code> 语义坑</li>
+  </ul>
+  <p class="muted">已否决：方案 2（只重写 /agent 页 → 逻辑仍两份，以后每个 bug 修两遍）；方案 3（继续给 TDesign 打补丁 → 与组件内部行为对着干，长期最贵，正是当前"怪"的来源）。</p>
+</div>
+
+<h2>4. 架构与组件边界</h2>
+
+<pre><code>stores/agent.ts                        ← 会话唯一真源（pinia）
+   ├─ state : messages / sessionId / sessions / isStreamLoad / isAborted
+   │          aiConfigId / sysPromptId / userPromptId
+   │          thinkingMode / memoryMode / memoryCount / agentMode
+   ├─ action: sendMessage / abortStream / startNewChat
+   │          loadHistory / loadSessions / switchSession / deleteSession / saveHistory
+   └─ 订阅  : agent-message（全局仅注册一次，永不 EventsOff）  ← 修跨组件泄漏
+
+components/agent/AgentChatPanel.vue    ← 共享面板（新增）
+   └─ 提示条 + 消息列表(MessageBubble) + AgentChatFooter
+      props: density('panel' | 'page')
+
+components/agent/AgentSessionList.vue  ← 会话侧栏（新增，仅页面模式）
+components/agent/AgentChatFooter.vue   ← 沿用 + 修 A
+components/agent/MessageBubble.vue     ← 沿用 + 当前步骤摘要 + 「已中断」标记
+components/agent/useShareExport.js     ← 保留 composable（依赖 DOM 截图，各宿主自持）
+
+components/agent-chat.vue              ← 重写：会话侧栏 + AgentChatPanel（全宽）
+components/FloatingAgentAssistant.vue  ← 瘦身：抽屉壳 + 同一个 AgentChatPanel</code></pre>
+
+<p><b>边界原则</b>：面板不知道自己跑在页面还是抽屉里（靠 <code>density</code>）；store 不知道 UI 长什么样；两个宿主只调 store 的公开动作。</p>
+
+<h3>store 与既有 composable 的关系</h3>
+<p>把 <code>useAgentStream</code> 的流式与会话逻辑<b>移入 store</b>（改为 store 内部模块），因为事件订阅必须是全局单例；<code>useMessageGroups</code> 的展开状态、<code>useAgentOptions</code> 的选项加载同样上移。仅 <code>useShareExport</code> 保留为 composable（它绑定具体 DOM 节点做截图导出，两个宿主各持一份是合理的）。</p>
+
+<h2>5. 数据流</h2>
+
+<div class="flow">
+【发送】用户输入 → store.sendMessage()
+   ├─ 若 isStreamLoad → 先 abortStream()（= 中断并发送）
+   ├─ 追加 user 消息 + 空 assistant 占位（steps:[]）
+   ├─ 清空输入框 → saveHistory() → ensureLatestGroupExpanded()
+   └─ chatWithAgent(text, aiConfigId, sysPromptId, memoryMode, memoryCount,
+                    thinkingMode, agentMode, sessionId)     ← sessionId 必须非空
+
+【流式】后端 agent-message → store.onAgentMessage()
+   ├─ isAborted === true → 直接丢弃（修 B 的"迟到内容追加"）
+   ├─ reasoning_content 以 [STEP] 开头 → parseStepText() → push 到 steps
+   ├─ 其余 reasoning_content → 累加 rawReasoning
+   ├─ content === 'agent-DONE' 或 response_meta.finish_reason === 'stop'
+   │     → isStreamLoad=false、格式化收尾、saveHistory()
+   └─ 其他 chunk → 累加 rawContent（正文）
+</div>
+
+<div class="flow" style="margin-top:14px">
+【中断】用户点「中断」/ 在有草稿时点「中断并发送」
+   ├─ isAborted = true、isStreamLoad = false、停格式化计时器
+   ├─ 给该条 assistant 消息打 aborted = true（气泡显示「已中断」）
+   └─ systemApi.abortChatWithAgent()      ← 真正 cancel 后端 context
+
+【会话】面板挂载 → loadSessions() → loadHistory(sessionId)
+   ├─ sessionId 空 → 取最新一条（沿用 getAiAssistantSession('') 语义）
+   ├─ 新建 → sessionId = Date.now().toString()
+   └─ 删除 → deleteAiAssistantSession(id) → 重新 loadSessions()
+</div>
+
+<h2>6. A–E 逐项修法</h2>
+
+<table>
+  <thead><tr><th style="width:64px">项</th><th>改法</th><th>落点</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="tag">A</span></td>
+      <td>
+        去掉 <code>:disabled="isStreamLoad"</code>，流式中可继续输入（草稿保留）；<br>
+        主按钮在流式中：有草稿 → 文案 <b>「中断并发送」</b>；无草稿 → 禁用，另给独立 <b>「中断」</b> 按钮；<br>
+        <span class="kbd">Enter</span> 与按钮同语义（流式中 = 中断并发送，不再静默）；<br>
+        空输入点发送 → <code>message.warning('请输入你的问题')</code>。
+      </td>
+      <td><code>AgentChatFooter.vue</code>（共享层，一次修好两处）</td>
+    </tr>
+    <tr>
+      <td><span class="tag">B</span></td>
+      <td>
+        接入 <code>AbortChatWithAgent()</code>；统一走 store 的 <code>abortStream()</code>；<br>
+        保留并依赖 <code>isAborted</code> 守卫丢弃迟到事件；<b>中断状态显式可见</b>（气泡角标「已中断」），不再静默。
+      </td>
+      <td><code>stores/agent.ts</code> + <code>MessageBubble.vue</code></td>
+    </tr>
+    <tr>
+      <td><span class="tag">C</span></td>
+      <td>
+        沿用「📋 执行步骤（计数）」+ 思维链独立折叠区；<br>
+        新增<b>顶部一行「当前步骤」摘要</b>，折叠状态下也能看到"正在做什么"；<br>
+        新一轮发送时自动展开该轮（<code>ensureLatestGroupExpanded</code>）。
+      </td>
+      <td><code>MessageBubble.vue</code></td>
+    </tr>
+    <tr>
+      <td><span class="tag">D</span></td>
+      <td>
+        保持「提问 = 折叠头 → 展开是 用户 / AI」；<br>
+        展开区内 <b>执行步骤 / 思维链 / 分析报告</b> 各自独立分区、各有标题与计数；<br>
+        <code>density</code>：页面模式默认展开更多分区，浮窗模式保持紧凑。
+      </td>
+      <td><code>MessageBubble.vue</code> + <code>AgentChatPanel.vue</code></td>
+    </tr>
+    <tr>
+      <td><span class="tag">E</span></td>
+      <td>
+        <b>E1</b>：<code>sessionId</code> 贯通（补齐 <code>chatWithAgent</code> 缺的第 8 个参数）、单会话持久化、模型/模式记忆；<br>
+        <b>E2</b>：后端新增 List/Delete 接口 + 会话侧栏（新建 / 切换 / 删除 / 自动标题）；<br>
+        页面与浮窗共用同一 store → 天然一致，切页面不丢。
+      </td>
+      <td>见第 7 节（后端新增） + <code>AgentSessionList.vue</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>6.1 两处需要定死的细节</h3>
+<ul>
+  <li>
+    <b><code>density</code> 的确切差异</b>（避免"默认展开更多"这种含糊说法）：
+    <table style="margin-top:8px">
+      <thead><tr><th style="width:200px">行为</th><th><code>page</code>（/agent 页）</th><th><code>panel</code>（侧边浮窗）</th></tr></thead>
+      <tbody>
+        <tr><td>消息区顶部「当前步骤」摘要行</td><td>显示</td><td>显示</td></tr>
+        <tr><td>执行步骤分区</td><td>默认<b>展开</b></td><td>默认折叠，只显示标题 + 计数</td></tr>
+        <tr><td>思维链分区</td><td>默认<b>展开</b></td><td>默认折叠</td></tr>
+        <tr><td>分析报告(<code>jsonMarkdown</code>)分区</td><td>默认展开</td><td>默认折叠</td></tr>
+        <tr><td>用户提问折叠头</td><td>默认展开</td><td>默认折叠</td></tr>
+      </tbody>
+    </table>
+  </li>
+  <li>
+    <b>模型/模式记忆的落点</b>：存 <code>localStorage</code>，键 <code>agent.prefs</code>，值
+    <code>{ aiConfigId, sysPromptId, userPromptId, thinkingMode, memoryMode, memoryCount, agentMode }</code>。
+    读写由 <code>stores/agent.ts</code> 负责（初始化时读、变更时写）。<b>不动后端 settings 表</b>，避免与「设置」页耦合。
+  </li>
+  <li>
+    <b>「已中断」标记不持久化</b>：<code>aborted</code> 仅是本次会话的 UI 状态，<code>saveHistory()</code> 不写入该字段；
+    从历史恢复的消息不会显示「已中断」（已中断的残缺回答本身已保存在 <code>content</code> 里）。
+  </li>
+</ul>
+
+<h2>7. 后端新增（E2）</h2>
+
+<h3>7.1 模型补字段</h3>
+<pre><code>// backend/models/models.go 与 backend/internal/domain/system/session.go 同步修改
+type AiAssistantSession struct {
+    ...
+    Title string `json:"title" gorm:"size:120"`   // 新增：自动生成，取首条 user 消息前 30 字
+}
+
+type AiAssistantMessage struct {
+    ...
+    Steps        []string `json:"steps,omitempty"`        // 新增：执行步骤（修"附加缺陷 2"）
+    JsonMarkdown string   `json:"jsonMarkdown,omitempty"` // 新增：分析报告
+}
+
+// 新增：列表项（不返回完整 messages，避免列表接口拖大 payload）
+type AiAssistantSessionSummary struct {
+    SessionId    string    `json:"sessionId"`
+    Title        string    `json:"title"`
+    UpdatedAt    time.Time `json:"updatedAt"`
+    MessageCount int       `json:"messageCount"`
+}</code></pre>
+
+<h3>7.2 接口链路（沿用现有 port / adapter / service / handler 分层）</h3>
+<pre><code>port/repository/system.go     ListAiAssistantSessions(ctx, limit int) ([]system.AiAssistantSessionSummary, error)
+                              DeleteAiAssistantSession(ctx, sessionId string) error
+adapter/repository/sqlite     gorm：Order("updated_at DESC").Limit(limit)；MessageCount 由 messages JSON 解析计数
+                              Delete：Where("session_id = ?").Delete(...)
+service/system/service.go     直通（与既有 Get/SaveAiAssistantSession 同风格）
+handler/system_handler.go     ListAiAssistantSessions(limit int) []models.AiAssistantSessionSummary
+                              DeleteAiAssistantSession(sessionId string) error</code></pre>
+
+<h3>7.3 建表与标题</h3>
+<ul>
+  <li><code>backend/db/chat_memory.go</code> 的 <code>AutoMigrate()</code> 补上 <code>&amp;models.AiAssistantSession{}</code>（修「附加缺陷 3」，让新装环境也能建表）。</li>
+  <li>标题在 <code>SaveAiAssistantSession</code> 内自动派生：首次保存时取第一条 <code>role == "user"</code> 的消息，截断 30 个字符（按 rune 截，避免切坏中文）；已存在标题则不覆盖。</li>
+  <li>如无 user 消息（只有 greeting），标题置为 <code>新对话</code>。</li>
+</ul>
+
+<h3>7.4 Wails 绑定与前端 API</h3>
+<ul>
+  <li>用 <code>wails generate module</code>（<code>~/go/bin/wails.exe</code> 已存在）重新生成 <code>frontend/wailsjs/go/handler/SystemHandler.{js,d.ts}</code>；若 CLI 不可用，按现有格式手写两行（<code>ListAiAssistantSessions</code> / <code>DeleteAiAssistantSession</code>）。</li>
+  <li><code>frontend/src/api/system.ts</code> 增加 <code>listAiAssistantSessions(limit)</code> 与 <code>deleteAiAssistantSession(sessionId)</code> 包装并导出。</li>
+</ul>
+
+<h2>8. 错误处理</h2>
+
+<p><code>callApi</code> 是"不抛异常、返回 <code>{data, error}</code>"的封装 —— 现有代码大量只取 <code>data</code>，所以失败时<b>完全静默</b>，这正是"点了没反应"的根源。</p>
+
+<table>
+  <thead><tr><th>场景</th><th>要求</th></tr></thead>
+  <tbody>
+    <tr><td>空输入 / 未选模型</td><td><code>message.warning</code>，不静默返回</td></tr>
+    <tr><td>后端返回 error（含 <code>data === null</code>）</td><td>store 内统一检查并 <code>message.error</code>（带可读文案）</td></tr>
+    <tr><td>保存会话失败</td><td>不再 <code>.catch(() =&gt; {})</code>；降级为顶部提示"本次会话未能保存"</td></tr>
+    <tr><td>流式无响应</td><td>看门狗：<b>120 秒内未收到任何 chunk</b> 即判定超时 → <code>message.error('AI 无响应，请重试')</code> 并解除流式态（自动展开/折叠逻辑复用 <code>stores/app.ts</code> 已有写法）</td></tr>
+    <tr><td>中断后迟到事件</td><td><code>isAborted</code> 守卫丢弃（已有），不追加、不改状态</td></tr>
+  </tbody>
+</table>
+
+<h2>9. 测试与验收</h2>
+
+<h3>9.1 纯逻辑单测（新增，无第三方依赖）</h3>
+<p><code>frontend/scripts/check-agent-*.mjs</code>，<code>npm run test:agent</code>：</p>
+<ul>
+  <li><code>parseStepText</code>：字符串 / JSON 数组 / 对象 / 非法 JSON 四类输入</li>
+  <li>会话消息 ↔ 持久化字段映射：<code>steps</code> / <code>jsonMarkdown</code> 往返不丢</li>
+  <li>标题派生：中文按 rune 截断 30 字、超长截断、无 user 消息的兜底</li>
+  <li>中断守卫：<code>isAborted</code> 为真时 <code>onAgentMessage</code> 不改动 messages</li>
+</ul>
+
+<h3>9.2 Go 测试</h3>
+<ul>
+  <li><code>internal/service/system/service_test.go</code>：补充 List / Delete 的 stub 期望</li>
+  <li><code>internal/adapter/repository/sqlite</code>：新增临时库测试 —— save → list（标题/计数/排序）→ delete → 再 list；并断言 <code>steps</code>/<code>jsonMarkdown</code> 往返不丢（修「附加缺陷 2」的回归保护）</li>
+  <li><code>go build ./backend/... &amp;&amp; go vet ./backend/... &amp;&amp; go test ./backend/...</code></li>
+</ul>
+
+<h3>9.3 UI 交互回归（把这次的探针固化）</h3>
+<p>
+  本轮排查用 chromedp（<b>已是项目依赖</b>）起了静态服务 + stub 掉 <code>window.go</code> / <code>window.runtime</code> + 加载真实构建产物，
+  能精确断言 DOM 状态。建议固化为 <code>cmd/uitest</code>（默认不参与 <code>go test ./...</code>，显式运行）：
+</p>
+<ul>
+  <li>流式中 textarea <b>未</b> disabled、主按钮文案为「中断并发送」</li>
+  <li>点击中断 → 调用了 <code>AbortChatWithAgent</code>，且随后注入的迟到 chunk <b>不改变</b>消息内容</li>
+  <li>离开 <code>/agent</code> 页再返回 → 浮窗的 <code>agent-message</code> 监听仍存活（回归「附加缺陷 1」）</li>
+  <li>刷新后会话与模型/模式被恢复</li>
+  <li>会话列表：新建 → 出现在列表；删除 → 从列表消失</li>
+</ul>
+<p class="muted">取舍：会把一个 <code>cmd/uitest</code> 工具包纳入仓库（复用既有 chromedp 依赖）。若不希望入库，可只保留 9.1/9.2，UI 部分改由人工验收。</p>
+
+<h2>10. 交付物与回归范围</h2>
+
+<table>
+  <thead><tr><th>类型</th><th>文件</th></tr></thead>
+  <tbody>
+    <tr><td>新增</td><td><code>frontend/src/stores/agent.ts</code>、<code>components/agent/AgentChatPanel.vue</code>、<code>components/agent/AgentSessionList.vue</code>、<code>frontend/scripts/check-agent-*.mjs</code>、<code>cmd/uitest/</code>（可选）</td></tr>
+    <tr><td>改写</td><td><code>frontend/src/components/agent-chat.vue</code>（去 TDesign t-chat）</td></tr>
+    <tr><td>改动</td><td><code>FloatingAgentAssistant.vue</code>、<code>components/agent/AgentChatFooter.vue</code>、<code>MessageBubble.vue</code>、<code>useAgentStream.js</code>(移入 store)、<code>useChatSession.js</code>(移入 store)、<code>useAgentOptions.js</code>(移入 store)、<code>frontend/src/api/system.ts</code></td></tr>
+    <tr><td>后端</td><td><code>models/models.go</code>、<code>internal/domain/system/session.go</code>、<code>internal/port/repository/system.go</code>、<code>internal/adapter/repository/sqlite/system.go</code>、<code>internal/service/system/service.go</code>、<code>handler/system_handler.go</code>、<code>db/chat_memory.go</code>、<code>frontend/wailsjs/go/handler/SystemHandler.{js,d.ts}</code></td></tr>
+  </tbody>
+</table>
+
+<p><b>回归范围</b>：侧边浮窗（抽屉开合、流式、中断、分享导出）必须与新面板一起回归，因为状态真源从组件本地迁到了 store。</p>
+
+<h2>11. 实施顺序（分 4 步，每步可独立验证）</h2>
+
+<table>
+  <thead><tr><th style="width:56px">步骤</th><th>内容</th><th>验证方式</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>1</b></td>
+      <td>
+        后端：模型补 <code>Title</code>/<code>Steps</code>/<code>JsonMarkdown</code>、注册 AutoMigrate、
+        List/Delete 接口链路、标题派生、重生成 wails 绑定与前端 API 包装
+      </td>
+      <td><code>go build/vet/test ./backend/...</code> + 新仓储测试（往返不丢 steps/jsonMarkdown、list 排序与计数、delete）</td>
+    </tr>
+    <tr>
+      <td><b>2</b></td>
+      <td><code>stores/agent.ts</code>：把 <code>useAgentStream</code>/<code>useChatSession</code>/<code>useAgentOptions</code> 的逻辑上移，<code>agent-message</code> 全局单例订阅，修 A（输入区规则）</td>
+      <td>纯逻辑单测（<code>parseStepText</code>、中断守卫、prefs 读写）+ <code>AgentChatFooter</code> 交互断言</td>
+    </tr>
+    <tr>
+      <td><b>3</b></td>
+      <td><code>AgentChatPanel.vue</code> + 重写 <code>agent-chat.vue</code>（会话侧栏 + 面板）；<code>FloatingAgentAssistant.vue</code> 切到同一面板</td>
+      <td>UI 回归：A–E 五条断言（见 9.3）；浮窗抽屉回归</td>
+    </tr>
+    <tr>
+      <td><b>4</b></td>
+      <td><code>MessageBubble.vue</code> 补「当前步骤」摘要与「已中断」标记、<code>density</code> 差异；E2 会话侧栏联调</td>
+      <td>UI 回归全绿 + 构建 exe 后人工验收</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>12. 非目标（YAGNI）</h2>
+<ul>
+  <li>不做会话重命名 / 置顶 / 搜索 / 导出会话文件</li>
+  <li>不改后端 Agent 的推理与工具调用逻辑（只动会话存储与中断接线）</li>
+  <li>不动 <code>agent-chat.vue</code> 之外的其它页面布局</li>
+  <li>不做流式 Markdown 的增量渲染管线重写（沿用现有 1.5s 轮询格式化）</li>
+  <li>不引入新依赖</li>
+</ul>
+
+<hr>
+<p class="muted">本文档由 brainstorming 流程产出，待用户评审确认后再进入实现。</p>
+
+</div>
+</body>
+</html>

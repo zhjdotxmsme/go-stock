@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大宗商品模块优化 · 设计规格</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c2330; --ink:#e6edf3; --muted:#8b98a9;
+    --line:#2a3342; --accent:#58a6ff; --up:#f85149; --down:#3fb950; --warn:#d29922;
+    --chip:#243044; --mono:ui-monospace,SFMono-Regular,"Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.7 1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    padding:48px 24px;}
+  .wrap{max-width:920px;margin:0 auto}
+  h1{font-size:28px;margin:0 0 6px;letter-spacing:-.3px}
+  h2{font-size:20px;margin:40px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:16px;margin:24px 0 8px;color:var(--accent)}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:8px}
+  .meta{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 4px}
+  .badge{background:var(--chip);border:1px solid var(--line);color:var(--muted);
+    font-size:12px;padding:3px 10px;border-radius:999px}
+  .badge.live{color:var(--accent);border-color:#2b4a75}
+  p{margin:10px 0}
+  code{font-family:var(--mono);font-size:12.5px;background:#0b0f14;border:1px solid var(--line);
+    padding:1px 6px;border-radius:5px;color:#a5d6ff}
+  pre{background:#0b0f14;border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+    overflow:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:#c9d5e6}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;background:var(--panel2)}
+  td:first-child{white-space:nowrap}
+  td code{white-space:nowrap}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:5px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:720px){.grid2{grid-template-columns:1fr}}
+  .up{color:var(--up)}.down{color:var(--down)}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;margin-right:6px;vertical-align:1px}
+  .pill.ok{background:#12321f;color:var(--down);border:1px solid #1f5a35}
+  .pill.no{background:#3a1614;color:var(--up);border:1px solid #6e2a26}
+  .pill.na{background:#2b2b2b;color:var(--muted);border:1px solid var(--line)}
+  .callout{border-left:3px solid var(--accent);background:#101a29;padding:10px 16px;border-radius:0 8px 8px 0;margin:14px 0}
+  .callout.warn{border-left-color:var(--warn);background:#221c0f}
+  .flow{font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.9}
+  .foot{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+  a{color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="sub">go-stock · 大宗商品模块 · 设计规格（Design Spec）</div>
+  <h1>大宗商品模块优化</h1>
+  <div class="meta">
+    <span class="badge live">方案 B · 核心数据内嵌 + 独立信号 Tab</span>
+    <span class="badge">标准数据深度</span>
+    <span class="badge">贵金属 / 原油 / ETF 范围</span>
+    <span class="badge">日期 2026-09-07</span>
+  </div>
+
+  <h2>0. 背景与现状</h2>
+  <div class="card">
+    <p>当前大宗商品模块（<code>backend/data/commodity_*.go</code> + <code>frontend/src/components/Commodity*.vue</code>）已具备：</p>
+    <ul>
+      <li><strong>报价 / 多周期 K 线</strong>：现货、期货、ETF 多源回退（东财 push2/push2delay、Sina、Yahoo、WSCN）。</li>
+      <li><strong>宏观面板</strong>：美元指数、美债收益率曲线、TIPS 实际利率、盈亏平衡通胀。</li>
+      <li><strong>AI 分析</strong>：基于规则模板的技术面 / 基本面 / 相关性 / 报告 + 多智能体流。</li>
+    </ul>
+    <p><strong>三个短板</strong>（本次要补）：</p>
+    <ol>
+      <li>缺期货核心数据：<span class="pill no">无持仓量/增减持仓</span><span class="pill no">无期限结构(carry)</span><span class="pill no">无库存/仓单</span><span class="pill no">无 COT</span>。</li>
+      <li>策略停留在单品种规则模板，<strong>无跨品种信号排行</strong>（"今天该做什么"一目了然的表）。</li>
+      <li>AI 分析引用不到真实期货面数据（持仓/carry/库存）。</li>
+    </ol>
+  </div>
+
+  <h2>1. 范围决策（已确认）</h2>
+  <div class="card">
+    <table>
+      <tr><th>决策项</th><th>选择</th></tr>
+      <tr><td>优化方向</td><td>期货核心数据补齐 ＋ 跨品种策略信号排行 ＋ AI 分析增强</td></tr>
+      <tr><td>明确不做（YAGNI）</td><td>品种扩面（铜/铝/黑色/农产品，本轮不碰 registry）、回测引擎、信号历史快照存储、新数据源手动配置界面</td></tr>
+      <tr><td>数据深度</td><td>标准深度：全部自动拉取；COT / 周库存拉不到即降级隐藏，不做重试风暴</td></tr>
+      <tr><td>落地架构</td><td>方案 B：期货核心数据内嵌「行情总览」＋ 独立「策略信号」Tab ＋ AI 工具复用两者</td></tr>
+    </table>
+  </div>
+
+  <h2>2. 后端架构与数据层</h2>
+  <div class="card">
+    <p>新增 2 个文件 + 修改 2 个文件，全部沿用 <code>package data</code> 现有模式：</p>
+    <pre>新增  backend/data/commodity_futures_panel.go   ← 期货盘面数据服务（持仓/carry/库存/COT/比值/ATR/季节性）
+新增  backend/data/commodity_signal_engine.go   ← 策略信号引擎（纯计算、零网络、可单测）
+修改  backend/data/tool_commodity.go            ← AI 工具喂新数据 + 注册新工具
+修改  backend/handler/commodity_handler.go      ← +2 个 Wails 绑定方法</pre>
+  </div>
+
+  <h3>2.1 两个新 Wails 方法（一次调用取一屏，不逐品种散调）</h3>
+  <table>
+    <tr><th>方法</th><th>返回</th><th>前端用途</th></tr>
+    <tr>
+      <td><code>GetCommodityFuturesPanel()</code></td>
+      <td>AU/AG/SC 各自持仓量+日增仓、期限结构(carry)、ATR%、金银比+分位、SHFE/COMEX 库存、COT 净持仓+占比、当前月季节性（5 年均值）</td>
+      <td>总览页新「期货盘面」卡片</td>
+    </tr>
+    <tr>
+      <td><code>GetCommoditySignalBoard()</code></td>
+      <td>全 11 个可交易标的信号排行表（每行 5 信号 + 综合分 + 结论）</td>
+      <td>新「策略信号」Tab</td>
+    </tr>
+  </table>
+
+  <h3>2.2 数据源优先级与降级（每项独立，任一失败只隐藏该行）</h3>
+  <table>
+    <tr><th>数据点</th><th>主源</th><th>回退</th><th>降级</th></tr>
+    <tr>
+      <td>持仓量 / 日增仓</td>
+      <td>东财 push2 期货报价（扩 fields，主源已通）</td>
+      <td>Sina <code>nf_</code> 报价（现有解析路径加一个字段）</td>
+      <td>隐藏 OI 行，信号权重自动重分配</td>
+    </tr>
+    <tr>
+      <td>期限结构 carry</td>
+      <td>东财 clist 期货合约列表取最近两月</td>
+      <td>Sina 两合约代码</td>
+      <td>隐藏 carry 行</td>
+    </tr>
+    <tr><td>金银比</td><td>本地计算（已有 XAUUSD/XAGUSD 报价+K线）</td><td>—</td><td>不会失败（历史不足则隐藏分位）</td></tr>
+    <tr><td>ATR / 季节性</td><td>本地计算（已有日 K，≥3 年）</td><td>—</td><td>不会失败（历史不足则隐藏）</td></tr>
+    <tr><td>SHFE / COMEX 库存</td><td>东财数据中心库存接口（核对 reportName，样例固化进测试）</td><td>—</td><td>隐藏，标注"本周未获取"</td></tr>
+    <tr><td>CFTC COT 净持仓</td><td>CFTC 公开 JSON（每周二更新，6h TTL 缓存）</td><td>—</td><td>隐藏，标注不可用</td></tr>
+  </table>
+  <div class="callout">
+    <strong>TTL 缓存</strong>（进程内 map+mutex，与 TDX probe cache 同模式）：OI/carry <code>60s</code> · 库存 <code>1h</code> · COT <code>6h</code> · 季节性 <code>24h</code>。
+  </div>
+
+  <h2>3. 策略信号定义（确定性、可复现、零 AI）</h2>
+  <div class="card">
+    <p>5 个信号全部基于日 K + 实时盘面，后端算好前端只展示。无随机性、无 AI 介入。</p>
+    <table>
+      <tr><th>信号</th><th>定义</th><th>取值</th></tr>
+      <tr><td><strong>趋势</strong></td><td>MA20 vs MA60 交叉 ＋ 收盘价相对 MA20 位置</td><td>多头 / 空头 / 过渡</td></tr>
+      <tr><td><strong>动量</strong></td><td>20 日 & 60 日收益率符号与幅度分档</td><td>强多头 / 多头 / 中性 / 空头 / 强空头</td></tr>
+      <tr><td><strong>突破</strong></td><td>唐奇安 20 日：收盘 ≥20日高×0.99 → 多头突破；≤20日低×1.01 → 空头突破</td><td>多头突破 / 区间 / 空头突破</td></tr>
+      <tr><td><strong>Carry</strong></td><td>近远月价差/近月：贴水&gt;1% 偏多；升水&gt;1% 偏空</td><td>贴水偏多 / 中性 / 升水偏空 <span class="pill na">仅期货</span></td></tr>
+      <tr><td><strong>持仓四象限</strong></td><td>当日涨跌 × OI 日变化</td><td>涨+仓增 / 涨+仓减 / 跌+仓增 / 跌+仓减 <span class="pill na">仅期货</span></td></tr>
+    </table>
+
+    <h3>综合分（[-1, +1]，现货/ETF 缺 OI、carry 时权重自动归一化）</h3>
+    <pre>趋势 0.30 · 动量 0.25 · 突破 0.20 · Carry 0.15 · 持仓 0.10</pre>
+
+    <h3>输出行结构</h3>
+    <pre>{ code, name, market(纽约/伦敦/上海),
+  trend, momentum, breakout, carry, oiQuad,
+  score, verdict(偏多/中性/偏空) }</pre>
+  </div>
+
+  <h2>4. UI 布局与 AI 分析增强</h2>
+
+  <h3>4.1 总览页新「期货盘面」卡片（夹在报价卡与宏观指标之间）</h3>
+  <div class="card">
+<pre>┌ 期货盘面（30s 刷新，任一数据缺失该行自动隐藏）────────────────┐
+│ 沪金AU   持仓 12.3万手 (+860)   期限 ↘贴水0.6%  象限 ↗涨+仓增 │
+│ 沪银AG   持仓 25.1万手 (-1.2万) 期限 ↗升水0.3%  象限 ↘跌+仓减 │
+│ 原油SC   持仓  8.7万手 (+240)   期限 ↘贴水1.1%  象限 ↗涨+仓增 │
+├─────────────────────────────────────────────────────────────┤
+│ 金银比 82.4 (5年分位78%)   SHFE金 132吨(-3) 银 4,210吨(+162)   │
+│ COT黄金 净多 82,341手(占比71%)   COT白银 净多 9,102手(占比68%) │
+├─────────────────────────────────────────────────────────────┤
+│ 风险上下文：ATR% 沪金1.8% · 沪银2.6% · 原油3.1% │ 9月季节性 金↑ 油↓（5年）│
+└─────────────────────────────────────────────────────────────┘</pre>
+    <p class="sub">金银比分位、库存周变动、COT 占比、ATR%、季节性均由面板数据接口算好，前端不做任何指标计算；ATR/季节性历史不足则整行隐藏。</p>
+  </div>
+
+  <h3>4.2 新 Tab「策略信号」（<code>CommoditySignals.vue</code>，commodity.vue 第 3 个 tab）</h3>
+  <div class="card">
+    <ul>
+      <li>全品种排行表（n-table）：<code>品种 | 市场 | 趋势 | 动量 | 突破 | Carry | 持仓象限 | 综合分(±1 横向色条) | 结论标签</code>，按 |score| 降序排序，<span class="up">红多</span> <span class="down">绿空</span>（同应用"红涨绿跌"惯例）。</li>
+      <li>顶部一行"市场概览统计"：偏多 X / 中性 Y / 偏空 Z。</li>
+      <li>点击行 → 总览页切到该品种 K 线（复用现有 <code>selectAsset</code> 通路）。</li>
+      <li>降级：接口返回 <code>failedSignals</code> 时对应列表头标灰 + tooltip "数据源暂不可用"。</li>
+    </ul>
+  </div>
+
+  <h3>4.3 AI 分析增强（<code>tool_commodity.go</code>，不动现有 4 工具签名，只扩返回字段）</h3>
+  <table>
+    <tr><th>工具</th><th>新增内容</th></tr>
+    <tr><td><code>GetCommodityTechnicals</code></td><td>+ OI 四象限、Carry 状态（期货标的）</td></tr>
+    <tr><td><code>GetCommodityFundamentals</code></td><td>+ 金银比+分位、库存变动、COT 净持仓</td></tr>
+    <tr><td><code>GetCorrelationAnalysis</code></td><td>不改动（已有比值分位）</td></tr>
+    <tr><td><strong>新</strong> <code>GetCommoditySignalBoard</code></td><td>AI 直接引用全品种信号排行，给出"哪个方向拥挤、哪个有 carry"结论</td></tr>
+  </table>
+  <div class="callout warn">
+    <strong>待核对</strong>：<code>NewCommodityAnalysisStream</code> 的 tool 列表若为白名单制，需把新工具加进白名单（实现时查 agent prompt 组装处，一处小改）。
+  </div>
+
+  <h2>5. 测试与交付</h2>
+  <div class="card">
+    <h3>测试（沿用现有 skip 语义，断网/限流不挂）</h3>
+    <table>
+      <tr><th>文件</th><th>内容</th></tr>
+      <tr><td><code>commodity_signal_engine_test.go</code>（新）</td><td>引擎纯单测：MA 交叉方向、唐奇安突破边界(±1% 容差)、动量分档边界、缺信号权重归一化(3 种缺失组合)、综合分边界 ±1。<strong>确定性断言，不联网</strong>。</td></tr>
+      <tr><td><code>commodity_futures_panel_test.go</code>（新）</td><td>实时接口：东财 OI 字段解析、Sina OI 回退、carry 计算、金银比；不可达时 <code>t.Skipf</code>。</td></tr>
+      <tr><td><code>commodity_api_test.go</code>（改）</td><td>现有品种回归不受影响。</td></tr>
+    </table>
+
+    <h3>构建交付（既定流程）</h3>
+    <ol>
+      <li><code>go build ./...</code> + <code>go vet ./backend/...</code> 通过。</li>
+      <li>Node 24 + Vite 重打 <code>dist</code>（验证新组件在 bundle 里）。</li>
+      <li>exe 重建到 <code>E:\open-source\ai\go-stock\build\bin\go-stock.exe</code>，<code>-tags desktop,production</code>。</li>
+      <li>用户点启动 → 抽查：期货盘面卡数值 vs 东财网页、信号表方向红绿、AI 分析一次引用新数据的对话。</li>
+    </ol>
+  </div>
+
+  <h2>6. 数据流总览</h2>
+  <pre class="flow">
+  东财 push2 / clist ─┐
+  Sina nf_ / 合约    ─┼──► commodity_futures_panel.go ──► GetCommodityFuturesPanel() ──► 总览「期货盘面」卡
+  CFTC 公开 JSON    ─┤        (TTL缓存·逐项降级)          └► GetCommodityFundamentals   ──► AI 分析
+  本地 日K/报价     ─┘                                         └► GetCommodityTechnicals
+                                                                          │
+  东财/Sina OI·carry ──────────── 日K ──► commodity_signal_engine.go ──► GetCommoditySignalBoard() ─┬─► 「策略信号」Tab
+                                              (纯计算·可单测)                                       └─► AI 分析
+  </pre>
+
+  <div class="foot">
+    设计经 3 轮对话确认：方向（期货核心数据 + 信号排行 + AI 增强）· 深度（标准）· 架构（方案 B）· 信号口径与权重 · UI 与测试清单。
+    下一步：本规格用户终审通过后，进入实现计划（writing-plans）。
+  </div>
+
+</div>
+</body>
+</html>
