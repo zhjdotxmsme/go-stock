@@ -366,6 +366,13 @@ func (receiver StockDataApi) GetStockBaseInfo() {
 }
 
 func (receiver StockDataApi) GetStockCodeRealTimeData(StockCodes ...string) (*[]StockInfo, error) {
+	// 空代码列表直接返回，避免向行情源发出空 list 请求
+	StockCodes = slice.Filter(StockCodes, func(i int, s string) bool {
+		return strings.TrimSpace(s) != ""
+	})
+	if len(StockCodes) == 0 {
+		return &[]StockInfo{}, nil
+	}
 	StockCodes = ConvertTushareCodeToStockCodes(StockCodes)
 
 	stockInfos := make([]StockInfo, 0)
@@ -2647,23 +2654,49 @@ func (receiver StockDataApi) resolveTradingRecordClosePrice(apiCode string, trad
 			price, _ := convertor.ToFloat((*stockDatas)[0].Price)
 			if price > 0 {
 				closePrice = price
+				return closePrice
 			}
 		}
+		logger.SugaredLogger.Warnf("获取 %s 实时行情失败，回退使用 %.2f", apiCode, closePrice)
 	} else {
-		klines := receiver.GetCommonKLineData(apiCode, "day", 30)
-		if klines != nil {
-			for _, k := range *klines {
-				if k.Day == tradingDateStr {
-					cp, _ := convertor.ToFloat(k.Close)
-					if cp > 0 {
-						closePrice = cp
-					}
-					break
-				}
-			}
+		if cp, ok := receiver.klineCloseAt(apiCode, tradingTime); ok {
+			closePrice = cp
+		} else {
+			logger.SugaredLogger.Warnf("获取 %s 交易日 %s 的日K收盘价失败，回退使用 %.2f", apiCode, tradingDateStr, closePrice)
 		}
 	}
 	return closePrice
+}
+
+// klineCloseAt 从日K数据中取交易日当天的收盘价，取不到返回 false。
+// K线范围按交易日动态计算（设上限），超过30天的旧记录也能匹配到当日收盘；
+// 返回 false 时调用方不应把买入价等回退值固化为收盘价快照。
+func (receiver StockDataApi) klineCloseAt(apiCode string, tradingTime time.Time) (float64, bool) {
+	if strings.TrimSpace(apiCode) == "" {
+		return 0, false
+	}
+	days := int(time.Since(tradingTime).Hours()/24) + 5
+	if days < 30 {
+		days = 30
+	}
+	if days > 800 {
+		days = 800
+	}
+	klines := receiver.GetCommonKLineData(apiCode, "day", int64(days))
+	if klines == nil {
+		return 0, false
+	}
+	tradingDateStr := tradingTime.In(time.Local).Format("2006-01-02")
+	for _, k := range *klines {
+		if k.Day == tradingDateStr {
+			cp, _ := convertor.ToFloat(k.Close)
+			if cp > 0 {
+				return cp, true
+			}
+			return 0, false
+		}
+	}
+	return 0, false
 }
 
 // fillTradingRecordCloseSnapshot 写入/刷新记录的收盘价快照（添加、修改时调用）
@@ -2675,7 +2708,9 @@ func (receiver StockDataApi) fillTradingRecordCloseSnapshot(record *TradingRecor
 	record.RecordedClosePrice = receiver.resolveTradingRecordClosePrice(apiCode, record.TradingTime, record.Price)
 }
 
-// GetTradingRecordList 获取交易日志列表（分页、关键词、方向、交易日期范围）
+// GetTradingRecordList 获取交易日志列表（分页、关键词、方向、交易日期范围）。
+// 盈亏与“收盘/最新价”统一按实时最新价计算（当前页代码合并为一次批量行情请求）；
+// 实时价不可用时：历史记录回退收盘价快照，当天记录回退买入价。
 func (receiver StockDataApi) GetTradingRecordList(query TradingRecordListQuery) (*TradingRecordPageData, error) {
 	var records []TradingRecord
 	q := db.Dao.Model(&TradingRecord{})
@@ -2726,6 +2761,10 @@ func (receiver StockDataApi) GetTradingRecordList(query TradingRecordListQuery) 
 		needProfitByID[r.ID] = struct{}{}
 	}
 
+	// 当前页涉及的全部代码一次批量拉取实时最新价（单次行情请求），
+	// 历史记录与当天记录都按最新价展示与计算盈亏，不再固定使用快照
+	livePrices := receiver.batchTradingRecordLivePrices(records)
+
 	var allGlobal []TradingRecord
 	if err := db.Dao.Model(&TradingRecord{}).Order("trading_time ASC, id ASC").Find(&allGlobal).Error; err != nil {
 		logger.SugaredLogger.Errorf("获取交易日志全局序失败: %s", err.Error())
@@ -2740,26 +2779,47 @@ func (receiver StockDataApi) GetTradingRecordList(query TradingRecordListQuery) 
 	profitByID := make(map[uint]rowProfit, len(records))
 
 	closeCache := make(map[string]float64)
+	// snapCache 缓存快照回填的日K收盘价，-1 表示K线未覆盖该交易日，避免同一调用内重复拉K线
+	snapCache := make(map[string]float64)
+	todayStr := time.Now().Format("2006-01-02")
+	now := time.Now()
 
+	// 列表展示与盈亏用价（最新价语义）：批量实时价 → 历史快照 → 单只补拉（当天补实时/历史补K线）
 	resolveClose := func(apiCode string, tradingTime time.Time, fallback float64, recorded float64) float64 {
-		// 当天或未来日期的记录始终获取实时行情，不使用缓存快照
-		tradingDateStr := tradingTime.Format("2006-01-02")
-		key := apiCode + "|" + tradingDateStr
-		if tradingDateStr == time.Now().Format("2006-01-02") || tradingTime.After(time.Now()) {
-			closePrice := receiver.resolveTradingRecordClosePrice(apiCode, tradingTime, fallback)
-			closeCache[key] = closePrice
-			return closePrice
+		if p, ok := livePrices[apiCode]; ok && p > 0 {
+			return p
 		}
-		// 历史记录优先使用已保存的快照
-		if recorded > 0 {
+		tradingDateStr := tradingTime.In(time.Local).Format("2006-01-02")
+		isHistorical := tradingDateStr != todayStr && !tradingTime.After(now)
+		if isHistorical && recorded > 0 {
 			return recorded
 		}
+		key := apiCode + "|" + tradingDateStr
 		if v, ok := closeCache[key]; ok {
 			return v
 		}
 		closePrice := receiver.resolveTradingRecordClosePrice(apiCode, tradingTime, fallback)
 		closeCache[key] = closePrice
 		return closePrice
+	}
+
+	// 快照回填专用（当日收盘语义）：只从日K取交易日收盘价，取不到返回 false——
+	// 绝不能把最新价/买入价写进快照，否则该记录的收盘价会被永久固化成错误值
+	resolveSnapshot := func(apiCode string, tradingTime time.Time) (float64, bool) {
+		key := apiCode + "|" + tradingTime.In(time.Local).Format("2006-01-02")
+		if v, ok := snapCache[key]; ok {
+			if v < 0 {
+				return 0, false
+			}
+			return v, true
+		}
+		price, found := receiver.klineCloseAt(apiCode, tradingTime)
+		if found {
+			snapCache[key] = price
+			return price, true
+		}
+		snapCache[key] = -1
+		return 0, false
 	}
 
 	stockHoldings := make(map[string][]tradingRecordFIFOLot)
@@ -2769,8 +2829,6 @@ func (receiver StockDataApi) GetTradingRecordList(query TradingRecordListQuery) 
 		closePrice float64
 	}
 	var backfills []closeBackfill
-	todayStr := time.Now().Format("2006-01-02")
-	now := time.Now()
 
 	for _, r := range allGlobal {
 		_, need := needProfitByID[r.ID]
@@ -2785,9 +2843,12 @@ func (receiver StockDataApi) GetTradingRecordList(query TradingRecordListQuery) 
 		if r.Direction == "买入" {
 			if need {
 				closePrice := resolveClose(apiCode, r.TradingTime, r.Price, r.RecordedClosePrice)
-				// 历史交易日：把解析到的收盘价落库，避免每次列表重复拉 K 线
-				if r.RecordedClosePrice == 0 && closePrice > 0 && tradingDateStr != todayStr && !r.TradingTime.After(now) {
-					backfills = append(backfills, closeBackfill{id: r.ID, closePrice: closePrice})
+				// 历史交易日：按当日收盘语义补拉K线落库，避免每次列表重复拉 K 线；
+				// 取不到当日收盘就不回填，防止把买入价/最新价误固化成快照
+				if r.RecordedClosePrice == 0 && tradingDateStr != todayStr && !r.TradingTime.After(now) {
+					if snapPrice, ok := resolveSnapshot(apiCode, r.TradingTime); ok {
+						backfills = append(backfills, closeBackfill{id: r.ID, closePrice: snapPrice})
+					}
 				}
 				if r.Price > 0 {
 					profitByID[r.ID] = rowProfit{
@@ -2804,8 +2865,10 @@ func (receiver StockDataApi) GetTradingRecordList(query TradingRecordListQuery) 
 			if need {
 				avgCost, ok := fifoAvgUnitCost(stockHoldings[r.StockCode], r.Volume)
 				closePrice := resolveClose(apiCode, r.TradingTime, r.Price, r.RecordedClosePrice)
-				if r.RecordedClosePrice == 0 && closePrice > 0 && tradingDateStr != todayStr && !r.TradingTime.After(now) {
-					backfills = append(backfills, closeBackfill{id: r.ID, closePrice: closePrice})
+				if r.RecordedClosePrice == 0 && tradingDateStr != todayStr && !r.TradingTime.After(now) {
+					if snapPrice, snapOk := resolveSnapshot(apiCode, r.TradingTime); snapOk {
+						backfills = append(backfills, closeBackfill{id: r.ID, closePrice: snapPrice})
+					}
 				}
 				if ok && avgCost > 0 {
 					profitByID[r.ID] = rowProfit{
@@ -2871,6 +2934,41 @@ func (receiver StockDataApi) GetTradingRecordList(query TradingRecordListQuery) 
 		PageSize:   pageSize,
 		TotalPages: totalPages,
 	}, nil
+}
+
+// batchTradingRecordLivePrices 批量拉取当前页记录代码的实时最新价（合并为单次行情请求）。
+// 拉取失败返回空 map，由调用方走快照/单只补拉回退，不影响列表正常返回。
+func (receiver StockDataApi) batchTradingRecordLivePrices(records []TradingRecord) map[string]float64 {
+	livePrices := make(map[string]float64)
+	seen := make(map[string]struct{}, len(records))
+	codes := make([]string, 0, len(records))
+	for _, r := range records {
+		apiCode := normalizeTradingRecordAPI(r.StockCode)
+		if strings.TrimSpace(apiCode) == "" {
+			continue
+		}
+		if _, dup := seen[apiCode]; dup {
+			continue
+		}
+		seen[apiCode] = struct{}{}
+		codes = append(codes, apiCode)
+	}
+	if len(codes) == 0 {
+		return livePrices
+	}
+	infos, err := receiver.GetStockCodeRealTimeData(codes...)
+	if err != nil || infos == nil {
+		logger.SugaredLogger.Warnf("批量获取交易日志实时行情失败，将回退快照/单只补拉: %v", err)
+		return livePrices
+	}
+	for _, info := range *infos {
+		price, _ := convertor.ToFloat(info.Price)
+		if price <= 0 {
+			continue
+		}
+		livePrices[normalizeTradingRecordAPI(info.Code)] = price
+	}
+	return livePrices
 }
 
 // GetTradingRecordStatistics 获取交易日志统计数据
