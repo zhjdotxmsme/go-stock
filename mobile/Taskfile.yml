@@ -1,0 +1,56 @@
+version: '3'
+
+vars:
+  APP_NAME: "go-stock-mobile"
+  BIN_DIR: "bin"
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9246}}'
+
+includes:
+  common: ./build/Taskfile.yml
+  android: ./build/android/Taskfile.yml
+
+tasks:
+  build:
+    summary: Builds the Android debug APK
+    cmds:
+      - task: android:build
+
+  package:
+    summary: Packages a production (arm64) release APK
+    cmds:
+      - task: android:package
+
+  package:fat:
+    summary: Packages a production universal (arm64+x86_64) release APK
+    cmds:
+      - task: android:package:fat
+
+  run:
+    summary: Build, install and launch in the Android Emulator
+    cmds:
+      - task: android:run
+
+  run:device:
+    summary: Build, install and launch on a connected Android device
+    cmds:
+      - task: android:run:device
+
+  deploy:device:
+    summary: Deploy the release APK to a connected Android device
+    cmds:
+      - task: android:deploy-device
+
+  logs:
+    summary: Stream Android logcat filtered to this app
+    cmds:
+      - task: android:logs
+
+  clean:
+    summary: Clean build artifacts
+    cmds:
+      - task: android:clean
+
+  dev:
+    summary: Runs the frontend in development mode (desktop browser preview)
+    cmds:
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}

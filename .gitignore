@@ -128,3 +128,17 @@ rsrc*.syso
 
 # Runtime commodity OI snapshot (written by app/tests into the run-dir data/ folder)
 commodity_oi_snapshots.json
+
+# go-stock mobile (Wails v3 Android)
+mobile/bin/
+mobile/frontend/node_modules/
+mobile/frontend/dist/
+mobile/build/android/.gradle/
+mobile/build/android/app/build/
+mobile/build/android/local.properties
+mobile/build/android/overlay.json
+mobile/build/android/gen/
+mobile/build/android/app/src/main/jniLibs/*/libwails.so
+mobile/build/windows/
+mobile/build/darwin/
+mobile/frontend/bindings/
