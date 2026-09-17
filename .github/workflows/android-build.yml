@@ -64,13 +64,22 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Setup Android SDK (sdkmanager 就绪,ANDROID_HOME 已设置)
-        uses: android-actions/setup-android@v3
-
-      - name: Install NDK & SDK packages
+      - name: Install NDK & SDK packages (ubuntu runner 自带 Android SDK)
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;${NDK_VERSION}"
+          set -e
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKM" ]; then
+            # 兜底: 镜像未预装 cmdline-tools 时自行引导
+            echo "cmdline-tools 未预装,开始引导..."
+            curl -sSL -o /tmp/ct.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+            mkdir -p "$ANDROID_HOME/cmdline-tools"
+            unzip -q /tmp/ct.zip -d "$ANDROID_HOME/cmdline-tools"
+            mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          fi
+          "$SDKM" --version
+          yes | "$SDKM" --licenses >/dev/null || true
+          "$SDKM" "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;${NDK_VERSION}"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
 
       - name: Install wails3 CLI
