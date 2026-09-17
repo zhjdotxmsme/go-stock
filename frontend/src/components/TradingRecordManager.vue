@@ -88,7 +88,9 @@ function searchStock(value) {
     return
   }
   stockApi.getAllStockInfoList({
-    searchKeyWord: value
+    searchKeyWord: value,
+    page: 1,
+    pageSize: 50
   }).then(({data: res}) => {
     if (res && res.list) {
       const codeList = res.list.map(item => ({

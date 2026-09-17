@@ -2541,6 +2541,10 @@ func (receiver StockDataApi) AddTradingRecord(record TradingRecord) (uint, error
 		record.TradingTime = record.TradingTime.In(time.Local)
 	}
 
+	// 代码/名称先规范成与"搜索股票"（全量股票库）一致的格式，
+	// 频繁交易检查与收盘价快照都基于规范后的代码
+	receiver.canonicalizeTradingRecordStock(&record)
+
 	// 检查频繁交易
 	if record.Direction == "买入" {
 		canTrade, msg := receiver.CheckFrequentTrading(record.StockCode)
@@ -2697,6 +2701,46 @@ func (receiver StockDataApi) klineCloseAt(apiCode string, tradingTime time.Time)
 		}
 	}
 	return 0, false
+}
+
+// canonicalizeTradingRecordStock 将交易日志的股票代码/名称规范成与"搜索股票"
+// （全量股票库 AllStockInfo）一致的格式：代码统一为 SECUCODE（如 600519.SH），
+// 名称统一为库内简称。库中查不到时保持用户输入原样，不阻塞保存。
+func (receiver StockDataApi) canonicalizeTradingRecordStock(record *TradingRecord) {
+	if record == nil || strings.TrimSpace(record.StockCode) == "" {
+		return
+	}
+	bare := strings.ToLower(strings.TrimSpace(record.StockCode))
+	for _, suffix := range []string{".sh", ".sz", ".bj"} {
+		bare = strings.TrimSuffix(bare, suffix)
+	}
+	for _, prefix := range []string{"sh", "sz", "bj"} {
+		bare = strings.TrimPrefix(bare, prefix)
+	}
+	bare = strings.ToUpper(strings.TrimSpace(bare))
+	if bare == "" {
+		return
+	}
+
+	var info models.AllStockInfo
+	err := db.Dao.Model(&models.AllStockInfo{}).
+		Where("secucode LIKE ?", bare+".%").
+		Order("secucode ASC").First(&info).Error
+	if err != nil && strings.TrimSpace(record.StockName) != "" {
+		// 代码在库中没找到时，再按名称精确匹配一次（只填了名称的场景）
+		err = db.Dao.Model(&models.AllStockInfo{}).
+			Where("sec_uri_tynameabbr = ?", strings.TrimSpace(record.StockName)).
+			Order("secucode ASC").First(&info).Error
+	}
+	if err != nil {
+		return
+	}
+	if strings.TrimSpace(info.SECUCODE) != "" {
+		record.StockCode = info.SECUCODE
+	}
+	if strings.TrimSpace(info.SECURITYNAMEABBR) != "" {
+		record.StockName = info.SECURITYNAMEABBR
+	}
 }
 
 // fillTradingRecordCloseSnapshot 写入/刷新记录的收盘价快照（添加、修改时调用）
@@ -3088,6 +3132,8 @@ func (receiver StockDataApi) GetTradingRecordById(id uint) (*TradingRecord, erro
 // UpdateTradingRecord 更新交易日志
 func (receiver StockDataApi) UpdateTradingRecord(record TradingRecord) error {
 	logger.SugaredLogger.Infof("UpdateTradingRecord: %v", record)
+	// 代码/名称规范成与"搜索股票"一致的格式，快照也基于规范后的代码
+	receiver.canonicalizeTradingRecordStock(&record)
 	// 自动计算金额（价格 * 数量）
 	record.Amount = record.Price * float64(record.Volume)
 
