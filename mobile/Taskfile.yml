@@ -3,6 +3,8 @@ version: '3'
 vars:
   APP_NAME: "go-stock-mobile"
   BIN_DIR: "bin"
+  # common/Taskfile 的 install:frontend:deps 按此值分发到 *_npm 等子任务,必须提供
+  PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9246}}'
 
 includes:
