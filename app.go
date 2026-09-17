@@ -54,17 +54,26 @@ func NewApp() *App {
 		stockAlertLastSent: make(map[string]time.Time),
 		priceAtAlertReset:  make(map[string]float64),
 	}
-	app.notificationHandler = handler.NewNotificationHandler(cache, func() context.Context { return app.ctx })
-	app.dailyPickHandler = handler.NewDefaultDailyPickHandler(func() context.Context { return app.ctx })
+	// emit 是 backend 层统一的事件发射适配：闭包在调用期读取 app.ctx（启动后非 nil），
+	// 与原先 handler 内部 currentCtx() 的延迟语义一致。
+	emit := func(event string, payload ...any) {
+		if app.ctx == nil {
+			return
+		}
+		runtime.EventsEmit(app.ctx, event, payload...)
+	}
+	data.SetEventEmitter(emit)
+	app.notificationHandler = handler.NewNotificationHandler(cache, func() context.Context { return app.ctx }, emit)
+	app.dailyPickHandler = handler.NewDefaultDailyPickHandler(emit)
 	app.fundHandler = handler.NewDefaultFundHandler(func() context.Context { return app.ctx })
 	app.commodityHandler = handler.NewCommodityHandler()
 	app.newsHandler = handler.NewDefaultNewsHandler(func() context.Context { return app.ctx })
 	app.marketHandler = handler.NewMarketHandler(cache, func() context.Context { return app.ctx })
-	app.agentHandler = handler.NewAgentHandler(func() context.Context { return app.ctx })
+	app.agentHandler = handler.NewAgentHandler(func() context.Context { return app.ctx }, emit)
 	app.analysisHandler = handler.NewDefaultAnalysisHandler(func() context.Context { return app.ctx })
 	app.stockHandler = handler.NewStockHandler()
-	app.systemHandler = handler.NewSystemHandler(cache, func() context.Context { return app.ctx }, c, Version, VersionCommit, OFFICIAL_STATEMENT, BuildKey, icon, alipay, wxpay, wxgzh, userManual)
-	app.tradingHandler = handler.NewDefaultTradingRecordHandler(func() context.Context { return app.ctx })
+	app.systemHandler = handler.NewSystemHandler(cache, func() context.Context { return app.ctx }, emit, c, Version, VersionCommit, OFFICIAL_STATEMENT, BuildKey, icon, alipay, wxpay, wxgzh, userManual)
+	app.tradingHandler = handler.NewDefaultTradingRecordHandler(func() context.Context { return app.ctx }, emit)
 	app.stockChangeHandler = handler.NewDefaultStockChangeHandler(func() context.Context { return app.ctx })
 	return app
 }

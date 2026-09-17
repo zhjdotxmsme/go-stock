@@ -10,7 +10,6 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/duke-git/lancet/v2/strutil"
 	"github.com/robfig/cron/v3"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"go-stock/backend/agent"
 	"go-stock/backend/agent/commodity"
@@ -18,6 +17,7 @@ import (
 	"go-stock/backend/agent/strategy"
 	"go-stock/backend/data"
 	"go-stock/backend/data/notify"
+	"go-stock/backend/emitter"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 )
@@ -25,6 +25,7 @@ import (
 // AgentHandler handles AI-agent-related Wails bindings.
 type AgentHandler struct {
 	ctxFn    func() context.Context
+	emit     emitter.Emitter
 	cron     *cron.Cron
 	cronMu   sync.Mutex
 	cronJobs map[string]cron.EntryID
@@ -40,15 +41,21 @@ type AgentHandler struct {
 
 // NewAgentHandler creates a new AgentHandler.
 // ctxFn should return the current App context (set after Wails startup).
-func NewAgentHandler(ctxFn func() context.Context) *AgentHandler {
+// emit 将流式/告警事件推送到前端（桌面=EventsEmit 适配，移动端=v3 Event 适配）。
+func NewAgentHandler(ctxFn func() context.Context, emit emitter.Emitter) *AgentHandler {
 	c := cron.New(cron.WithSeconds(), cron.WithChain(cron.Recover(cron.DefaultLogger)))
 	c.Start()
 
 	var tools []data.Tool
 	tools = data.Tools(tools)
 
+	if emit == nil {
+		emit = emitter.Discard
+	}
+
 	return &AgentHandler{
 		ctxFn:    ctxFn,
+		emit:     emit,
 		cron:     c,
 		cronJobs: make(map[string]cron.EntryID),
 		tools:    tools,
@@ -102,9 +109,9 @@ func (h *AgentHandler) ChatWithAgent(question string, aiConfigId int, sysPromptI
 	optsOverride := []string{"", sessionID}
 	ch := agent.NewStockAiAgentApi().ChatWithContext(ctx, question, aiConfigId, sysPromptId, memoryMode, memoryCount, thinkingMode, agentMode, optsOverride...)
 	for msg := range ch {
-		runtime.EventsEmit(h.currentCtx(), "agent-message", agentMessageToFrontendMap(msg))
+		h.emit("agent-message", agentMessageToFrontendMap(msg))
 	}
-	runtime.EventsEmit(h.currentCtx(), "agent-message", agentMessageToFrontendMap(&schema.Message{
+	h.emit("agent-message", agentMessageToFrontendMap(&schema.Message{
 		Role:    schema.Assistant,
 		Content: "agent-DONE",
 	}))
@@ -148,11 +155,11 @@ func (h *AgentHandler) NewChatStream(stock string, stockCode string, question st
 	defer func() {
 		if err := recover(); err != nil {
 			logger.SugaredLogger.Errorf("NewChatStream panic: %v", err)
-			runtime.EventsEmit(h.currentCtx(), "newChatStream", map[string]any{
+			h.emit("newChatStream", map[string]any{
 				"code":    0,
 				"content": fmt.Sprintf("AI分析异常: %v", err),
 			})
-			runtime.EventsEmit(h.currentCtx(), "newChatStream", "DONE")
+			h.emit("newChatStream", "DONE")
 		}
 	}()
 	// Use the multi-agent engine as the primary analysis path
@@ -164,9 +171,9 @@ func (h *AgentHandler) NewChatStream(stock string, stockCode string, question st
 	resultCh := engine.Run(h.currentCtx(), stockCode, stock, "", question, strategyCode)
 
 	for msg := range resultCh {
-		runtime.EventsEmit(h.currentCtx(), "newChatStream", msg)
+		h.emit("newChatStream", msg)
 	}
-	runtime.EventsEmit(h.currentCtx(), "newChatStream", "DONE")
+	h.emit("newChatStream", "DONE")
 
 	// Send push notification after analysis completes
 	manager := notify.NewManager()
@@ -181,11 +188,11 @@ func (h *AgentHandler) NewCommodityAnalysisStream(code string, name string, ques
 	defer func() {
 		if err := recover(); err != nil {
 			logger.SugaredLogger.Errorf("NewCommodityAnalysisStream panic: %v", err)
-			runtime.EventsEmit(h.currentCtx(), "commodityAnalysisStream", map[string]any{
+			h.emit("commodityAnalysisStream", map[string]any{
 				"code":    0,
 				"content": fmt.Sprintf("商品分析异常: %v", err),
 			})
-			runtime.EventsEmit(h.currentCtx(), "commodityAnalysisStream", "DONE")
+			h.emit("commodityAnalysisStream", "DONE")
 		}
 	}()
 
@@ -193,9 +200,9 @@ func (h *AgentHandler) NewCommodityAnalysisStream(code string, name string, ques
 	resultCh := engine.Run(h.currentCtx(), code, name, question)
 
 	for msg := range resultCh {
-		runtime.EventsEmit(h.currentCtx(), "commodityAnalysisStream", msg)
+		h.emit("commodityAnalysisStream", msg)
 	}
-	runtime.EventsEmit(h.currentCtx(), "commodityAnalysisStream", "DONE")
+	h.emit("commodityAnalysisStream", "DONE")
 }
 
 func (h *AgentHandler) GetAllStrategies() []*strategy.Strategy {
@@ -242,14 +249,14 @@ func (h *AgentHandler) SummaryStockNews(question string, aiConfigId int, sysProm
 	}
 
 	for msg := range msgs {
-		runtime.EventsEmit(h.currentCtx(), eventName, msg)
+		h.emit(eventName, msg)
 	}
 
 	h.summaryMu.Lock()
 	h.summaryCancel = nil
 	h.summaryMu.Unlock()
 
-	runtime.EventsEmit(h.currentCtx(), eventName, "DONE")
+	h.emit(eventName, "DONE")
 }
 
 // AbortSummaryStockNews 取消当前进行中的 SummaryStockNews 流式回答
@@ -291,7 +298,7 @@ func (h *AgentHandler) ReflectOnAnalysis(stockCode string, returnsPct float64, a
 // addCronTask 创建单只关注股票的自动分析任务（从 app.go 复制为私有辅助函数）。
 func (h *AgentHandler) addCronTask(follow data.FollowedStock) func() {
 	return func() {
-		go runtime.EventsEmit(h.currentCtx(), "warnMsg", "开始自动分析"+follow.Name+"_"+follow.StockCode)
+		go h.emit("warnMsg", "开始自动分析"+follow.Name+"_"+follow.StockCode)
 		ai := data.NewDeepSeekOpenAi(h.currentCtx(), follow.AiConfigId)
 		thinking := data.GetSettingConfig().GetAIConfigThinking(follow.AiConfigId)
 		msgs := ai.NewChatStream(follow.Name, follow.StockCode, "", nil, h.tools, thinking)
@@ -315,6 +322,6 @@ func (h *AgentHandler) addCronTask(follow data.FollowedStock) func() {
 		}
 
 		data.NewDeepSeekOpenAi(h.currentCtx(), follow.AiConfigId).SaveAIResponseResult(follow.StockCode, follow.Name, res.String(), chatId, question)
-		go runtime.EventsEmit(h.currentCtx(), "warnMsg", "AI分析完成："+follow.Name+"_"+follow.StockCode)
+		go h.emit("warnMsg", "AI分析完成："+follow.Name+"_"+follow.StockCode)
 	}
 }

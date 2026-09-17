@@ -10,11 +10,11 @@ import (
 	"github.com/duke-git/lancet/v2/convertor"
 	"github.com/duke-git/lancet/v2/mathutil"
 	"github.com/duke-git/lancet/v2/strutil"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"go-stock/backend/data"
 	"go-stock/backend/data/notify"
 	"go-stock/backend/db"
+	"go-stock/backend/emitter"
 	"go-stock/backend/logger"
 )
 
@@ -22,12 +22,16 @@ import (
 type NotificationHandler struct {
 	cache *freecache.Cache
 	ctxFn func() context.Context
+	emit  emitter.Emitter
 }
 
 // NewNotificationHandler creates a new NotificationHandler.
 // ctxFn should return the current App context (set after Wails startup).
-func NewNotificationHandler(cache *freecache.Cache, ctxFn func() context.Context) *NotificationHandler {
-	return &NotificationHandler{cache: cache, ctxFn: ctxFn}
+func NewNotificationHandler(cache *freecache.Cache, ctxFn func() context.Context, emit emitter.Emitter) *NotificationHandler {
+	if emit == nil {
+		emit = emitter.Discard
+	}
+	return &NotificationHandler{cache: cache, ctxFn: ctxFn, emit: emit}
 }
 
 func (h *NotificationHandler) currentCtx() context.Context {
@@ -77,7 +81,7 @@ func (h *NotificationHandler) SendDingDingMessageByType(message string, stockCod
 	db.Dao.Model(stockInfo).Where("code = ?", stockCode).First(stockInfo)
 	go data.NewAlertWindowsApi("go-stock消息通知", getMsgTypeName(msgType), genNotificationMsg(stockInfo), "").SendNotification()
 
-	go runtime.EventsEmit(h.currentCtx(), "newsPush", map[string]any{
+	go h.emit("newsPush", map[string]any{
 		"time":    "📈 " + getMsgTypeName(msgType),
 		"isRed":   true,
 		"source":  "go-stock",

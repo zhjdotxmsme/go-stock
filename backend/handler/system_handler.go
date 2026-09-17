@@ -28,6 +28,7 @@ import (
 	"go-stock/backend/agent/skill_analysis"
 	"go-stock/backend/data"
 	"go-stock/backend/db"
+	"go-stock/backend/emitter"
 	"go-stock/backend/internal/adapter/repository/sqlite"
 	systemsvc "go-stock/backend/internal/service/system"
 	"go-stock/backend/logger"
@@ -40,6 +41,7 @@ type SystemHandler struct {
 	svc               *systemsvc.Service
 	cache             *freecache.Cache
 	ctxFn             func() context.Context
+	emit              emitter.Emitter
 	cronScheduler     *cronv3.Cron
 	cronEntrys        map[string]cronv3.EntryID
 	cronEntrysMu      sync.Mutex
@@ -63,14 +65,19 @@ type SystemHandler struct {
 func NewSystemHandler(
 	cache *freecache.Cache,
 	ctxFn func() context.Context,
+	emit emitter.Emitter,
 	cron *cronv3.Cron,
 	version, versionCommit, officialStatement, buildKey string,
 	icon, alipay, wxpay, wxgzh, userManual []byte,
 ) *SystemHandler {
+	if emit == nil {
+		emit = emitter.Discard
+	}
 	return &SystemHandler{
 		svc:               systemsvc.NewService(sqlite.NewSystemRepository()),
 		cache:             cache,
 		ctxFn:             ctxFn,
+		emit:              emit,
 		cronScheduler:     cron,
 		cronEntrys:        make(map[string]cronv3.EntryID),
 		sponsorInfo:       make(map[string]any),
@@ -297,7 +304,7 @@ func (h *SystemHandler) CheckUpdate(flag int) {
 		mirrorDownloadUrl := "https://gh.927223.xyz/" + originalDownloadUrl
 		manualDownloadTip := fmt.Sprintf("\n手动下载链接(加速镜像): %s\n手动下载链接(原始地址): %s\n下载后请替换当前程序文件即可完成更新。", mirrorDownloadUrl, originalDownloadUrl)
 
-		go wailsruntime.EventsEmit(h.currentCtx(), "newsPush", map[string]any{
+		go h.emit("newsPush", map[string]any{
 			"time":    "发现新版本：" + releaseVersion.TagName,
 			"isRed":   true,
 			"source":  "go-stock",
@@ -307,7 +314,7 @@ func (h *SystemHandler) CheckUpdate(flag int) {
 		tmpFile, err := os.CreateTemp("", "go-stock-update-*.tmp")
 		if err != nil {
 			logger.SugaredLogger.Errorf("create temp file error: %s", err.Error())
-			go wailsruntime.EventsEmit(h.currentCtx(), "newsPush", map[string]any{
+			go h.emit("newsPush", map[string]any{
 				"time":    "新版本：" + releaseVersion.TagName,
 				"isRed":   true,
 				"source":  "go-stock",
@@ -342,7 +349,7 @@ func (h *SystemHandler) CheckUpdate(flag int) {
 		}
 
 		if !downloadSuccess {
-			go wailsruntime.EventsEmit(h.currentCtx(), "newsPush", map[string]any{
+			go h.emit("newsPush", map[string]any{
 				"time":    "新版本：" + releaseVersion.TagName,
 				"isRed":   true,
 				"source":  "go-stock",
@@ -354,7 +361,7 @@ func (h *SystemHandler) CheckUpdate(flag int) {
 		body, err := os.ReadFile(tmpPath)
 		if err != nil {
 			logger.SugaredLogger.Errorf("read downloaded file error: %s", err.Error())
-			go wailsruntime.EventsEmit(h.currentCtx(), "newsPush", map[string]any{
+			go h.emit("newsPush", map[string]any{
 				"time":    "新版本：" + releaseVersion.TagName,
 				"isRed":   true,
 				"source":  "go-stock",
@@ -367,16 +374,16 @@ func (h *SystemHandler) CheckUpdate(flag int) {
 		if err != nil {
 			logger.SugaredLogger.Error("更新失败: ", err.Error())
 			if !h.isRunningAsAdmin() {
-				go wailsruntime.EventsEmit(h.currentCtx(), "updateNeedAdmin", map[string]any{
+				go h.emit("updateNeedAdmin", map[string]any{
 					"version": releaseVersion.TagName,
 					"message": commitMessage,
 				})
 			} else {
-				go wailsruntime.EventsEmit(h.currentCtx(), "updateVersion", releaseVersion)
+				go h.emit("updateVersion", releaseVersion)
 			}
 			return
 		}
-		go wailsruntime.EventsEmit(h.currentCtx(), "newsPush", map[string]any{
+		go h.emit("newsPush", map[string]any{
 			"time":    "新版本：" + releaseVersion.TagName,
 			"isRed":   true,
 			"source":  "go-stock",
@@ -384,7 +391,7 @@ func (h *SystemHandler) CheckUpdate(flag int) {
 		})
 	} else {
 		if flag == 1 {
-			go wailsruntime.EventsEmit(h.currentCtx(), "newsPush", map[string]any{
+			go h.emit("newsPush", map[string]any{
 				"time":    "当前版本：" + h.version,
 				"isRed":   true,
 				"source":  "go-stock",
@@ -466,10 +473,10 @@ func (h *SystemHandler) newsPush(news *[]models.Telegraph) {
 	for _, telegraph := range *news {
 		if h.GetConfig().EnableOnlyPushRedNews {
 			if telegraph.IsRed || strutil.ContainsAny(telegraph.Content, stockNames) {
-				go wailsruntime.EventsEmit(h.currentCtx(), "newsPush", telegraph)
+				go h.emit("newsPush", telegraph)
 			}
 		} else {
-			go wailsruntime.EventsEmit(h.currentCtx(), "newsPush", telegraph)
+			go h.emit("newsPush", telegraph)
 		}
 	}
 }
@@ -1252,11 +1259,11 @@ func (h *SystemHandler) monitorStockPrices() {
 		total += stockInfo.ProfitAmountToday
 		price, _ := convertor.ToFloat(stockInfo.Price)
 		if stockInfo.PrePrice != price {
-			go wailsruntime.EventsEmit(h.currentCtx(), "stock_price", stockInfo)
+			go h.emit("stock_price", stockInfo)
 		}
 	}
 
-	go wailsruntime.EventsEmit(h.currentCtx(), "realtime_profit", fmt.Sprintf("  %.2f", total))
+	go h.emit("realtime_profit", fmt.Sprintf("  %.2f", total))
 }
 
 func panicHandler() {

@@ -4,9 +4,8 @@ import (
 	"context"
 
 	"go-stock/backend/data"
+	"go-stock/backend/emitter"
 	"go-stock/backend/models"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // DailyPickHandler fronts data.DailyPickService for the Wails binding layer.
@@ -18,25 +17,23 @@ type DailyPickHandler struct {
 	ctxFn func() context.Context
 }
 
-// NewDailyPickHandler wraps the service; ctxFn should return the current App
-// context (set after Wails startup) and is used to emit progress events.
-func NewDailyPickHandler(svc *data.DailyPickService, ctxFn func() context.Context) *DailyPickHandler {
+// NewDailyPickHandler wraps the service; emit forwards progress events to the
+// frontend (desktop=EventsEmit adapter, mobile=v3 Event adapter).
+func NewDailyPickHandler(svc *data.DailyPickService, emit emitter.Emitter) *DailyPickHandler {
+	if emit == nil {
+		emit = emitter.Discard
+	}
 	svc.WithEmitter(func(event string, payload map[string]any) {
-		if ctxFn == nil {
-			return
-		}
-		if ctx := ctxFn(); ctx != nil {
-			runtime.EventsEmit(ctx, event, payload)
-		}
+		emit(event, payload)
 	})
-	return &DailyPickHandler{svc: svc, ctxFn: ctxFn}
+	return &DailyPickHandler{svc: svc}
 }
 
 // NewDefaultDailyPickHandler wires the production service with the emitter
 // bridge. The wiring lives here because the main package cannot import
 // backend/internal packages.
-func NewDefaultDailyPickHandler(ctxFn func() context.Context) *DailyPickHandler {
-	return NewDailyPickHandler(data.InitDailyPickService(), ctxFn)
+func NewDefaultDailyPickHandler(emit emitter.Emitter) *DailyPickHandler {
+	return NewDailyPickHandler(data.InitDailyPickService(), emit)
 }
 
 func (h *DailyPickHandler) RunDailyPick(tradeDate string, topN int) ([]models.DailyPick, error) {

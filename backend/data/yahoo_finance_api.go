@@ -10,11 +10,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -122,10 +120,7 @@ func yahooFetchViaPowerShell(urlStr string) ([]byte, error) {
 	}
 	psCacheMu.RUnlock()
 
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
-		`try { $r = Invoke-WebRequest -Uri '`+urlStr+`' -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop; Write-Output $r.Content } catch { exit 1 }`)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	out, err := cmd.Output()
+	out, err := yahooRunPowerShell(urlStr)
 	if err != nil {
 		return nil, fmt.Errorf("yahoo powershell fallback: %w", err)
 	}
