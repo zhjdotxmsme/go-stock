@@ -159,6 +159,7 @@ type TradingRecord struct {
 	Fee                float64
 	MarketValue        float64
 	Mindset            string  `gorm:"type:text"`
+	AiComment          string  `gorm:"type:text"` // 单笔交易的 AI 点评
 	RecordedClosePrice float64 `json:"recordedClosePrice" gorm:"column:recorded_close_price"`
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

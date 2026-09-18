@@ -1445,13 +1445,13 @@ export namespace data {
 	    }
 	}
 	export class IndicatorSummary {
-	    Trend: string;
-	    MACDSignal: string;
-	    RSIValue: number;
-	    RSIStatus: string;
-	    KDJSignal: string;
-	    BollStatus: string;
-	    Summary: string;
+	    trend: string;
+	    macdSignal: string;
+	    rsiValue: number;
+	    rsiStatus: string;
+	    kdjSignal: string;
+	    bollStatus: string;
+	    summary: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new IndicatorSummary(source);
@@ -1459,13 +1459,13 @@ export namespace data {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Trend = source["Trend"];
-	        this.MACDSignal = source["MACDSignal"];
-	        this.RSIValue = source["RSIValue"];
-	        this.RSIStatus = source["RSIStatus"];
-	        this.KDJSignal = source["KDJSignal"];
-	        this.BollStatus = source["BollStatus"];
-	        this.Summary = source["Summary"];
+	        this.trend = source["trend"];
+	        this.macdSignal = source["macdSignal"];
+	        this.rsiValue = source["rsiValue"];
+	        this.rsiStatus = source["rsiStatus"];
+	        this.kdjSignal = source["kdjSignal"];
+	        this.bollStatus = source["bollStatus"];
+	        this.summary = source["summary"];
 	    }
 	}
 	
@@ -2279,6 +2279,44 @@ export namespace data {
 	
 	
 	
+	export class TradingAiAdvice {
+	    stockCode: string;
+	    stockName: string;
+	    rating: string;
+	    modelName: string;
+	    dataTime: string;
+	    recommendId: number;
+	    stopLossPrice: number;
+	    takeProfitPrice: number;
+	    takeProfitMin: number;
+	    takeProfitMax: number;
+	    buyPriceMin: number;
+	    buyPriceMax: number;
+	    reason: string;
+	    riskRemarks: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TradingAiAdvice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stockCode = source["stockCode"];
+	        this.stockName = source["stockName"];
+	        this.rating = source["rating"];
+	        this.modelName = source["modelName"];
+	        this.dataTime = source["dataTime"];
+	        this.recommendId = source["recommendId"];
+	        this.stopLossPrice = source["stopLossPrice"];
+	        this.takeProfitPrice = source["takeProfitPrice"];
+	        this.takeProfitMin = source["takeProfitMin"];
+	        this.takeProfitMax = source["takeProfitMax"];
+	        this.buyPriceMin = source["buyPriceMin"];
+	        this.buyPriceMax = source["buyPriceMax"];
+	        this.reason = source["reason"];
+	        this.riskRemarks = source["riskRemarks"];
+	    }
+	}
 	export class TradingRecord {
 	    ID: number;
 	    StockCode: string;
@@ -2295,6 +2333,7 @@ export namespace data {
 	    Fee: number;
 	    MarketValue: number;
 	    Mindset: string;
+	    AiComment: string;
 	    recordedClosePrice: number;
 	    // Go type: time
 	    CreatedAt: any;
@@ -2321,6 +2360,7 @@ export namespace data {
 	        this.Fee = source["Fee"];
 	        this.MarketValue = source["MarketValue"];
 	        this.Mindset = source["Mindset"];
+	        this.AiComment = source["AiComment"];
 	        this.recordedClosePrice = source["recordedClosePrice"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
@@ -2360,6 +2400,7 @@ export namespace data {
 	    Fee: number;
 	    MarketValue: number;
 	    Mindset: string;
+	    AiComment: string;
 	    recordedClosePrice: number;
 	    // Go type: time
 	    CreatedAt: any;
@@ -2389,6 +2430,7 @@ export namespace data {
 	        this.Fee = source["Fee"];
 	        this.MarketValue = source["MarketValue"];
 	        this.Mindset = source["Mindset"];
+	        this.AiComment = source["AiComment"];
 	        this.recordedClosePrice = source["recordedClosePrice"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);

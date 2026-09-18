@@ -24,6 +24,8 @@ type TradingRecordHandler struct {
 	ctxFn func() context.Context
 	emit  emitter.Emitter
 	svc   *trading.Service
+	// priceFn 实时现价获取（NewDefaultTradingRecordHandler 注入，供 AI 点评引用现价）
+	priceFn func(stockCode string) (float64, error)
 
 	summaryMu     sync.Mutex
 	summaryCancel context.CancelFunc
@@ -57,7 +59,9 @@ func NewDefaultTradingRecordHandler(ctxFn func() context.Context, emit emitter.E
 		}
 		return 0, nil
 	}
-	return NewTradingRecordHandler(ctxFn, trading.NewService(sqlite.NewStockRepository(), priceFn), emit)
+	h := NewTradingRecordHandler(ctxFn, trading.NewService(sqlite.NewStockRepository(), priceFn), emit)
+	h.priceFn = priceFn
+	return h
 }
 
 // AddTradingRecord 添加交易记录
@@ -118,6 +122,184 @@ func (h *TradingRecordHandler) CheckFrequentTrading(stockCode string) map[string
 		"canTrade": canTrade,
 		"msg":      msg,
 	}
+}
+
+// ---------------------------------------------------------------------------
+// AI 建议 / 单笔 AI 点评
+// ---------------------------------------------------------------------------
+
+// GetAiAdviceForStock 获取该股票最近一次 AI 推荐建议（止损/止盈/买入区间与推荐理由），
+// 用于添加/编辑交易日志时自动带入止损价与止盈价。无 AI 推荐记录时返回 nil。
+func (h *TradingRecordHandler) GetAiAdviceForStock(stockCode, stockName string) (*data.TradingAiAdvice, error) {
+	if strings.TrimSpace(stockCode) == "" && strings.TrimSpace(stockName) == "" {
+		return nil, fmt.Errorf("股票代码和名称不能都为空")
+	}
+	return data.GetLatestAiAdviceForStock(stockCode, stockName), nil
+}
+
+// AiSuggestPriceLevels 让 AI 基于最新技术指标直接给出该股建议止损/止盈价位（同步调用，
+// 耗时约 10~30 秒；aiConfigId 必须是有效的 AI 配置 ID）。失败返回 nil。
+func (h *TradingRecordHandler) AiSuggestPriceLevels(stockCode, stockName string, aiConfigId int) (*data.TradingAiAdvice, error) {
+	if strings.TrimSpace(stockCode) == "" {
+		return nil, fmt.Errorf("股票代码不能为空")
+	}
+	if aiConfigId <= 0 {
+		return nil, fmt.Errorf("请先选择AI模型服务配置")
+	}
+	price := 0.0
+	if h.priceFn != nil {
+		if p, err := h.priceFn(stockCode); err == nil {
+			price = p
+		}
+	}
+	return data.AiSuggestPriceLevels(h.currentCtx(), stockCode, stockName, price, aiConfigId), nil
+}
+
+// commentEventName 单笔 AI 点评流式事件名（前端可自定义，空则用默认值）
+func commentEventName(eventName string) string {
+	if strings.TrimSpace(eventName) == "" {
+		return "tradingRecordAiComment"
+	}
+	return eventName
+}
+
+// GenerateTradeAiComment 流式生成单笔交易日志的 AI 点评：逐段 EventsEmit(eventName, msg) 推送，
+// 结束发 eventName="DONE"；生成完成自动把点评落库到该记录的 ai_comment 字段，中断或空内容不落库。
+func (h *TradingRecordHandler) GenerateTradeAiComment(id uint, aiConfigId int, eventName string) {
+	eventName = commentEventName(eventName)
+	defer func() {
+		if r := recover(); r != nil {
+			logger.SugaredLogger.Errorf("GenerateTradeAiComment panic: %v", r)
+			h.emit(eventName, map[string]any{
+				"code":    0,
+				"content": fmt.Sprintf("交易点评生成异常: %v", r),
+			})
+			h.emit(eventName, "DONE")
+		}
+	}()
+
+	record, err := h.svc.GetTradingRecordById(h.currentCtx(), id)
+	if err != nil {
+		h.emit(eventName, map[string]any{
+			"code":    0,
+			"content": "获取交易日志失败: " + err.Error(),
+		})
+		h.emit(eventName, "DONE")
+		return
+	}
+	if record == nil {
+		h.emit(eventName, map[string]any{
+			"code":    0,
+			"content": fmt.Sprintf("交易日志 #%d 不存在", id),
+		})
+		h.emit(eventName, "DONE")
+		return
+	}
+	d := sqlite.TradingRecordFromDomain(record)
+
+	// 逐段拼 prompt：交易信息 + 最近 AI 推荐 + 技术指标 + 现价
+	var sb strings.Builder
+	sb.WriteString("你是一位专业、务实的证券投资分析师。请基于以下真实交易数据，对这一笔交易生成简明扼要、观点鲜明的点评（今日日期：")
+	sb.WriteString(time.Now().Format("2006-01-02"))
+	sb.WriteString("）。\n\n## 交易记录\n\n")
+	sb.WriteString("| 代码 | 名称 | 方向 | 成交价 | 数量 | 金额 | 交易时间 | 止损价 | 止盈价 | 当前持仓参考价 |\n")
+	sb.WriteString("|---|---|---|---|---|---|---|---|---|---|\n")
+	currentPrice := 0.0
+	if h.priceFn != nil {
+		if p, pErr := h.priceFn(d.StockCode); pErr == nil {
+			currentPrice = p
+		}
+	}
+	tradeTime := d.TradingTime.Format("2006-01-02 15:04")
+	fmt.Fprintf(&sb, "| %s | %s | %s | %.3f | %d | %.2f | %s | %s | %s | %s |\n",
+		d.StockCode, d.StockName, d.Direction, d.Price, d.Volume, d.Amount, tradeTime,
+		priceOrDash(d.StopLossPrice), priceOrDash(d.TakeProfitPrice), priceOrDash(currentPrice))
+	if strings.TrimSpace(d.Reason) != "" {
+		sb.WriteString("\n交易者自述理由：" + strings.TrimSpace(d.Reason) + "\n")
+	}
+	if strings.TrimSpace(d.Mindset) != "" {
+		sb.WriteString("\n交易者心态/复盘备注：" + strings.TrimSpace(d.Mindset) + "\n")
+	}
+
+	advice := data.GetLatestAiAdviceForStock(d.StockCode, d.StockName)
+	if advice != nil {
+		sb.WriteString("\n## 最近一次 AI 推荐（" + advice.DataTime + "，模型：" + advice.ModelName + "）\n\n")
+		sb.WriteString(fmt.Sprintf("- 评级：%s；建议买入区间：%s；建议止盈区间：%s；建议止损价：%s\n",
+			orDash(advice.Rating), priceRange(advice.BuyPriceMin, advice.BuyPriceMax),
+			priceRange(advice.TakeProfitMin, advice.TakeProfitMax), priceOrDash(advice.StopLossPrice)))
+		if strings.TrimSpace(advice.Reason) != "" {
+			sb.WriteString("- 推荐理由：" + strings.TrimSpace(advice.Reason) + "\n")
+		}
+		if strings.TrimSpace(advice.RiskRemarks) != "" {
+			sb.WriteString("- 风险提示：" + strings.TrimSpace(advice.RiskRemarks) + "\n")
+		}
+	} else {
+		sb.WriteString("\n## AI 推荐\n\n该股暂无历史 AI 推荐记录，请基于交易数据与技术面自行判断。\n")
+	}
+
+	if ind, indErr := data.GetHoldingsStockIndicators(h.currentCtx(), d.StockCode); indErr == nil && ind != nil && ind.Summary != nil {
+		s := ind.Summary
+		sb.WriteString("\n## 最新技术指标（日线）\n\n")
+		sb.WriteString(fmt.Sprintf("- 趋势：%s；MACD：%s；RSI14：%.1f（%s）；KDJ：%s；布林位置：%s\n- 解读：%s\n",
+			s.Trend, s.MACDSignal, s.RSIValue, s.RSIStatus, s.KDJSignal, s.BollStatus, s.Summary))
+	}
+
+	sb.WriteString(`
+## 输出要求
+请输出 markdown 格式的单笔交易点评，包含：
+1. **交易评价**：结合当前价格与成交价，明确评价这一笔交易（买点好坏/仓位是否合理/方向是否正确）；
+2. **关键价位**：给出明确的支撑位、压力位，以及建议的止损价与止盈价（无 AI 推荐时依据技术面给出）；
+3. **操作建议**：给出明确的后续操作建议（继续持有/加仓/减仓/止损离场/密切观察）及触发条件；
+4. **风险提示**：一句话提示该笔交易的主要风险。
+
+要求：观点鲜明、依据充分，总长度控制在 300 字以内；所有判断必须与给出的数据一致。`)
+
+	ai := data.NewDeepSeekOpenAi(h.currentCtx(), aiConfigId)
+	msgs := ai.NewSummaryStockNewsStream(sb.String(), nil, false, nil)
+
+	var full strings.Builder
+	for msg := range msgs {
+		if content, ok := msg["content"].(string); ok {
+			full.WriteString(content)
+		}
+		h.emit(eventName, msg)
+	}
+
+	// 生成完成且非空才落库
+	if full.Len() > 0 {
+		if err := data.NewStockDataApi().UpdateTradingRecordAiComment(id, full.String()); err != nil {
+			logger.SugaredLogger.Errorf("保存交易 #%d AI点评失败: %s", id, err.Error())
+		}
+	}
+
+	h.emit(eventName, "DONE")
+}
+
+// priceOrDash 价格为 0（无效/获取失败）时显示 "-"
+func priceOrDash(p float64) string {
+	if p > 0 {
+		return fmt.Sprintf("%.2f", p)
+	}
+	return "-"
+}
+
+// priceRange 价格区间文案，双零返回 "-"
+func priceRange(minV, maxV float64) string {
+	if minV <= 0 && maxV <= 0 {
+		return "-"
+	}
+	if maxV > minV {
+		return fmt.Sprintf("%.2f ~ %.2f", minV, maxV)
+	}
+	return priceOrDash(minV)
+}
+
+// orDash 空字符串显示 "-"
+func orDash(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "-"
+	}
+	return strings.TrimSpace(s)
 }
 
 // ---------------------------------------------------------------------------

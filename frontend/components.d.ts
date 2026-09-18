@@ -95,6 +95,7 @@ declare module 'vue' {
     StockNoticeList: typeof import('./src/components/StockNoticeList.vue')['default']
     StockResearchReportList: typeof import('./src/components/StockResearchReportList.vue')['default']
     StockSparkLine: typeof import('./src/components/stockSparkLine.vue')['default']
+    TradeAiCommentModal: typeof import('./src/components/trading/TradeAiCommentModal.vue')['default']
     TradingRecordManager: typeof import('./src/components/TradingRecordManager.vue')['default']
     TrendIndicator: typeof import('./src/components/TrendIndicator.vue')['default']
     TrendLine: typeof import('./src/components/charts/TrendLine.vue')['default']

@@ -203,6 +203,8 @@ type TradingRecord struct {
 	Fee             float64
 	MarketValue     float64
 	Mindset         string `gorm:"type:text"`
+	// AiComment 单笔交易的 AI 点评（流式生成完成后落库）
+	AiComment string `gorm:"type:text"`
 	// RecordedClosePrice 保存时写入的当日收盘价或现价快照，列表盈亏计算优先使用，减少重复请求行情
 	RecordedClosePrice float64 `json:"recordedClosePrice" gorm:"column:recorded_close_price"`
 	CreatedAt          time.Time
@@ -3155,6 +3157,17 @@ func (receiver StockDataApi) UpdateTradingRecord(record TradingRecord) error {
 		return err
 	}
 	return nil
+}
+
+// UpdateTradingRecordAiComment 只更新单条交易日志的 AI 点评（流式生成完成后落库），
+// 不触碰记录的其它字段，也不刷新收盘价快照。
+func (receiver StockDataApi) UpdateTradingRecordAiComment(id uint, comment string) error {
+	err := db.Dao.Model(&TradingRecord{}).Where("id = ?", id).
+		Update("ai_comment", comment).Error
+	if err != nil {
+		logger.SugaredLogger.Errorf("保存交易日志AI点评失败: %s", err.Error())
+	}
+	return err
 }
 
 // DeleteTradingRecord 删除交易日志

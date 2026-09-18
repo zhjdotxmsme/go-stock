@@ -29,6 +29,7 @@ import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
 import StockIndicatorsModal from "./trading/StockIndicatorsModal.vue";
 import HoldingsAiSummaryModal from "./trading/HoldingsAiSummaryModal.vue";
 import HoldingsSummaryHistoryModal from "./trading/HoldingsSummaryHistoryModal.vue";
+import TradeAiCommentModal from "./trading/TradeAiCommentModal.vue";
 import { normalizeStockCode } from '../utils/stockCode'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 
@@ -48,6 +49,8 @@ const indicatorsCode = ref('')
 const indicatorsName = ref('')
 const showAiSummaryModal = ref(false)
 const showSummaryHistory = ref(false)
+const showAiCommentModal = ref(false)
+const aiCommentRecord = ref(null)
 
 const dataRef = ref([])
 const loadingRef = ref(true)
@@ -130,6 +133,96 @@ function handleStockSelect(tsCode) {
   formData.StockName = hit.name || ''
   stockSearchText.value = hit.name ? `${hit.name} - ${hit.ts_code}` : hit.ts_code
   fetchStockPrice(formData.StockCode)
+  fetchAiAdvice(formData.StockCode, formData.StockName)
+}
+
+/** 把最近一次 AI 推荐的止损/止盈带入表单（仅当前为空时带入，不覆盖手填值） */
+function applyAiAdvice(advice) {
+  let applied = false
+  if (!Number(formData.StopLossPrice) && advice.stopLossPrice > 0) {
+    formData.StopLossPrice = Number(advice.stopLossPrice.toFixed(2))
+    applied = true
+  }
+  if (!Number(formData.TakeProfitPrice) && advice.takeProfitPrice > 0) {
+    formData.TakeProfitPrice = Number(advice.takeProfitPrice.toFixed(2))
+    applied = true
+  }
+  return applied
+}
+
+function adviceSummaryText(advice) {
+  const parts = []
+  if (advice.stopLossPrice > 0) parts.push('止损 ' + advice.stopLossPrice)
+  if (advice.takeProfitMin > 0 && advice.takeProfitMax > advice.takeProfitMin) {
+    parts.push(`止盈区间 ${advice.takeProfitMin} ~ ${advice.takeProfitMax}（已带入下限）`)
+  } else if (advice.takeProfitMin > 0) {
+    parts.push('止盈 ' + advice.takeProfitMin)
+  }
+  return parts.join('，')
+}
+
+/** 查询该股最近一次 AI 推荐建议，自动带入止损/止盈 */
+function fetchAiAdvice(stockCode, stockName) {
+  tradeApi.getAiAdviceForStock(stockCode, stockName).then(({data: advice}) => {
+    if (!advice) {
+      message.info('该股暂无 AI 推荐记录，止损/止盈价需手动填写（或点击「AI建议」由 AI 直接给出）')
+      return
+    }
+    if (applyAiAdvice(advice)) {
+      const summary = adviceSummaryText(advice)
+      message.success(`已带入AI建议（${advice.dataTime || ''}）${summary ? '：' + summary : ''}`)
+    }
+  }).catch((err) => {
+    console.error('获取AI建议失败:', err)
+  })
+}
+
+// ---- AI 一键建议止损/止盈（实时调 AI，覆盖表单现值） ----
+const aiSuggesting = ref(false)
+const formAiConfigs = ref([])
+const formAiConfigId = ref(null)
+
+function loadFormAiConfigs() {
+  if (formAiConfigs.value.length > 0) return Promise.resolve()
+  return systemApi.getAiConfigs().then(({data: res}) => {
+    formAiConfigs.value = res || []
+    if (formAiConfigs.value.length > 0) {
+      formAiConfigId.value = formAiConfigId.value || formAiConfigs.value[0].ID
+    }
+  }).catch((e) => console.error('获取AI配置失败:', e))
+}
+
+/** 点击「AI建议」：AI 基于最新技术指标给出止损/止盈并覆盖填入表单 */
+function aiSuggestForForm() {
+  if (!formData.StockCode) {
+    message.warning('请先选择股票')
+    return
+  }
+  if (aiSuggesting.value) return
+  aiSuggesting.value = true
+  loadFormAiConfigs().then(() => {
+    if (!formAiConfigId.value) {
+      message.warning('请先在系统设置中添加AI模型服务配置')
+      aiSuggesting.value = false
+      return
+    }
+    return tradeApi.aiSuggestPriceLevels(formData.StockCode, formData.StockName, formAiConfigId.value)
+      .then(({data: advice}) => {
+        if (!advice || (!(advice.stopLossPrice > 0) && !(advice.takeProfitPrice > 0))) {
+          message.warning('AI 未给出有效价位建议，请稍后重试或手动填写')
+          return
+        }
+        if (advice.stopLossPrice > 0) formData.StopLossPrice = Number(advice.stopLossPrice.toFixed(2))
+        if (advice.takeProfitPrice > 0) formData.TakeProfitPrice = Number(advice.takeProfitPrice.toFixed(2))
+        const summary = adviceSummaryText(advice)
+        message.success(`AI建议已填入${summary ? '：' + summary : ''}${advice.reason ? '（' + advice.reason + '）' : ''}`)
+      })
+  }).catch((err) => {
+    console.error('AI建议失败:', err)
+    message.error(err?.message || 'AI建议失败，请检查AI模型服务配置')
+  }).finally(() => {
+    aiSuggesting.value = false
+  })
 }
 
 function fetchStockPrice(stockCode) {
@@ -254,7 +347,8 @@ function normalizeTradingRecordRow(row) {
   const closePrice = Number(row.closePrice ?? row.ClosePrice ?? 0)
   const profitAmount = Number(row.profitAmount ?? row.ProfitAmount ?? 0)
   const profitPercent = Number(row.profitPercent ?? row.ProfitPercent ?? 0)
-  return { ...row, closePrice, profitAmount, profitPercent }
+  const aiComment = String(row.AiComment ?? row.aiComment ?? '')
+  return { ...row, closePrice, profitAmount, profitPercent, aiComment }
 }
 
 function query({ page, pageSize = 12, keyword = '', direction = '', startDate = '', endDate = '' }) {
@@ -413,7 +507,17 @@ function openEditModal(row) {
   formData.TradingTime = new Date(row.TradingTime).getTime()
   syncStockSearchTextFromForm()
   loadStockList()
+  // 止损/止盈为空时尝试带入最近一次 AI 推荐建议
+  if (!Number(formData.StopLossPrice) || !Number(formData.TakeProfitPrice)) {
+    fetchAiAdvice(formData.StockCode, formData.StockName)
+  }
   showEditModal.value = true
+}
+
+/** 打开单笔 AI 点评弹窗 */
+function openAiComment(row) {
+  aiCommentRecord.value = row
+  showAiCommentModal.value = true
 }
 
 function handleAdd() {
@@ -598,13 +702,25 @@ const columnsRef = ref([
     }
   },
   {
+    title: 'AI点评',
+    key: 'aiComment',
+    width: 180,
+    ellipsis: { tooltip: true },
+    render(row) {
+      if (!row.aiComment) {
+        return h(NText, { depth: 3 }, { default: () => '-' })
+      }
+      return h(NText, { type: 'info' }, { default: () => row.aiComment.replace(/[#*`|\->]/g, ' ').replace(/\s+/g, ' ').trim() })
+    }
+  },
+  {
     title: '交易理由',
     key: 'Reason',
     ellipsis: { tooltip: true }
   },
   {
     title: '操作',
-    width: 260,
+    width: 320,
     render(row) {
       return [
         h(
@@ -626,6 +742,16 @@ const columnsRef = ref([
             onClick: () => openKlineChart(row)
           },
           { default: () => 'K线' }
+        ),
+        h(
+          NTag,
+          {
+            strong: true,
+            tertiary: true,
+            type: 'primary',
+            onClick: () => openAiComment(row)
+          },
+          { default: () => 'AI点评' }
         ),
         h(
           NTag,
@@ -840,6 +966,13 @@ onUnmounted(() => {
           </n-form-item>
         </n-grid-item>
         <n-grid-item :span="3">
+          <n-form-item label="AI 建议（基于最新技术面与历史AI推荐）">
+            <n-button type="primary" ghost :loading="aiSuggesting" @click="aiSuggestForForm">
+              AI建议止损/止盈（约10-30秒）
+            </n-button>
+          </n-form-item>
+        </n-grid-item>
+        <n-grid-item :span="3">
           <n-form-item label="交易理由">
             <n-input v-model:value="formData.Reason" type="textarea" placeholder="请输入交易理由" :rows="4"  style="text-align: left" />
           </n-form-item>
@@ -927,6 +1060,13 @@ onUnmounted(() => {
           </n-form-item>
         </n-grid-item>
         <n-grid-item :span="3">
+          <n-form-item label="AI 建议（基于最新技术面与历史AI推荐）">
+            <n-button type="primary" ghost :loading="aiSuggesting" @click="aiSuggestForForm">
+              AI建议止损/止盈（约10-30秒）
+            </n-button>
+          </n-form-item>
+        </n-grid-item>
+        <n-grid-item :span="3">
           <n-form-item label="交易理由">
             <n-input v-model:value="formData.Reason" type="textarea" placeholder="请输入交易理由" :rows="2" />
           </n-form-item>
@@ -961,6 +1101,7 @@ onUnmounted(() => {
   <StockIndicatorsModal v-model:show="showIndicatorsModal" :code="indicatorsCode" :name="indicatorsName" />
   <HoldingsAiSummaryModal v-model:show="showAiSummaryModal" />
   <HoldingsSummaryHistoryModal v-model:show="showSummaryHistory" />
+  <TradeAiCommentModal v-model:show="showAiCommentModal" :record="aiCommentRecord" @saved="silentRefreshCurrentPage" />
 </template>
 
 <style scoped></style>

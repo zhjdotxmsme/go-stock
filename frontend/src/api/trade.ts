@@ -118,11 +118,37 @@ export async function getHoldingsSummaryList(page = 1, pageSize = 20) {
 }
 
 /**
- * 单条持仓总结全文（含持仓快照）
+ * 获取单条持仓总结全文（含持仓快照）
  * Go: GetHoldingsSummaryDetail(id uint) *models.HoldingsDailySummary
  */
 export async function getHoldingsSummaryDetail(id: number) {
   return callApi(TradingRecordHandler.GetHoldingsSummaryDetail, id)
+}
+
+// ========== AI 建议 / 单笔 AI 点评 ==========
+
+/**
+ * 获取股票最近一次 AI 推荐建议（止损/止盈/买入区间），用于交易日志自动带入
+ * Go: GetAiAdviceForStock(stockCode, stockName string) *data.TradingAiAdvice
+ */
+export async function getAiAdviceForStock(stockCode: string, stockName = '') {
+  return callApi(TradingRecordHandler.GetAiAdviceForStock, stockCode, stockName)
+}
+
+/**
+ * 流式生成单笔交易日志的 AI 点评（结果通过 Wails 事件 eventName 推送，结束发 "DONE"，完成自动落库）
+ * Go: GenerateTradeAiComment(id uint, aiConfigId int, eventName string)
+ */
+export async function generateTradeAiComment(id: number, aiConfigId: number, eventName: string) {
+  return callApi(TradingRecordHandler.GenerateTradeAiComment, id, aiConfigId, eventName)
+}
+
+/**
+ * 让 AI 基于最新技术指标直接给出建议止损/止盈价位（同步调用，耗时约 10~30 秒）
+ * Go: AiSuggestPriceLevels(stockCode, stockName string, aiConfigId int) *data.TradingAiAdvice
+ */
+export async function aiSuggestPriceLevels(stockCode: string, stockName: string, aiConfigId: number) {
+  return callApi(TradingRecordHandler.AiSuggestPriceLevels, stockCode, stockName, aiConfigId)
 }
 
 export default {
@@ -140,4 +166,7 @@ export default {
   abortSummarizeHoldings,
   getHoldingsSummaryList,
   getHoldingsSummaryDetail,
+  getAiAdviceForStock,
+  generateTradeAiComment,
+  aiSuggestPriceLevels,
 }
