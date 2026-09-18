@@ -94,18 +94,34 @@ export function sortKey(dayStr) {
   return 0
 }
 
+/** YYYY-MM-DD → 上海时区正午的 Unix 秒；非法日期返回 null */
+function ymdSeconds(year: number, month: number, day: number): number | null {
+  const ms = Date.parse(
+    `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00+08:00`,
+  )
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : null
+}
+
 export function toChartTime(dayStr) {
   const s = String(dayStr || '').trim()
   if (!s) return null
+  // 只有年份（东财年K的 day 字段形如 "2025"）：原实现三个正则都不匹配，
+  // 返回 null，该周期行会被 extractOHLCV 的 `if (t === null) continue` 整行丢弃，
+  // 于是年K 图上一根柱子都没有、x 轴也取不到正确年份。锚到周期首日的 12:00：
+  // 12:00+08:00 = 04:00 UTC，仍在同一天，不会跨到上一周期；取首日而非期末，
+  // 也让「进行中的当前年/月」不至于把图表右边界推到未来。
+  if (/^\d{4}$/.test(s)) return ymdSeconds(Number(s), 1, 1)
+  // 紧凑 8 位日期（YYYYMMDD）与 "YYYY-MM" 周期形：同样解析不出，一并兜住
+  const c8 = s.match(/^(\d{4})(\d{2})(\d{2})$/)
+  if (c8) return ymdSeconds(Number(c8[1]), Number(c8[2]), Number(c8[3]))
+  const cm = s.match(/^(\d{4})-(\d{2})$/)
+  if (cm) return ymdSeconds(Number(cm[1]), Number(cm[2]), 1)
   // 始终尝试转为 Unix 秒（数字），避免日线返回字符串与分钟线数字混用导致 TradingView 报错
   const sec = eastMoneyKlineFieldToUnixSeconds(s)
   if (sec != null) return sec
   // 兜底：纯日期格式无法解析时，手动计算
   const dm = s.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (dm) {
-    const ms = Date.parse(`${dm[1]}-${dm[2]}-${dm[3]}T12:00:00+08:00`)
-    if (Number.isFinite(ms)) return Math.floor(ms / 1000)
-  }
+  if (dm) return ymdSeconds(Number(dm[1]), Number(dm[2]), Number(dm[3]))
   return null
 }
 

@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:stockcode": "node scripts/check-stock-code.mjs",
+    "test:klinetime": "node --import ./tests/register-ts-ext.mjs tests/check-kline-time.mjs",
     "test:agent": "node scripts/check-agent-core.mjs"
   },
   "dependencies": {

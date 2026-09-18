@@ -29,6 +29,8 @@ import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
 import StockIndicatorsModal from "./trading/StockIndicatorsModal.vue";
 import HoldingsAiSummaryModal from "./trading/HoldingsAiSummaryModal.vue";
 import HoldingsSummaryHistoryModal from "./trading/HoldingsSummaryHistoryModal.vue";
+import { normalizeStockCode } from '../utils/stockCode'
+import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 
 const message = useMessage()
 const notify = useNotification()
@@ -78,108 +80,87 @@ const directionOptions = [
   { label: '卖出', value: '卖出' }
 ]
 
-const stockCodeOptions = reactive([])
-const stockNameOptions = reactive([])
+// ---- 股票模糊搜索（与「关注股票」同一数据源）：
+// stock_basic + 指数 + 港股 + 美股 + 全量快照聚合而来，代码或名称都能搜到；
+// 选中候选后自动带出代码与名称。旧实现依赖 all_stock_info 全量快照表，
+// 未跑过快照同步时该表为空，下拉永远没有候选，等于「搜不出股票」。 ----
+const stockList = ref([])          // 后端聚合的可搜索股票全集
+const stockSearchText = ref('')    // 搜索输入框文本
+const stockSearchOptions = ref([]) // 下拉候选
 
-function searchStock(value) {
-  if (!value || value.length < 1) {
-    stockCodeOptions.splice(0, stockCodeOptions.length)
-    stockNameOptions.splice(0, stockNameOptions.length)
-    return
-  }
-  stockApi.getAllStockInfoList({
-    searchKeyWord: value,
-    page: 1,
-    pageSize: 50
-  }).then(({data: res}) => {
-    if (res && res.list) {
-      const codeList = res.list.map(item => ({
-        label: `${item.SECUCODE} - ${item.SECURITY_NAME_ABBR}`,
-        value: item.SECUCODE,
-        market: item.MARKET,
-        code: item.SECUCODE,
-        name: item.SECURITY_NAME_ABBR
-      }))
-      const nameList = res.list.map(item => ({
-        label: `${item.SECURITY_NAME_ABBR} (${item.SECUCODE})`,
-        value: item.SECURITY_NAME_ABBR,
-        market: item.MARKET,
-        code: item.SECUCODE,
-        name: item.SECURITY_NAME_ABBR
-      }))
-      stockCodeOptions.splice(0, stockCodeOptions.length, ...codeList)
-      stockNameOptions.splice(0, stockNameOptions.length, ...nameList)
-    }
+function loadStockList() {
+  stockApi.getStockList('').then(({data: result}) => {
+    stockList.value = Array.isArray(result) ? result : []
   }).catch(err => {
-    console.error('搜索股票失败:', err)
+    console.error('加载股票列表失败:', err)
   })
 }
 
-function getMarketPrefix(market) {
-  if (!market) return ''
-  const marketMap = {
-    '上海': 'sh',
-    '深圳': 'sz',
-    '北京': 'bj',
-    '沪市': 'sh',
-    '深市': 'sz',
-    '北交所': 'bj'
+function toStockOption(item) {
+  return {
+    label: `${item.name} - ${item.ts_code}`,
+    value: item.ts_code,
+    name: item.name,
   }
-  return marketMap[market] || ''
 }
 
-function convertToStockCode(code, market) {
-  if (!code) return ''
-  const upperCode = code.toUpperCase()
-  if (upperCode.includes('.SH')) {
-    return 'sh' + code.split('.')[0]
+/** 客户端模糊匹配：名称或代码包含关键词即命中（与自选股搜索逻辑一致，避免逐键请求后端） */
+function filterStockOptions(value) {
+  const q = String(value || '').trim().toLowerCase()
+  if (!q) {
+    stockSearchOptions.value = []
+    return
   }
-  if (upperCode.includes('.SZ')) {
-    return 'sz' + code.split('.')[0]
-  }
-  if (upperCode.includes('.BJ')) {
-    return 'bj' + code.split('.')[0]
-  }
-  if (code.startsWith('hk') || code.startsWith('HK')) {
-    return code.toLowerCase()
-  }
-  if (code.startsWith('us') || code.startsWith('US')) {
-    return code.toLowerCase()
-  }
-  const prefix = getMarketPrefix(market)
-  if (prefix) {
-    return prefix + code
-  }
-  if (code.startsWith('6')) return 'sh' + code
-  if (code.startsWith('0') || code.startsWith('3')) return 'sz' + code
-  if (code.startsWith('8') || code.startsWith('9')) return 'bj' + code
-  return code
+  stockSearchOptions.value = stockList.value
+    .filter(item =>
+      (item.name && String(item.name).toLowerCase().includes(q)) ||
+      (item.ts_code && String(item.ts_code).toLowerCase().includes(q))
+    )
+    .slice(0, 50)
+    .map(toStockOption)
 }
 
-function handleStockCodeSelect(value) {
-  const option = stockCodeOptions.find(opt => opt.value === value)
-  formData.StockCode = value
-  formData.StockName = option ? option.name : ''
-  fetchStockPrice(value, option ? option.market : '')
+/** 选中候选：带出代码与名称，并自动拉取实时价格填入「价格」 */
+// naive-ui NAutoComplete 的 @select 载荷就是候选的 value（interface.d.ts:
+// OnSelect = (value: string) => void），此处 value 即候选的 ts_code。
+function handleStockSelect(tsCode) {
+  const hit = stockList.value.find(item => item.ts_code === tsCode)
+  if (!hit) return
+  formData.StockCode = normalizeStockCode(hit.ts_code)
+  formData.StockName = hit.name || ''
+  stockSearchText.value = hit.name ? `${hit.name} - ${hit.ts_code}` : hit.ts_code
+  fetchStockPrice(formData.StockCode)
 }
 
-function handleStockNameSelect(value) {
-  const option = stockNameOptions.find(opt => opt.value === value)
-  formData.StockName = value
-  formData.StockCode = option ? option.code : ''
-  fetchStockPrice(option ? option.code : '', option ? option.market : '')
-}
-
-function fetchStockPrice(stockCode, market) {
-  if (!stockCode) return
-  const fullCode = convertToStockCode(stockCode, market)
-  tradeApi.getStockRealTimePrice(fullCode).then(({data: res}) => {
+function fetchStockPrice(stockCode) {
+  const code = normalizeStockCode(stockCode)
+  if (!code) return
+  tradeApi.getStockRealTimePrice(code).then(({data: res}) => {
     if (res && res.code === 0 && res.price > 0) {
       formData.Price = res.price
     }
   }).catch(err => {
     console.error('获取股票价格失败:', err)
   })
+}
+
+/** 打开弹窗时把已有代码/名称回填到搜索框，便于对照或重新搜索 */
+function syncStockSearchTextFromForm() {
+  const code = String(formData.StockCode || '').trim()
+  const name = String(formData.StockName || '').trim()
+  stockSearchText.value = code ? (name ? `${name} - ${code}` : code) : ''
+  stockSearchOptions.value = []
+}
+
+/** 提交前统一代码格式（sh600519 / sz000001 / hk00700 / usAAPL），并按代码补齐缺失的名称 */
+function normalizeFormStock() {
+  formData.StockCode = normalizeStockCode(formData.StockCode)
+  if (!formData.StockName && formData.StockCode) {
+    const hit = stockList.value.find(item =>
+      item.ts_code && normalizeStockCode(item.ts_code) === formData.StockCode
+    )
+    if (hit) formData.StockName = hit.name || ''
+  }
 }
 
 /** 当前自然月 [月初 0 点, 月末当日]（供日期区间选择与 formatDate 查询） */
@@ -421,16 +402,26 @@ function openAddModal() {
     MarketValue: 0,
     Mindset: '',
   })
+  stockSearchText.value = ''
+  stockSearchOptions.value = []
+  loadStockList()
   showAddModal.value = true
 }
 
 function openEditModal(row) {
   Object.assign(formData, row)
   formData.TradingTime = new Date(row.TradingTime).getTime()
+  syncStockSearchTextFromForm()
+  loadStockList()
   showEditModal.value = true
 }
 
 function handleAdd() {
+  normalizeFormStock()
+  if (!formData.StockCode) {
+    message.warning('请先在「股票」中搜索代码或名称并选择，带出代码与名称后再添加')
+    return
+  }
   const run = () => {
     formData.Amount = formData.Price * formData.Volume
     tradeApi.addTradingRecord({
@@ -469,6 +460,11 @@ function handleAdd() {
 }
 
 function handleUpdate() {
+  normalizeFormStock()
+  if (!formData.StockCode) {
+    message.warning('请先在「股票」中搜索代码或名称并选择，带出代码与名称后再保存')
+    return
+  }
   formData.Amount = formData.Price * formData.Volume
   tradeApi.updateTradingRecord({
     ...formData,
@@ -689,6 +685,9 @@ onMounted(() => {
   refreshTimer.value = setInterval(() => {
     silentRefreshCurrentPage()
   }, 1000 * 10)
+  // 股票基础数据由后端异步加载，加载完成后刷新可搜索股票全集
+  loadStockList()
+  EventsOn('loadingDone', () => loadStockList())
 })
 
 onUnmounted(() => {
@@ -696,6 +695,7 @@ onUnmounted(() => {
   if (refreshTimer.value) {
     clearInterval(refreshTimer.value)
   }
+  EventsOff('loadingDone')
 })
 </script>
 
@@ -775,30 +775,27 @@ onUnmounted(() => {
   <n-modal v-model:show="showAddModal" preset="card" title="添加交易日志" style="width: 820px;max-width: calc(100vw - 32px);">
     <n-form label-placement="top" size="small">
       <n-grid :cols="3" :x-gap="12" :y-gap="2">
-        <n-grid-item>
-          <n-form-item label="股票代码">
+        <n-grid-item :span="3">
+          <n-form-item label="股票（输入代码或名称模糊搜索，选中后自动带出代码与名称）">
             <n-auto-complete
-              v-model:value="formData.StockCode"
-              :options="stockCodeOptions"
-              placeholder="请输入股票代码"
+              v-model:value="stockSearchText"
+              :options="stockSearchOptions"
+              placeholder="输入股票代码或名称，如 600519 / 茅台 / 000001.SH"
               :input-props="{ autocomplete: 'disabled' }"
               clearable
-              @update:value="searchStock"
-              @select="handleStockCodeSelect"
+              @update:value="filterStockOptions"
+              @select="handleStockSelect"
             />
           </n-form-item>
         </n-grid-item>
         <n-grid-item>
+          <n-form-item label="股票代码">
+            <n-input v-model:value="formData.StockCode" placeholder="选中上方候选后自动填充" />
+          </n-form-item>
+        </n-grid-item>
+        <n-grid-item>
           <n-form-item label="股票名称">
-            <n-auto-complete
-              v-model:value="formData.StockName"
-              :options="stockNameOptions"
-              placeholder="请输入股票名称"
-              :input-props="{ autocomplete: 'disabled' }"
-              clearable
-              @update:value="searchStock"
-              @select="handleStockNameSelect"
-            />
+            <n-input v-model:value="formData.StockName" placeholder="选中上方候选后自动填充" />
           </n-form-item>
         </n-grid-item>
         <n-grid-item>
@@ -865,30 +862,27 @@ onUnmounted(() => {
   <n-modal v-model:show="showEditModal" preset="card" title="编辑交易日志" style="width: 820px;max-width: calc(100vw - 32px);">
     <n-form label-placement="top" size="small">
       <n-grid :cols="3" :x-gap="12" :y-gap="2">
-        <n-grid-item>
-          <n-form-item label="股票代码">
+        <n-grid-item :span="3">
+          <n-form-item label="股票（输入代码或名称模糊搜索，选中后自动带出代码与名称）">
             <n-auto-complete
-              v-model:value="formData.StockCode"
-              :options="stockCodeOptions"
-              placeholder="请输入股票代码"
+              v-model:value="stockSearchText"
+              :options="stockSearchOptions"
+              placeholder="输入股票代码或名称，如 600519 / 茅台 / 000001.SH"
               :input-props="{ autocomplete: 'disabled' }"
               clearable
-              @update:value="searchStock"
-              @select="handleStockCodeSelect"
+              @update:value="filterStockOptions"
+              @select="handleStockSelect"
             />
           </n-form-item>
         </n-grid-item>
         <n-grid-item>
+          <n-form-item label="股票代码">
+            <n-input v-model:value="formData.StockCode" placeholder="选中上方候选后自动填充" />
+          </n-form-item>
+        </n-grid-item>
+        <n-grid-item>
           <n-form-item label="股票名称">
-            <n-auto-complete
-              v-model:value="formData.StockName"
-              :options="stockNameOptions"
-              placeholder="请输入股票名称"
-              :input-props="{ autocomplete: 'disabled' }"
-              clearable
-              @update:value="searchStock"
-              @select="handleStockNameSelect"
-            />
+            <n-input v-model:value="formData.StockName" placeholder="选中上方候选后自动填充" />
           </n-form-item>
         </n-grid-item>
         <n-grid-item>
