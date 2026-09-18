@@ -53,7 +53,9 @@ var (
 // migrate 复刻根 main.go 的 AutoMigrate：mobile 是独立 main 包，拿不到根包的
 // AutoMigrate()，若不建表，自选/持仓/每日选股/基金/交易记录等表将缺失，功能面不完整。
 func migrate() {
-	auto := func(v ...any) { _ = db.Dao.AutoMigrate(v) }
+	// 注意必须 v... 展开：AutoMigrate(...interface{}) 收到整片 []any 时会把
+	// slice 本身当作一个 model 解析 schema，触发 gorm ReorderModels nil panic（真机闪退根源）。
+	auto := func(v ...any) { _ = db.Dao.AutoMigrate(v...) }
 	auto(&data.StockInfo{})
 	auto(&data.StockBasic{})
 	auto(&data.FollowedStock{})
