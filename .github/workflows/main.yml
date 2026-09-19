@@ -7,6 +7,13 @@ on:
       - '*-release'
       - '*-dev'
       - '*-pre'
+  # 支持在 Actions 页面手动触发打包（默认按当前分支构建，不上传 Release）
+  workflow_dispatch:
+
+# 同一分支/标签重复触发时只保留最新一次，省排队与构建资源
+concurrency:
+  group: wails-build-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   # Necessary for most environments as build failure can occur due to OOM issues
@@ -31,9 +38,30 @@ jobs:
     runs-on: ${{ matrix.build.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      # ---- 构建缓存（Go 模块/编译缓存 + 前端依赖缓存）----
+      # wails-build-action 内部自装 Go/Node，这里只负责 restore/save 缓存路径，
+      # 命中后 Go 拉模块与 npm install 明显提速。
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~\AppData\Local\go-build
+          key: go-${{ matrix.build.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-${{ matrix.build.os }}-
+
+      - name: Cache frontend dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            frontend/node_modules
+            ~\.npm
+          key: npm-${{ matrix.build.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: npm-${{ matrix.build.os }}-
 
       - name: Get commit message
         id: get_commit_message
@@ -65,7 +93,8 @@ jobs:
         with:
           build-name: ${{ matrix.build.name }}
           build-platform: ${{ matrix.build.platform }}
-          package: true
+          # 仅 tag 推送时打包发 Release；手动触发只构建出 Artifact
+          package: ${{ startsWith(github.ref, 'refs/tags/') }}
           go-version: '1.26'
           build-tags: ${{ github.ref_name }}
           build-commit-message: ${{ steps.get_commit_message.outputs.commit_message }}
@@ -73,10 +102,19 @@ jobs:
           build-key: ${{ env.BUILD_KEY }}
           node-version: '22.22.2'
           wails-version: 'v2.11.0'
-          nsis: 'true'
+          nsis: ${{ startsWith(github.ref, 'refs/tags/') }}
+
+      # 手动触发：上传裸构建产物，方便取包验证
+      - name: Upload artifact (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-stock-windows-amd64
+          path: ${{ steps.build.outputs.artifact-path || 'build/bin/*' }}
+          if-no-files-found: warn
 
       - name: Update release for channel
-        if: steps.channel.outputs.channel != 'release'
+        if: steps.channel.outputs.channel != '' && steps.channel.outputs.channel != 'release'
         uses: actions/github-script@v7
         with:
           script: |
