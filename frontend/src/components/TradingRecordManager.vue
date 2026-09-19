@@ -3,6 +3,7 @@ import { h, onMounted, onUnmounted, ref, reactive } from 'vue'
 import * as tradeApi from '../api/trade'
 import * as stockApi from '../api/stock'
 import * as systemApi from '../api/system'
+import * as fundApi from '../api/fund'
 import {
   NButton,
   NDataTable,
@@ -107,27 +108,76 @@ function toStockOption(item) {
   }
 }
 
+// ---- 场内基金候选（ETF/LOF，可在交易所买卖，行情与盈亏按股票链路计算）----
+const fundCandidates = ref([]) // 最近一次基金搜索结果
+let fundSearchTimer = null
+let fundSearchSeq = 0
+
+/** 场内基金代码：50/51/52/56/58 沪市，15/16/18 深市 */
+function isExchangeFundCode(code) {
+  return /^(50|51|52|56|58|15|16|18)\d{4}$/.test(String(code || ''))
+}
+
+function toFundOption(item) {
+  return {
+    label: `【基金】${item.name} - ${item.code}${item.type ? `（${item.type}）` : ''}`,
+    value: 'fund:' + item.code,
+    name: item.name,
+    isFund: true,
+  }
+}
+
 /** 客户端模糊匹配：名称或代码包含关键词即命中（与自选股搜索逻辑一致，避免逐键请求后端） */
 function filterStockOptions(value) {
   const q = String(value || '').trim().toLowerCase()
   if (!q) {
     stockSearchOptions.value = []
+    fundCandidates.value = []
     return
   }
-  stockSearchOptions.value = stockList.value
+  const stockOpts = stockList.value
     .filter(item =>
       (item.name && String(item.name).toLowerCase().includes(q)) ||
       (item.ts_code && String(item.ts_code).toLowerCase().includes(q))
     )
     .slice(0, 50)
     .map(toStockOption)
+  stockSearchOptions.value = stockOpts
+
+  // 基金搜索（东财接口，防抖避免逐键请求）
+  if (fundSearchTimer) clearTimeout(fundSearchTimer)
+  const seq = ++fundSearchSeq
+  fundSearchTimer = setTimeout(() => {
+    fundApi.searchFundCodes(q).then(({data: items}) => {
+      if (seq !== fundSearchSeq) return
+      const list = (items || []).filter(item => isExchangeFundCode(item.code))
+      fundCandidates.value = list
+      if (list.length > 0) {
+        stockSearchOptions.value = stockOpts.concat(list.slice(0, 8).map(toFundOption))
+      }
+    }).catch((err) => {
+      console.error('搜索基金失败:', err)
+    })
+  }, 350)
 }
 
-/** 选中候选：带出代码与名称，并自动拉取实时价格填入「价格」 */
+/** 选中候选：带出代码与名称，并自动拉取实时价格填入「价格」；
+ * 场内基金候选带 fund: 前缀，代码存裸 6 位（后端行情/收盘快照按场内基金规则补市场前缀） */
 // naive-ui NAutoComplete 的 @select 载荷就是候选的 value（interface.d.ts:
-// OnSelect = (value: string) => void），此处 value 即候选的 ts_code。
-function handleStockSelect(tsCode) {
-  const hit = stockList.value.find(item => item.ts_code === tsCode)
+// OnSelect = (value: string) => void），此处 value 即候选的 value。
+function handleStockSelect(value) {
+  if (String(value).startsWith('fund:')) {
+    const code = String(value).slice(5)
+    const hit = fundCandidates.value.find(item => String(item.code) === code)
+    if (!hit) return
+    formData.StockCode = code
+    formData.StockName = hit.name || ''
+    stockSearchText.value = formData.StockName ? `${formData.StockName} - ${code}` : code
+    fetchStockPrice(code)
+    fetchAiAdvice(code, formData.StockName)
+    return
+  }
+  const hit = stockList.value.find(item => item.ts_code === value)
   if (!hit) return
   formData.StockCode = normalizeStockCode(hit.ts_code)
   formData.StockName = hit.name || ''
@@ -298,6 +348,9 @@ function toEastMoneyCode(code) {
   if (c.endsWith('.SZ')) return 'sz' + c.slice(0, -3).toLowerCase()
   if (c.endsWith('.BJ')) return 'bj' + c.slice(0, -3).toLowerCase()
   if (c.endsWith('.HK')) return 'hk' + c.slice(0, -3).toLowerCase()
+  // 场内基金：50/51/52/56/58 沪市，15/16/18 深市
+  if (/^(50|51|52|56|58)/.test(c)) return 'sh' + c.toLowerCase()
+  if (/^(15|16|18)/.test(c)) return 'sz' + c.toLowerCase()
   // 不带后缀的代码，根据规则添加前缀
   if (c.startsWith('6')) return 'sh' + c.toLowerCase()
   if (c.startsWith('0') || c.startsWith('3')) return 'sz' + c.toLowerCase()
@@ -821,6 +874,9 @@ onUnmounted(() => {
   if (refreshTimer.value) {
     clearInterval(refreshTimer.value)
   }
+  if (fundSearchTimer) {
+    clearTimeout(fundSearchTimer)
+  }
   EventsOff('loadingDone')
 })
 </script>
@@ -902,7 +958,7 @@ onUnmounted(() => {
     <n-form label-placement="top" size="small">
       <n-grid :cols="3" :x-gap="12" :y-gap="2">
         <n-grid-item :span="3">
-          <n-form-item label="股票（输入代码或名称模糊搜索，选中后自动带出代码与名称）">
+          <n-form-item label="股票/场内基金（输入代码或名称模糊搜索，选中后自动带出代码与名称）">
             <n-auto-complete
               v-model:value="stockSearchText"
               :options="stockSearchOptions"
@@ -996,7 +1052,7 @@ onUnmounted(() => {
     <n-form label-placement="top" size="small">
       <n-grid :cols="3" :x-gap="12" :y-gap="2">
         <n-grid-item :span="3">
-          <n-form-item label="股票（输入代码或名称模糊搜索，选中后自动带出代码与名称）">
+          <n-form-item label="股票/场内基金（输入代码或名称模糊搜索，选中后自动带出代码与名称）">
             <n-auto-complete
               v-model:value="stockSearchText"
               :options="stockSearchOptions"
