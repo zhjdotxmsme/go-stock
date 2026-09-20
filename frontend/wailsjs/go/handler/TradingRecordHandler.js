@@ -14,6 +14,10 @@ export function AiSuggestPriceLevels(arg1, arg2, arg3) {
   return window['go']['handler']['TradingRecordHandler']['AiSuggestPriceLevels'](arg1, arg2, arg3);
 }
 
+export function AnalyzeHoldingsDeep(arg1, arg2) {
+  return window['go']['handler']['TradingRecordHandler']['AnalyzeHoldingsDeep'](arg1, arg2);
+}
+
 export function CheckFrequentTrading(arg1) {
   return window['go']['handler']['TradingRecordHandler']['CheckFrequentTrading'](arg1);
 }
@@ -28,6 +32,10 @@ export function GenerateTradeAiComment(arg1, arg2, arg3) {
 
 export function GetAiAdviceForStock(arg1, arg2) {
   return window['go']['handler']['TradingRecordHandler']['GetAiAdviceForStock'](arg1, arg2);
+}
+
+export function GetHoldingsDeepData() {
+  return window['go']['handler']['TradingRecordHandler']['GetHoldingsDeepData']();
 }
 
 export function GetHoldingsDetail() {

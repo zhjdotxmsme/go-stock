@@ -30,6 +30,7 @@ import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
 import StockIndicatorsModal from "./trading/StockIndicatorsModal.vue";
 import HoldingsAiSummaryModal from "./trading/HoldingsAiSummaryModal.vue";
 import HoldingsSummaryHistoryModal from "./trading/HoldingsSummaryHistoryModal.vue";
+import HoldingsDeepAnalysisModal from "./trading/HoldingsDeepAnalysisModal.vue";
 import TradeAiCommentModal from "./trading/TradeAiCommentModal.vue";
 import { normalizeStockCode } from '../utils/stockCode'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
@@ -52,6 +53,7 @@ const showAiSummaryModal = ref(false)
 const showSummaryHistory = ref(false)
 const showAiCommentModal = ref(false)
 const aiCommentRecord = ref(null)
+const showDeepAnalysisModal = ref(false)
 
 const dataRef = ref([])
 const loadingRef = ref(true)
@@ -899,6 +901,7 @@ onUnmounted(() => {
 
   <n-flex justify="end" align="center" style="margin-top: 10px">
     <n-button type="primary" secondary @click="showAiSummaryModal = true">AI 分析持仓</n-button>
+    <n-button type="warning" secondary @click="showDeepAnalysisModal = true">深度分析</n-button>
     <n-button secondary @click="showSummaryHistory = true">历史总结</n-button>
   </n-flex>
 
@@ -1158,6 +1161,7 @@ onUnmounted(() => {
   <HoldingsAiSummaryModal v-model:show="showAiSummaryModal" />
   <HoldingsSummaryHistoryModal v-model:show="showSummaryHistory" />
   <TradeAiCommentModal v-model:show="showAiCommentModal" :record="aiCommentRecord" @saved="silentRefreshCurrentPage" />
+  <HoldingsDeepAnalysisModal v-model:show="showDeepAnalysisModal" />
 </template>
 
 <style scoped></style>

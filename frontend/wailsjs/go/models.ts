@@ -1409,6 +1409,200 @@ export namespace data {
 	
 	
 	
+	export class TradingAiAdvice {
+	    stockCode: string;
+	    stockName: string;
+	    rating: string;
+	    modelName: string;
+	    dataTime: string;
+	    recommendId: number;
+	    stopLossPrice: number;
+	    takeProfitPrice: number;
+	    takeProfitMin: number;
+	    takeProfitMax: number;
+	    buyPriceMin: number;
+	    buyPriceMax: number;
+	    reason: string;
+	    riskRemarks: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TradingAiAdvice(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stockCode = source["stockCode"];
+	        this.stockName = source["stockName"];
+	        this.rating = source["rating"];
+	        this.modelName = source["modelName"];
+	        this.dataTime = source["dataTime"];
+	        this.recommendId = source["recommendId"];
+	        this.stopLossPrice = source["stopLossPrice"];
+	        this.takeProfitPrice = source["takeProfitPrice"];
+	        this.takeProfitMin = source["takeProfitMin"];
+	        this.takeProfitMax = source["takeProfitMax"];
+	        this.buyPriceMin = source["buyPriceMin"];
+	        this.buyPriceMax = source["buyPriceMax"];
+	        this.reason = source["reason"];
+	        this.riskRemarks = source["riskRemarks"];
+	    }
+	}
+	export class SectorNewsItem {
+	    title: string;
+	    summary: string;
+	    source: string;
+	    time: string;
+	    url: string;
+	    relatedStocks: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SectorNewsItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.summary = source["summary"];
+	        this.source = source["source"];
+	        this.time = source["time"];
+	        this.url = source["url"];
+	        this.relatedStocks = source["relatedStocks"];
+	    }
+	}
+	export class PriceLevel {
+	    price: number;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PriceLevel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.price = source["price"];
+	        this.label = source["label"];
+	    }
+	}
+	export class KeyPriceLevels {
+	    current: number;
+	    resistance: PriceLevel[];
+	    support: PriceLevel[];
+	    buyPoints: PriceLevel[];
+	    sellPoints: PriceLevel[];
+	
+	    static createFrom(source: any = {}) {
+	        return new KeyPriceLevels(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.current = source["current"];
+	        this.resistance = this.convertValues(source["resistance"], PriceLevel);
+	        this.support = this.convertValues(source["support"], PriceLevel);
+	        this.buyPoints = this.convertValues(source["buyPoints"], PriceLevel);
+	        this.sellPoints = this.convertValues(source["sellPoints"], PriceLevel);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class IndicatorSummary {
+	    trend: string;
+	    macdSignal: string;
+	    rsiValue: number;
+	    rsiStatus: string;
+	    kdjSignal: string;
+	    bollStatus: string;
+	    gapStatus: string;
+	    summary: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new IndicatorSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.trend = source["trend"];
+	        this.macdSignal = source["macdSignal"];
+	        this.rsiValue = source["rsiValue"];
+	        this.rsiStatus = source["rsiStatus"];
+	        this.kdjSignal = source["kdjSignal"];
+	        this.bollStatus = source["bollStatus"];
+	        this.gapStatus = source["gapStatus"];
+	        this.summary = source["summary"];
+	    }
+	}
+	export class HoldingsDeepStock {
+	    stockCode: string;
+	    stockName: string;
+	    currentPrice: number;
+	    changePercent: number;
+	    positionPct: number;
+	    profitPercent: number;
+	    indicators?: IndicatorSummary;
+	    levels?: KeyPriceLevels;
+	    capitalFlow: models.StockMoneyDataHis[];
+	    capitalSummary: string;
+	    industry: string;
+	    industryFlow: string;
+	    news: SectorNewsItem[];
+	    aiAdvice?: TradingAiAdvice;
+	
+	    static createFrom(source: any = {}) {
+	        return new HoldingsDeepStock(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stockCode = source["stockCode"];
+	        this.stockName = source["stockName"];
+	        this.currentPrice = source["currentPrice"];
+	        this.changePercent = source["changePercent"];
+	        this.positionPct = source["positionPct"];
+	        this.profitPercent = source["profitPercent"];
+	        this.indicators = this.convertValues(source["indicators"], IndicatorSummary);
+	        this.levels = this.convertValues(source["levels"], KeyPriceLevels);
+	        this.capitalFlow = this.convertValues(source["capitalFlow"], models.StockMoneyDataHis);
+	        this.capitalSummary = source["capitalSummary"];
+	        this.industry = source["industry"];
+	        this.industryFlow = source["industryFlow"];
+	        this.news = this.convertValues(source["news"], SectorNewsItem);
+	        this.aiAdvice = this.convertValues(source["aiAdvice"], TradingAiAdvice);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class HoldingsPosition {
 	    stockCode: string;
 	    stockName: string;
@@ -1527,32 +1721,7 @@ export namespace data {
 		    return a;
 		}
 	}
-	export class IndicatorSummary {
-	    trend: string;
-	    macdSignal: string;
-	    rsiValue: number;
-	    rsiStatus: string;
-	    kdjSignal: string;
-	    bollStatus: string;
-	    gapStatus: string;
-	    summary: string;
 	
-	    static createFrom(source: any = {}) {
-	        return new IndicatorSummary(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.trend = source["trend"];
-	        this.macdSignal = source["macdSignal"];
-	        this.rsiValue = source["rsiValue"];
-	        this.rsiStatus = source["rsiStatus"];
-	        this.kdjSignal = source["kdjSignal"];
-	        this.bollStatus = source["bollStatus"];
-	        this.gapStatus = source["gapStatus"];
-	        this.summary = source["summary"];
-	    }
-	}
 	
 	export class KLineData {
 	    day: string;
@@ -1622,6 +1791,7 @@ export namespace data {
 		    return a;
 		}
 	}
+	
 	export class MacroSnapshotEnhanced {
 	    dxy: number;
 	    eurusd: number;
@@ -1690,6 +1860,7 @@ export namespace data {
 		}
 	}
 	
+	
 	export class Sector {
 	    id: string;
 	    name: string;
@@ -1710,28 +1881,7 @@ export namespace data {
 	        this.icon = source["icon"];
 	    }
 	}
-	export class SectorNewsItem {
-	    title: string;
-	    summary: string;
-	    source: string;
-	    time: string;
-	    url: string;
-	    relatedStocks: string[];
 	
-	    static createFrom(source: any = {}) {
-	        return new SectorNewsItem(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.title = source["title"];
-	        this.summary = source["summary"];
-	        this.source = source["source"];
-	        this.time = source["time"];
-	        this.url = source["url"];
-	        this.relatedStocks = source["relatedStocks"];
-	    }
-	}
 	export class SectorNewsResponse {
 	    sectorId: string;
 	    sectorName: string;
@@ -2364,44 +2514,7 @@ export namespace data {
 	
 	
 	
-	export class TradingAiAdvice {
-	    stockCode: string;
-	    stockName: string;
-	    rating: string;
-	    modelName: string;
-	    dataTime: string;
-	    recommendId: number;
-	    stopLossPrice: number;
-	    takeProfitPrice: number;
-	    takeProfitMin: number;
-	    takeProfitMax: number;
-	    buyPriceMin: number;
-	    buyPriceMax: number;
-	    reason: string;
-	    riskRemarks: string;
 	
-	    static createFrom(source: any = {}) {
-	        return new TradingAiAdvice(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.stockCode = source["stockCode"];
-	        this.stockName = source["stockName"];
-	        this.rating = source["rating"];
-	        this.modelName = source["modelName"];
-	        this.dataTime = source["dataTime"];
-	        this.recommendId = source["recommendId"];
-	        this.stopLossPrice = source["stopLossPrice"];
-	        this.takeProfitPrice = source["takeProfitPrice"];
-	        this.takeProfitMin = source["takeProfitMin"];
-	        this.takeProfitMax = source["takeProfitMax"];
-	        this.buyPriceMin = source["buyPriceMin"];
-	        this.buyPriceMax = source["buyPriceMax"];
-	        this.reason = source["reason"];
-	        this.riskRemarks = source["riskRemarks"];
-	    }
-	}
 	export class TradingRecord {
 	    ID: number;
 	    StockCode: string;
@@ -4823,6 +4936,42 @@ export namespace models {
 	        this.CONCEPT = source["CONCEPT"];
 	        this.INDUSTRY = source["INDUSTRY"];
 	        this.MAX_TRADE_DATE = source["MAX_TRADE_DATE"];
+	    }
+	}
+	export class StockMoneyDataHis {
+	    date: string;
+	    f2: string;
+	    f3: string;
+	    f62: string;
+	    f184: string;
+	    f66: string;
+	    f69: string;
+	    f72: string;
+	    f75: string;
+	    f78: string;
+	    f81: string;
+	    f84: string;
+	    f87: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new StockMoneyDataHis(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.f2 = source["f2"];
+	        this.f3 = source["f3"];
+	        this.f62 = source["f62"];
+	        this.f184 = source["f184"];
+	        this.f66 = source["f66"];
+	        this.f69 = source["f69"];
+	        this.f72 = source["f72"];
+	        this.f75 = source["f75"];
+	        this.f78 = source["f78"];
+	        this.f81 = source["f81"];
+	        this.f84 = source["f84"];
+	        this.f87 = source["f87"];
 	    }
 	}
 	export class TechnicalIndicators {

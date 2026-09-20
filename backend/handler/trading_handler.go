@@ -332,6 +332,75 @@ func (h *TradingRecordHandler) GetHoldingsDetail() ([]data.HoldingsPosition, err
 	return result, nil
 }
 
+// GetHoldingsDeepData 持仓深度分析数据包（本地聚合：直白关键价位 + 技术指标 +
+// 资金流 + 板块 + 新闻 + 历史AI推荐），无 AI 调用，可直接展示。
+func (h *TradingRecordHandler) GetHoldingsDeepData() ([]*data.HoldingsDeepStock, error) {
+	positions, err := h.GetHoldingsDetail()
+	if err != nil {
+		return nil, err
+	}
+	return data.GetHoldingsDeepData(h.currentCtx(), positions)
+}
+
+// deepAnalysisEventName 持仓深度AI综合分析流式事件名
+func deepAnalysisEventName(eventName string) string {
+	if strings.TrimSpace(eventName) == "" {
+		return "holdingsDeepAnalysis"
+	}
+	return eventName
+}
+
+// AnalyzeHoldingsDeep 流式生成持仓深度 AI 综合分析：逐段 EventsEmit(eventName, msg) 推送，
+// 结束发 eventName="DONE"。输入为 GetHoldingsDeepData 的多维数据包，不落库。
+func (h *TradingRecordHandler) AnalyzeHoldingsDeep(aiConfigId int, eventName string) {
+	eventName = deepAnalysisEventName(eventName)
+	defer func() {
+		if r := recover(); r != nil {
+			logger.SugaredLogger.Errorf("AnalyzeHoldingsDeep panic: %v", r)
+			h.emit(eventName, map[string]any{
+				"code":    0,
+				"content": fmt.Sprintf("持仓深度分析异常: %v", r),
+			})
+			h.emit(eventName, "DONE")
+		}
+	}()
+
+	positions, err := h.GetHoldingsDetail()
+	if err != nil {
+		h.emit(eventName, map[string]any{
+			"code":    0,
+			"content": "获取持仓明细失败: " + err.Error(),
+		})
+		h.emit(eventName, "DONE")
+		return
+	}
+	if len(positions) == 0 {
+		h.emit(eventName, map[string]any{
+			"code":    0,
+			"content": "当前没有任何持仓记录，请先在交易日志中添加买入记录后再进行深度分析。",
+		})
+		h.emit(eventName, "DONE")
+		return
+	}
+
+	deep, err := data.GetHoldingsDeepData(h.currentCtx(), positions)
+	if err != nil || len(deep) == 0 {
+		h.emit(eventName, map[string]any{
+			"code":    0,
+			"content": "获取持仓深度数据失败: " + fmt.Sprintf("%v", err),
+		})
+		h.emit(eventName, "DONE")
+		return
+	}
+
+	ai := data.NewDeepSeekOpenAi(h.currentCtx(), aiConfigId)
+	msgs := ai.NewSummaryStockNewsStream(data.BuildHoldingsDeepPrompt(deep), nil, false, nil)
+	for msg := range msgs {
+		h.emit(eventName, msg)
+	}
+	h.emit(eventName, "DONE")
+}
+
 // GetStockTechnicalIndicators 单股全套技术指标数值与文字解读
 func (h *TradingRecordHandler) GetStockTechnicalIndicators(code string) (*data.StockIndicatorsResult, error) {
 	if strings.TrimSpace(code) == "" {

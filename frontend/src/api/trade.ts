@@ -151,6 +151,22 @@ export async function aiSuggestPriceLevels(stockCode: string, stockName: string,
   return callApi(TradingRecordHandler.AiSuggestPriceLevels, stockCode, stockName, aiConfigId)
 }
 
+/**
+ * 持仓深度分析数据包（本地聚合：直白关键价位 + 技术指标 + 资金流 + 板块 + 新闻 + 历史AI推荐）
+ * Go: GetHoldingsDeepData() []*data.HoldingsDeepStock
+ */
+export async function getHoldingsDeepData() {
+  return callApi(TradingRecordHandler.GetHoldingsDeepData)
+}
+
+/**
+ * 流式生成持仓深度 AI 综合分析（结果通过 Wails 事件 eventName 推送，结束发 "DONE"，不落库）
+ * Go: AnalyzeHoldingsDeep(aiConfigId int, eventName string)
+ */
+export async function analyzeHoldingsDeep(aiConfigId: number, eventName: string) {
+  return callApi(TradingRecordHandler.AnalyzeHoldingsDeep, aiConfigId, eventName)
+}
+
 export default {
   getTradingRecordList,
   addTradingRecord,
@@ -169,4 +185,6 @@ export default {
   getAiAdviceForStock,
   generateTradeAiComment,
   aiSuggestPriceLevels,
+  getHoldingsDeepData,
+  analyzeHoldingsDeep,
 }

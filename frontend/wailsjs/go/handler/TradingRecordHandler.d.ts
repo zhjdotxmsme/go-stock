@@ -9,6 +9,8 @@ export function AddTradingRecord(arg1:data.TradingRecord):Promise<number>;
 
 export function AiSuggestPriceLevels(arg1:string,arg2:string,arg3:number):Promise<data.TradingAiAdvice>;
 
+export function AnalyzeHoldingsDeep(arg1:number,arg2:string):Promise<void>;
+
 export function CheckFrequentTrading(arg1:string):Promise<Record<string, any>>;
 
 export function DeleteTradingRecord(arg1:number):Promise<void>;
@@ -16,6 +18,8 @@ export function DeleteTradingRecord(arg1:number):Promise<void>;
 export function GenerateTradeAiComment(arg1:number,arg2:number,arg3:string):Promise<void>;
 
 export function GetAiAdviceForStock(arg1:string,arg2:string):Promise<data.TradingAiAdvice>;
+
+export function GetHoldingsDeepData():Promise<Array<data.HoldingsDeepStock>>;
 
 export function GetHoldingsDetail():Promise<Array<data.HoldingsPosition>>;
 
