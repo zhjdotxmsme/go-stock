@@ -24,7 +24,38 @@ type IndicatorResult struct {
 	CCI  float64            `json:"cci,omitempty"`
 	WR   float64            `json:"wr,omitempty"`
 	BIAS float64            `json:"bias,omitempty"`
+	GAP  *GapAnalysis       `json:"gap,omitempty"`
 }
+
+// GapAnalysis 跳空缺口分析（基于检测窗口内的日线）。
+// 缺口定义：当日最低价高于前一日最高价（向上跳空）或当日最高价低于前一日最低价（向下跳空）。
+// 回补定义：向上缺口被后续最低价触及缺口下沿（完全回补）；向下缺口被后续最高价触及缺口上沿。
+type GapAnalysis struct {
+	Window        int       `json:"window"`        // 检测窗口（K线根数）
+	UnfilledCount int       `json:"unfilledCount"` // 窗口内未回补缺口数
+	Recent        []GapInfo `json:"recent"`        // 窗口内缺口（新→旧，最多 recentLimit 个）
+	Status        string    `json:"status"`        // 面向展示的一句话状态
+}
+
+// GapInfo 单个跳空缺口
+type GapInfo struct {
+	Direction string  `json:"direction"` // up / down
+	Date      string  `json:"date"`      // 缺口发生日 yyyy-MM-dd
+	GapLow    float64 `json:"gapLow"`    // 缺口区间下沿
+	GapHigh   float64 `json:"gapHigh"`   // 缺口区间上沿
+	WidthPct  float64 `json:"widthPct"`  // 缺口宽度相对缺口发生日前收盘的 %
+	Filled    bool    `json:"filled"`    // 是否已（完全）回补
+	FillDate  string  `json:"fillDate"`  // 回补日，未回补为空
+	AgeDays   int     `json:"ageDays"`   // 距最新的交易日数（0=最新一根K线）
+}
+
+// gapWindowDays 缺口检测窗口（K线根数）；gapRecentLimit 最多保留的缺口明细条数；
+// gapMinWidthPct 过滤噪音微型缺口的最低宽度（相对前收盘 %）。
+const (
+	gapWindowDays  = 60
+	gapRecentLimit = 5
+	gapMinWidthPct = 0.2
+)
 
 // IndicatorSummary is a human-readable summary of key technical signals.
 type IndicatorSummary struct {
@@ -34,6 +65,7 @@ type IndicatorSummary struct {
 	RSIStatus  string  `json:"rsiStatus"`  // 超买 / 超卖 / 正常
 	KDJSignal  string  `json:"kdjSignal"`  // 金叉 / 死叉
 	BollStatus string  `json:"bollStatus"` // 上轨 / 中轨 / 下轨
+	GapStatus  string  `json:"gapStatus"`  // 跳空缺口状态一句话
 	Summary    string  `json:"summary"`
 }
 
@@ -149,10 +181,114 @@ func computeIndicatorsFromKLine(ctx context.Context, code string, period string,
 		result.BIAS = bias
 	}
 
+	// 跳空缺口（向上/向下跳空与回补状态）
+	result.GAP = calcGapAnalysis(bars, gapWindowDays)
+
 	logger.SugaredLogger.Infof("indicators computed for %s: MA=%.2f MACD=%.2f RSI=%.2f KDJ_K=%.2f",
 		code, result.MA["MA5"], result.MACD["MACD"], result.RSI["RSI14"], result.KDJ["K"])
 
 	return result, nil
+}
+
+// calcGapAnalysis 在最近 window 根 K 线内检测跳空缺口与回补状态。
+// bars 按时间升序；窗口不足时按实际数据计算。缺口明细按新→旧排列，最多保留 gapRecentLimit 条。
+func calcGapAnalysis(bars []datasource.KLineBar, window int) *GapAnalysis {
+	n := len(bars)
+	if window <= 0 {
+		window = gapWindowDays
+	}
+	if n < 2 {
+		return &GapAnalysis{Window: window, Status: "数据不足，无法检测缺口"}
+	}
+	start := 0
+	if n > window {
+		start = n - window
+	}
+
+	var gaps []GapInfo
+	for i := start + 1; i < n; i++ {
+		prev, cur := bars[i-1], bars[i]
+		if prev.High <= 0 || prev.Low <= 0 {
+			continue
+		}
+		gap := GapInfo{Date: cur.Time.Format("2006-01-02"), AgeDays: n - 1 - i}
+		switch {
+		case cur.Low > prev.High:
+			// 向上跳空：缺口区间 [前高, 当日低]
+			gap.Direction = "up"
+			gap.GapLow, gap.GapHigh = prev.High, cur.Low
+		case cur.High < prev.Low:
+			// 向下跳空：缺口区间 [当日高, 前低]
+			gap.Direction = "down"
+			gap.GapLow, gap.GapHigh = cur.High, prev.Low
+		default:
+			continue
+		}
+		width := gap.GapHigh - gap.GapLow
+		if prev.Close > 0 {
+			gap.WidthPct = round2(width / prev.Close * 100)
+		}
+		if gap.WidthPct < gapMinWidthPct {
+			continue // 过滤噪音微型缺口
+		}
+		// 回补检测：向上缺口看后续最低价是否触及缺口下沿；向下缺口看后续最高价是否触及缺口上沿
+		for j := i + 1; j < n; j++ {
+			if gap.Direction == "up" && bars[j].Low <= gap.GapLow {
+				gap.Filled = true
+				gap.FillDate = bars[j].Time.Format("2006-01-02")
+				break
+			}
+			if gap.Direction == "down" && bars[j].High >= gap.GapHigh {
+				gap.Filled = true
+				gap.FillDate = bars[j].Time.Format("2006-01-02")
+				break
+			}
+		}
+		gaps = append(gaps, gap)
+	}
+
+	analysis := &GapAnalysis{Window: window}
+	// 新→旧排列，最多保留 recentLimit 条明细
+	for i := len(gaps) - 1; i >= 0 && len(analysis.Recent) < gapRecentLimit; i-- {
+		analysis.Recent = append(analysis.Recent, gaps[i])
+	}
+	for _, g := range analysis.Recent {
+		if !g.Filled {
+			analysis.UnfilledCount++
+		}
+	}
+	analysis.Status = gapStatusText(analysis)
+	return analysis
+}
+
+// gapStatusText 生成面向展示的缺口状态一句话。
+func gapStatusText(a *GapAnalysis) string {
+	if a == nil || len(a.Recent) == 0 {
+		return fmt.Sprintf("近%d根K线无跳空缺口", a.Window)
+	}
+	var latest *GapInfo
+	for i := range a.Recent {
+		if !a.Recent[i].Filled {
+			latest = &a.Recent[i]
+			break
+		}
+	}
+	unfilled := a.UnfilledCount
+	if latest == nil {
+		return fmt.Sprintf("近%d根K线共%d个缺口，均已回补", a.Window, len(a.Recent))
+	}
+	dir := "向上"
+	role := "支撑"
+	if latest.Direction == "down" {
+		dir = "向下"
+		role = "压力"
+	}
+	text := fmt.Sprintf("最近未回补缺口：%s跳空 %s（%.2f-%.2f，第%d个交易日前），构成%s",
+		dir, latest.Date, latest.GapLow, latest.GapHigh, latest.AgeDays+1, role)
+	if unfilled > 1 {
+		text += fmt.Sprintf("；近%d根K线还有%d个未回补缺口", a.Window, unfilled)
+	}
+	return text
 }
 
 // GetIndicatorSummary generates a human-readable summary of technical indicators.
@@ -232,8 +368,16 @@ func GetIndicatorSummary(result *IndicatorResult) *IndicatorSummary {
 		}
 	}
 
+	// 跳空缺口状态
+	if result.GAP != nil {
+		s.GapStatus = result.GAP.Status
+	}
+
 	s.Summary = fmt.Sprintf("趋势:%s MACD:%s RSI:%.0f(%s)",
 		s.Trend, s.MACDSignal, s.RSIValue, s.RSIStatus)
+	if s.GapStatus != "" {
+		s.Summary += "；" + s.GapStatus
+	}
 
 	return s
 }

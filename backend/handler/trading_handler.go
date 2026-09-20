@@ -242,6 +242,9 @@ func (h *TradingRecordHandler) GenerateTradeAiComment(id uint, aiConfigId int, e
 		sb.WriteString("\n## 最新技术指标（日线）\n\n")
 		sb.WriteString(fmt.Sprintf("- 趋势：%s；MACD：%s；RSI14：%.1f（%s）；KDJ：%s；布林位置：%s\n- 解读：%s\n",
 			s.Trend, s.MACDSignal, s.RSIValue, s.RSIStatus, s.KDJSignal, s.BollStatus, s.Summary))
+		if s.GapStatus != "" {
+			sb.WriteString("- 跳空缺口：" + s.GapStatus + "\n")
+		}
 	}
 
 	sb.WriteString(`
@@ -390,6 +393,9 @@ func (h *TradingRecordHandler) SummarizeHoldings(aiConfigId int, eventName strin
 			s := ind.Summary
 			section += fmt.Sprintf("- 趋势：%s；MACD：%s；RSI14：%.1f（%s）；KDJ：%s；布林位置：%s\n- 解读：%s\n",
 				s.Trend, s.MACDSignal, s.RSIValue, s.RSIStatus, s.KDJSignal, s.BollStatus, s.Summary)
+			if s.GapStatus != "" {
+				section += "- 跳空缺口：" + s.GapStatus + "\n"
+			}
 		}
 		indicatorSections = append(indicatorSections, section)
 	}

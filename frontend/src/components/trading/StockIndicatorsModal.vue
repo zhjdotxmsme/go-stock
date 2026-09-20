@@ -45,12 +45,21 @@ function load() {
       const boll = ind.boll || {}
       const ma = ind.ma || {}
       const cci = get(ind, 'cci')
+      const gap = ind.gap || null
+      // 最近一个未回补缺口（recent 按新→旧排列）
+      const latestUnfilledGap = gap && Array.isArray(gap.recent)
+        ? gap.recent.find(g => !g.filled)
+        : null
+      const gapValue = latestUnfilledGap
+        ? `${latestUnfilledGap.direction === 'up' ? '向上' : '向下'} ${fmt(latestUnfilledGap.gapLow)} ~ ${fmt(latestUnfilledGap.gapHigh)}（${latestUnfilledGap.date}）`
+        : (gap && Array.isArray(gap.recent) && gap.recent.length ? '缺口均已回补' : '近60日无缺口')
       rows.value = [
         { name: 'MACD(12,26,9)', value: `DIF ${fmt(get(macd, 'MACD'))} / DEA ${fmt(get(macd, 'Signal'))}`, signal: `${s.macdSignal || '-'}，柱 ${fmt(get(macd, 'Histogram'))}` },
         { name: 'RSI14', value: fmt(get(ind.rsi, 'RSI14')), signal: s.rsiStatus || '-' },
         { name: 'KDJ(9,3)', value: `K ${fmt(get(kdj, 'K'))} / D ${fmt(get(kdj, 'D'))} / J ${fmt(get(kdj, 'J'))}`, signal: s.kdjSignal || '-' },
         { name: 'BOLL(20,2)', value: `上 ${fmt(get(boll, 'Up'))} / 中 ${fmt(get(boll, 'Mid'))} / 下 ${fmt(get(boll, 'Down'))}`, signal: s.bollStatus || '-' },
         { name: '均线 MA5/10/20/60', value: `${fmt(get(ma, 'MA5'))} / ${fmt(get(ma, 'MA10'))} / ${fmt(get(ma, 'MA20'))} / ${fmt(get(ma, 'MA60'))}`, signal: `趋势：${s.trend || '-'}` },
+        { name: '跳空缺口', value: gapValue, signal: s.gapStatus || '-' },
         { name: 'ATR(14)', value: fmt(ind.atr), signal: '平均真实波幅' },
         { name: 'CCI(20)', value: fmt(cci), signal: cci == null ? '-' : cci > 100 ? '超买区' : cci < -100 ? '超卖区' : '正常区间' },
         { name: 'WR(14)', value: fmt(ind.wr), signal: '威廉超买超卖' },
@@ -59,6 +68,8 @@ function load() {
       ]
       summaryText.value = [
         `**趋势**：${s.trend || '-'} ｜ **MACD**：${s.macdSignal || '-'} ｜ **RSI14**：${typeof s.rsiValue === 'number' ? s.rsiValue.toFixed(1) : '-'}（${s.rsiStatus || '-'}）｜ **KDJ**：${s.kdjSignal || '-'} ｜ **布林**：${s.bollStatus || '-'}`,
+        '',
+        s.gapStatus ? `**缺口**：${s.gapStatus}` : '',
         '',
         s.summary ? `**解读**：${s.summary}` : '',
       ].filter(Boolean).join('\n')

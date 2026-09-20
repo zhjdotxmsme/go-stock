@@ -360,6 +360,9 @@ func AiSuggestPriceLevels(ctx context.Context, stockCode, stockName string, pric
 		s := ind.Summary
 		sb.WriteString(fmt.Sprintf("\n## 最新技术指标（日线）\n- 趋势：%s；MACD：%s；RSI14：%.1f（%s）；KDJ：%s；布林位置：%s\n- 解读：%s\n",
 			s.Trend, s.MACDSignal, s.RSIValue, s.RSIStatus, s.KDJSignal, s.BollStatus, s.Summary))
+		if s.GapStatus != "" {
+			sb.WriteString("- 跳空缺口：" + s.GapStatus + "（未回补缺口可作为支撑/压力参考）\n")
+		}
 	}
 	if advice := GetLatestAiAdviceForStock(stockCode, stockName); advice != nil {
 		sb.WriteString(fmt.Sprintf("\n## 历史AI推荐（%s）\n- 评级：%s；建议买入区间：%s；建议止盈区间：%s；建议止损价：%s\n",
