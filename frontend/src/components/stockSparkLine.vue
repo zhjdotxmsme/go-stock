@@ -1,5 +1,5 @@
 <script setup>
-import {onMounted, onBeforeMount, ref, watchEffect} from "vue";
+import {onMounted, ref, computed, watch} from "vue";
 import * as echarts from 'echarts';
 import * as stockApi from "../api/stock";
 const {idSuffix,stockCode,stockName,lastPrice,openPrice,darkTheme} = defineProps({
@@ -32,6 +32,7 @@ const {idSuffix,stockCode,stockName,lastPrice,openPrice,darkTheme} = defineProps
 const chartRef=ref();
 
 function setChartData(chart) {
+  if (!chart) return
   //console.log("setChartData")
   stockApi.getStockMinutePriceLineData(stockCode, stockName).then(({data: result}) => {
     //console.log("GetStockMinutePriceLineData",result)
@@ -128,9 +129,10 @@ onMounted(() => {
 })
 
 
-watchEffect(() => {
-  console.log(stockName,'lastPrice变化为:', lastPrice,lastPrice > openPrice)
-  setChartData(chart.value);
+// 仅在涨跌方向翻转时刷新（原 watchEffect 每次行情跳动都会重抓分时数据，且挂载前以 null chart 触发报错）
+const isUp = computed(() => lastPrice > openPrice)
+watch(isUp, () => {
+  if (chart.value) setChartData(chart.value)
 })
 
 

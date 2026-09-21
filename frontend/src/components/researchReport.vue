@@ -23,7 +23,7 @@ onMounted(() => {
     endDate: paginationReactive.range[1]
   }).then((data) => {
     console.log( data)
-    dataRef.value = data.data
+    dataRef.value = data.data || []
     paginationReactive.page = 1
     paginationReactive.pageCount = data.pageCount
     paginationReactive.itemCount = data.total
@@ -176,7 +176,7 @@ function handlePageChange(currentPage) {
       startDate: formatDate(paginationReactive.range[0]),
       endDate: formatDate(paginationReactive.range[1])
     }).then((data) => {
-      dataRef.value = data.data
+      dataRef.value = data.data || []
       paginationReactive.page = currentPage
       paginationReactive.pageCount = data.pageCount
       paginationReactive.itemCount = data.total
@@ -195,7 +195,7 @@ function handleSearch() {
       startDate: formatDate(paginationReactive.range[0]),
       endDate: formatDate(paginationReactive.range[1])
     }).then((data) => {
-      dataRef.value = data.data
+      dataRef.value = data.data || []
       paginationReactive.page = data.page
       paginationReactive.pageCount = data.pageCount
       paginationReactive.itemCount = data.total
