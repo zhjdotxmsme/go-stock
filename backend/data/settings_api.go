@@ -62,6 +62,19 @@ type Settings struct {
 	WindowHeight           int    `json:"windowHeight"`
 	// EnableLLMRanking AI 增强选股（D2 LLM 二次排序）开关；nil = 默认开。
 	EnableLLMRanking *bool `json:"enableLlmRanking" gorm:"column:enable_llm_ranking"`
+	// Kronos K线预测（可选增强，默认关闭；服务由 go-stock 托管拉起）
+	KronosEnable     bool    `json:"kronosEnable" gorm:"column:kronos_enable"`
+	KronosPythonPath string  `json:"kronosPythonPath" gorm:"column:kronos_python_path"`
+	KronosPort       int     `json:"kronosPort" gorm:"column:kronos_port"`
+	KronosModel      string  `json:"kronosModel" gorm:"column:kronos_model"`
+	KronosDevice     string  `json:"kronosDevice" gorm:"column:kronos_device"`
+	KronosT          float64 `json:"kronosT" gorm:"column:kronos_t"`
+	KronosTopP       float64 `json:"kronosTopP" gorm:"column:kronos_top_p"`
+	KronosPredLen    int     `json:"kronosPredLen" gorm:"column:kronos_pred_len"`
+	KronosSampleCnt  int     `json:"kronosSampleCnt" gorm:"column:kronos_sample_cnt"`
+	KronosLazyStart  bool    `json:"kronosLazyStart" gorm:"column:kronos_lazy_start"`
+	// KronosPickEnable 每日推荐启用 Kronos 预测因子（依赖 KronosEnable）
+	KronosPickEnable bool `json:"kronosPickEnable" gorm:"column:kronos_pick_enable"`
 }
 
 func (receiver Settings) TableName() string {
@@ -177,6 +190,17 @@ func UpdateConfig(s *SettingConfig) string {
 			"window_width":               s.WindowWidth,
 			"window_height":              s.WindowHeight,
 			"enable_llm_ranking":         s.EnableLLMRanking,
+			"kronos_enable":              s.KronosEnable,
+			"kronos_python_path":         s.KronosPythonPath,
+			"kronos_port":                s.KronosPort,
+			"kronos_model":               s.KronosModel,
+			"kronos_device":              s.KronosDevice,
+			"kronos_t":                   s.KronosT,
+			"kronos_top_p":               s.KronosTopP,
+			"kronos_pred_len":            s.KronosPredLen,
+			"kronos_sample_cnt":          s.KronosSampleCnt,
+			"kronos_lazy_start":          s.KronosLazyStart,
+			"kronos_pick_enable":         s.KronosPickEnable,
 		})
 		if result.Error != nil {
 			logger.SugaredLogger.Errorf("更新配置失败: %v", result.Error)
@@ -349,6 +373,7 @@ func GetSettingConfig() *SettingConfig {
 		settings.BrowserPoolSize = 1
 	}
 	settings.EnableAgent = false
+	applyKronosDefaults(settings)
 
 	settingConfig.Settings = settings
 	settingConfig.AiConfigs = aiConfigs

@@ -47,6 +47,17 @@
       <n-gi><n-card size="small"><n-statistic label="平均收益" :value="stats.avgReturn + '%'" /></n-card></n-gi>
       <n-gi><n-card size="small"><n-statistic label="最大收益" :value="stats.maxReturn + '%'" /></n-card></n-gi>
     </n-grid>
+    <n-card size="small" v-if="kronosStats.samples > 0" style="border-color:#7c5cd6">
+      <n-space align="center">
+        <n-text strong style="color:#7c5cd6">Kronos 因子复盘</n-text>
+        <n-text depth="2">样本 {{ kronosStats.samples }}</n-text>
+        <n-text :style="{ color: kronosStats.hitRate >= 0.55 ? '#18a058' : kronosStats.hitRate < 0.45 ? '#d03050' : '#e6a700' }">
+          方向命中率 {{ (kronosStats.hitRate * 100).toFixed(1) }}%
+        </n-text>
+        <n-text depth="2">平均预测涨幅 {{ kronosStats.avgPred > 0 ? '+' : '' }}{{ kronosStats.avgPred }}%</n-text>
+        <n-text depth="2">当前因子权重 {{ (kronosStats.currentW * 100).toFixed(1) }}%（复盘自动调权）</n-text>
+      </n-space>
+    </n-card>
     <n-grid :cols="3" :x-gap="12" v-if="picks.length > 0">
       <n-gi>
         <n-card size="small" title="收益分布">
@@ -130,7 +141,7 @@ import FactorBar from './charts/FactorBar.vue'
 import {
   runDailyPickAsync, getDailyPicks, getDailyPickStats,
   updateDailyPickRemarks, runDailyReview, getReviewTrend,
-  getLLMRankingEnabled, setLLMRankingEnabled,
+  getLLMRankingEnabled, setLLMRankingEnabled, getKronosFactorStats,
 } from '../api/dailyPick'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 
@@ -146,6 +157,7 @@ const stats = ref({
   winRate: 0, avgReturn: 0, totalReturn: 0, maxReturn: 0,
   maxDrawdown: 0, avgMaxReturn: 0, avgMaxDrawdown: 0,
 })
+const kronosStats = ref<any>({ samples: 0, hits: 0, hitRate: 0, avgPred: 0, avgT1: 0, currentW: 0 })
 
 const queryDate = ref<number | null>(null)
 const query = reactive({ page: 1, pageSize: 20, tradeDate: '', reviewed: null })
@@ -245,6 +257,19 @@ function renderChange(row: any) {
   return h(NText, { style: { color: c, fontWeight: 'bold' } }, { default: () => `${row.changePercent >= 0 ? '+' : ''}${row.changePercent.toFixed(2)}%` })
 }
 
+// Kronos 预测列：方向 + 预期涨幅 + 复盘命中标记（✓/✗）
+function renderKronos(row: any) {
+  if (!row.kronosDirection) return h('span', { style: { color: '#c0c4cc' } }, '-')
+  const up = row.kronosDirection === 'up'
+  const parts: any[] = [
+    h('span', { style: { color: up ? '#d03050' : '#18a058', fontWeight: 'bold' } },
+      `${up ? '↑' : '↓'}${row.kronosChangePct >= 0 ? '+' : ''}${(row.kronosChangePct ?? 0).toFixed(1)}%`),
+  ]
+  if (row.kronosHit === 'hit') parts.push(h('span', { style: { color: '#18a058', marginLeft: '2px' }, title: '复盘：预测方向命中' }, '✓'))
+  else if (row.kronosHit === 'miss') parts.push(h('span', { style: { color: '#d03050', marginLeft: '2px' }, title: '复盘：预测方向未命中' }, '✗'))
+  return h('span', { style: { fontSize: '12px' }, title: `一致度 ${(row.kronosConfidence ?? 0).toFixed(0)}/100` }, parts)
+}
+
 function renderPnL(row: any) {
   if (!row.reviewed) return h('span', '-')
   return h('span', { style: { fontSize: '12px', whiteSpace: 'nowrap' } }, [
@@ -302,6 +327,7 @@ const baseColumns: any[] = [
   { title: '日期', key: 'tradeDate', width: 100 },
   { title: '股票', key: 'stockCode', width: 130, render: renderStockName },
   { title: '综合评分', key: 'score', width: 180, align: 'center', render: renderScore, sorter: (a: any, b: any) => a.score - b.score },
+  { title: 'Kronos预测', key: 'kronosScore', width: 110, align: 'center', render: renderKronos },
   { title: '涨跌幅', key: 'changePercent', width: 85, align: 'right', render: renderChange },
   { title: '次日收益', key: 'nextReturn', width: 95, align: 'center', render: renderReturn, sorter: (a: any, b: any) => (a.nextReturn || 0) - (b.nextReturn || 0) },
   { title: '潜在盈亏', key: 'nextMaxReturn', width: 110, align: 'center', render: renderPnL },
@@ -424,6 +450,7 @@ async function loadPicks() {
 async function loadStats() {
   try { const s = await getDailyPickStats(); if (s) stats.value = s }
   catch (e) { console.error('loadStats failed', e); message.error('加载统计信息失败') }
+  try { const k = await getKronosFactorStats(); if (k) kronosStats.value = k } catch { /* Kronos 未启用等忽略 */ }
 }
 
 // Async daily-pick progress events pushed by the backend

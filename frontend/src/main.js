@@ -4,8 +4,6 @@ import naive from 'naive-ui'
 import App from './App.vue'
 import router from './router/router'
 import {installGlobalTracking} from './utils/tracker'
-// 引入组件库的少量全局样式变量
-import 'tdesign-vue-next/es/style/index.css';
 
 const app = createApp(App)
 

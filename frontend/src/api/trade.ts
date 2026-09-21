@@ -167,6 +167,56 @@ export async function analyzeHoldingsDeep(aiConfigId: number, eventName: string)
   return callApi(TradingRecordHandler.AnalyzeHoldingsDeep, aiConfigId, eventName)
 }
 
+// ========== Kronos K线预测 ==========
+
+/**
+ * Kronos 未来日K预测（需在设置页开启；未开启/离线返回结构化错误码）
+ * Go: PredictKLine(stockCode string, predLen int) *data.KronosPrediction
+ */
+export async function predictKLine(stockCode: string, predLen = 5) {
+  return callApi(TradingRecordHandler.PredictKLine, stockCode, predLen)
+}
+
+/**
+ * Kronos 服务状态：disabled / offline / online
+ * Go: GetKronosStatus() string
+ */
+export async function getKronosStatus() {
+  return callApi(TradingRecordHandler.GetKronosStatus)
+}
+
+/**
+ * 手动启动 Kronos 推理服务（阻塞至在线或超时）
+ * Go: StartKronosService() error
+ */
+export async function startKronosService() {
+  return callApi(TradingRecordHandler.StartKronosService)
+}
+
+/**
+ * 停止 Kronos 推理服务
+ * Go: StopKronosService()
+ */
+export async function stopKronosService() {
+  return callApi(TradingRecordHandler.StopKronosService)
+}
+
+/**
+ * Kronos 历史切点回测：asOfDate 为空时自动取倒数第 predLen+1 根为切点
+ * Go: BacktestKLine(stockCode, asOfDate string, predLen int) *data.KronosBacktestResult
+ */
+export async function backtestKLine(stockCode: string, asOfDate = '', predLen = 5) {
+  return callApi(TradingRecordHandler.BacktestKLine, stockCode, asOfDate, predLen)
+}
+
+/**
+ * Kronos 滚动回测：多切点批量预测 + 阈值扫描信号统计
+ * Go: RollingBacktestKLine(stockCode, stepDays, predLen, holdingDays)
+ */
+export async function rollingBacktestKLine(stockCode: string, stepDays = 5, predLen = 5, holdingDays = 5) {
+  return callApi(TradingRecordHandler.RollingBacktestKLine, stockCode, stepDays, predLen, holdingDays)
+}
+
 export default {
   getTradingRecordList,
   addTradingRecord,
@@ -187,4 +237,10 @@ export default {
   aiSuggestPriceLevels,
   getHoldingsDeepData,
   analyzeHoldingsDeep,
+  predictKLine,
+  getKronosStatus,
+  startKronosService,
+  stopKronosService,
+  backtestKLine,
+  rollingBacktestKLine,
 }

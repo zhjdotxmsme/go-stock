@@ -46,6 +46,7 @@ declare module 'vue' {
     FundKlineChart: typeof import('./src/components/FundKlineChart.vue')['default']
     FundRanking: typeof import('./src/components/FundRanking.vue')['default']
     HoldingsAiSummaryModal: typeof import('./src/components/trading/HoldingsAiSummaryModal.vue')['default']
+    HoldingsDeepAnalysisModal: typeof import('./src/components/trading/HoldingsDeepAnalysisModal.vue')['default']
     HoldingsSummaryHistoryModal: typeof import('./src/components/trading/HoldingsSummaryHistoryModal.vue')['default']
     HotEvents: typeof import('./src/components/HotEvents.vue')['default']
     HotStockList: typeof import('./src/components/HotStockList.vue')['default']

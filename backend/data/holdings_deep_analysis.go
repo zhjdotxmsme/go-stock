@@ -7,6 +7,7 @@ package data
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -49,6 +50,7 @@ type HoldingsDeepStock struct {
 	IndustryFlow  string          `json:"industryFlow"` // 板块资金面一句话
 	News          []SectorNewsItem `json:"news"`        // 最近新闻（最多5条）
 	AiAdvice      *TradingAiAdvice `json:"aiAdvice"`    // 最近一次AI推荐
+	Kronos        *KronosPrediction `json:"kronos"`     // Kronos 未来K线预测（可选，未开启/失败为 nil）
 }
 
 // dedupeLevels 按价格去重：相差 0.8% 以内的价位合并（标签用 " / " 连接），排序后各取前 limit 条。
@@ -400,6 +402,18 @@ func GetHoldingsDeepData(ctx context.Context, positions []HoldingsPosition) ([]*
 
 			// 历史AI推荐
 			item.AiAdvice = GetLatestAiAdviceForStock(p.StockCode, p.StockName)
+
+			// Kronos 未来K线预测（可选增强：未开启或失败时静默降级）
+			if GetKronosConfig().Enable {
+				pctx, pcancel := context.WithTimeout(ctx, 45*time.Second)
+				pred, perr := kronosPredict(pctx, apiCode, 0)
+				pcancel()
+				if perr == nil && pred != nil {
+					item.Kronos = pred
+				} else if perr != nil && !errors.Is(perr, ErrKronosDisabled) && !errors.Is(perr, ErrKronosOffline) {
+					logger.SugaredLogger.Warnf("Kronos 预测 %s 失败: %v", p.StockCode, perr)
+				}
+			}
 		}()
 		result = append(result, item)
 	}
@@ -444,6 +458,22 @@ func BuildHoldingsDeepPrompt(stocks []*HoldingsDeepStock) string {
 				priceRangeStr(s.AiAdvice.TakeProfitMin, s.AiAdvice.TakeProfitMax), priceStr(s.AiAdvice.StopLossPrice),
 				truncateStr(orDashStr(s.AiAdvice.Reason), 120)))
 		}
+		if s.Kronos != nil && s.Kronos.Summary != nil {
+			ks := s.Kronos.Summary
+			dirTxt := "下跌"
+			if ks.Direction == "up" {
+				dirTxt = "上涨"
+			}
+			fmt.Fprintf(&sb, "- Kronos模型K线预测（未来%d个交易日，仅供参考非投资建议）：预测方向%s；预测期末收盘 %.2f（较现价 %+.2f%%）；预测区间 %.2f ~ %.2f；采样一致度 %.0f/100\n",
+				ks.PredLen, dirTxt, ks.PredEnd, ks.ChangePct, ks.PredLow, ks.PredHigh, ks.Confidence)
+			if len(s.Kronos.Bars) > 0 {
+				var pb []string
+				for _, b := range s.Kronos.Bars {
+					pb = append(pb, fmt.Sprintf("%s:%.2f", b.Date, b.Close))
+				}
+				sb.WriteString("  - 预测收盘序列：" + strings.Join(pb, " → ") + "\n")
+			}
+		}
 		if len(s.News) > 0 {
 			sb.WriteString("- 最近新闻：\n")
 			for _, n := range s.News {
@@ -463,6 +493,7 @@ func BuildHoldingsDeepPrompt(stocks []*HoldingsDeepStock) string {
 2. **资金面解读**：主力资金方向与力度，对短期走势的含义；
 3. **消息与板块**：结合新闻与所属板块资金，指出利好/利空/中性及持续性；
 4. **操作结论（明确）**：一句话给出当前应「持有/加仓/减仓/买入/卖出/观望」，以及触发加仓或离场的具体价格条件。
+   若提供了 Kronos 模型K线预测，请将其作为技术面参考之一与本地指标相互印证（一致则增强结论，矛盾则明确指出分歧及各自依据）；预测置信度低于 50 时应弱化其权重并说明。
 
 ### 二、组合综合分析
 1. 组合仓位结构评价（集中度、行业分布、浮盈浮亏）；

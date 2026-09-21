@@ -128,6 +128,15 @@ func (r *DailyPickReview) reviewOne(ctx context.Context, pick *models.DailyPick,
 		pick.NextReturnT1 = math.Round((pick.NextClose/base-1)*10000) / 100
 	}
 
+	// Kronos 因子方向命中回填（T+1 方向对照；仅预测过的推荐参与）
+	if pick.KronosDirection != "" && base > 0 && pick.NextClose > 0 {
+		if (pick.NextClose >= base) == (pick.KronosDirection == "up") {
+			pick.KronosHit = "hit"
+		} else {
+			pick.KronosHit = "miss"
+		}
+	}
+
 	// 3/5 日窗口（存在才回填，未到期由 backfillWindows 补齐）
 	if idx := t1 + 2; idx < len(klines) && base > 0 {
 		pick.Return3D = math.Round((parseFloat64(klines[idx].Close)/base-1)*10000) / 100

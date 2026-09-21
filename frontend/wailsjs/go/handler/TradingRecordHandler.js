@@ -50,6 +50,10 @@ export function GetHoldingsSummaryList(arg1, arg2) {
   return window['go']['handler']['TradingRecordHandler']['GetHoldingsSummaryList'](arg1, arg2);
 }
 
+export function GetKronosStatus() {
+  return window['go']['handler']['TradingRecordHandler']['GetKronosStatus']();
+}
+
 export function GetStockTechnicalIndicators(arg1) {
   return window['go']['handler']['TradingRecordHandler']['GetStockTechnicalIndicators'](arg1);
 }
@@ -64,6 +68,26 @@ export function GetTradingRecordList(arg1) {
 
 export function GetTradingRecordStatistics() {
   return window['go']['handler']['TradingRecordHandler']['GetTradingRecordStatistics']();
+}
+
+export function PredictKLine(arg1, arg2) {
+  return window['go']['handler']['TradingRecordHandler']['PredictKLine'](arg1, arg2);
+}
+
+export function BacktestKLine(arg1, arg2, arg3) {
+  return window['go']['handler']['TradingRecordHandler']['BacktestKLine'](arg1, arg2, arg3);
+}
+
+export function RollingBacktestKLine(arg1, arg2, arg3, arg4) {
+  return window['go']['handler']['TradingRecordHandler']['RollingBacktestKLine'](arg1, arg2, arg3, arg4);
+}
+
+export function StartKronosService() {
+  return window['go']['handler']['TradingRecordHandler']['StartKronosService']();
+}
+
+export function StopKronosService() {
+  return window['go']['handler']['TradingRecordHandler']['StopKronosService']();
 }
 
 export function SummarizeHoldings(arg1, arg2) {

@@ -61,6 +61,9 @@ var stocksBinUS []byte
 //go:embed docs/go-stock使用手册.md
 var userManual []byte
 
+//go:embed python/kronos_service
+var kronosAssets embed.FS
+
 //go:generate cp -R ./data ./build/bin
 
 var Version string
@@ -100,6 +103,7 @@ func registerStockSDKMCP() {
 }
 
 func main() {
+	data.RegisterKronosAssets(kronosAssets)
 	defer func() {
 		if r := recover(); r != nil {
 			log.SugaredLogger.Error("panic: ", r)

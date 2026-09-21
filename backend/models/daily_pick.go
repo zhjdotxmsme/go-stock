@@ -77,6 +77,13 @@ type DailyPick struct {
 	// 选股时应用的策略调权系数（§自动调权审计字段，1=未调权）
 	StrategyMult float64 `json:"strategyMult"`
 
+	// Kronos K线预测因子（可选增强，推荐日由批量预测填充；空字符串=未启用/失败）
+	KronosDirection  string  `json:"kronosDirection" gorm:"size:10"`  // up/down
+	KronosChangePct  float64 `json:"kronosChangePct"`                 // 预测期末相对现价涨跌 %
+	KronosConfidence float64 `json:"kronosConfidence"`                // 采样一致度 0~100
+	KronosScore      float64 `json:"kronosScore"`                     // 因子分 0~100（方向×涨幅×一致度折算）
+	KronosHit        string  `json:"kronosHit" gorm:"size:10"`        // 复盘时回填：hit/miss（T+1 方向对照）
+
 	// ===== D12 扩展：选股→排名→风控→后分析生命周期（方案 §8.1 D12，纯新增）=====
 
 	// 核心（rank/stockCode/stockName 沿用既有字段）

@@ -88,6 +88,11 @@ func (h *DailyPickHandler) GetReviewTrend(limit int) []map[string]interface{} {
 	return h.svc.GetReviewTrend(limit)
 }
 
+// GetKronosFactorStats Kronos 因子复盘统计（命中率/样本数/当前权重）
+func (h *DailyPickHandler) GetKronosFactorStats() data.KronosFactorStats {
+	return data.GetKronosFactorStats()
+}
+
 // GetLLMRankingEnabled 返回 AI 增强选股（LLM 二次排序）开关状态；未设置时默认开启。
 func (h *DailyPickHandler) GetLLMRankingEnabled() bool {
 	sc := data.GetSettingConfig()

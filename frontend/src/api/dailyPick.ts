@@ -86,6 +86,15 @@ export async function setLLMRankingEnabled(enabled: boolean): Promise<void> {
   if (!r?.success) throw new Error(r?.message || "保存 AI 增强选股开关失败")
 }
 
+/**
+ * Kronos 因子复盘统计（命中率/样本数/当前权重）
+ */
+export async function getKronosFactorStats(): Promise<any> {
+  const r = await callApi(DailyPickHandler.GetKronosFactorStats)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
+}
+
 export default {
   runDailyPick,
   runDailyPickAsync,
@@ -96,4 +105,5 @@ export default {
   getReviewTrend,
   getLLMRankingEnabled,
   setLLMRankingEnabled,
+  getKronosFactorStats,
 }

@@ -2,6 +2,7 @@
 import {computed, h, onBeforeUnmount, onMounted, ref} from "vue";
 import * as systemApi from "../api/system";
 import * as stockApi from "../api/stock";
+import * as tradeApi from "../api/trade";
 import {NButton, NTag, NTooltip, NIcon, useMessage} from "naive-ui";
 import {data, models} from "../../wailsjs/go/models";
 import {EventsEmit} from "../../wailsjs/runtime";
@@ -69,7 +70,61 @@ const formValue = ref({
   updateChannel: 'release',
   quickThinkModelId: null,
   deepThinkModelId: null,
+  kronos: {
+    enable: false,
+    pythonPath: '',
+    port: 8765,
+    model: 'NeoQuasar/Kronos-small',
+    device: 'auto',
+    t: 1.0,
+    topP: 0.9,
+    predLen: 5,
+    sampleCnt: 4,
+    lazyStart: true,
+    pickEnable: false,
+  },
 })
+
+// ---- Kronos 服务管理 ----
+const kronosStatus = ref('disabled')  // disabled / offline / online
+const kronosStarting = ref(false)
+const kronosStatusTimer = ref(null)
+const kronosModelOptions = [
+  { label: 'Kronos-small（24.7M，CPU 友好）', value: 'NeoQuasar/Kronos-small' },
+  { label: 'Kronos-base（102M，预测更强）', value: 'NeoQuasar/Kronos-base' },
+]
+const kronosDeviceOptions = [
+  { label: '自动（有 CUDA 用 GPU）', value: 'auto' },
+  { label: 'CPU', value: 'cpu' },
+  { label: 'CUDA (GPU)', value: 'cuda:0' },
+]
+
+async function refreshKronosStatus() {
+  try {
+    const { data: s } = await tradeApi.getKronosStatus()
+    kronosStatus.value = s || 'disabled'
+  } catch { kronosStatus.value = 'offline' }
+}
+
+async function startKronos() {
+  kronosStarting.value = true
+  try {
+    const { error } = await tradeApi.startKronosService()
+    if (error) throw new Error(error.message || '启动失败')
+    message.success('Kronos 服务已启动')
+  } catch (e) {
+    message.error('Kronos 服务启动失败：' + (e?.message || e))
+  } finally {
+    kronosStarting.value = false
+    refreshKronosStatus()
+  }
+}
+
+async function stopKronos() {
+  await tradeApi.stopKronosService()
+  message.info('Kronos 服务已停止')
+  refreshKronosStatus()
+}
 
 // 添加一个新的AI配置到列表
 function addAiConfig() {
@@ -280,6 +335,22 @@ onMounted(() => {
     formValue.value.updateChannel = res.updateChannel || 'release';
     formValue.value.quickThinkModelId = res.quickThinkModelId || null;
     formValue.value.deepThinkModelId = res.deepThinkModelId || null;
+    formValue.value.kronos = {
+      enable: res.kronosEnable || false,
+      pythonPath: res.kronosPythonPath || '',
+      port: res.kronosPort || 8765,
+      model: res.kronosModel || 'NeoQuasar/Kronos-small',
+      device: res.kronosDevice || 'auto',
+      t: res.kronosT || 1.0,
+      topP: res.kronosTopP || 0.9,
+      predLen: res.kronosPredLen || 5,
+      sampleCnt: res.kronosSampleCnt || 4,
+      lazyStart: res.kronosLazyStart !== false,
+      pickEnable: res.kronosPickEnable || false,
+    };
+    refreshKronosStatus()
+    if (kronosStatusTimer.value) clearInterval(kronosStatusTimer.value)
+    kronosStatusTimer.value = setInterval(refreshKronosStatus, 15000)
   })
 
   systemApi.getPromptTemplates("", "").then(({data: res}) => {
@@ -289,6 +360,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   message.destroyAll()
+  if (kronosStatusTimer.value) clearInterval(kronosStatusTimer.value)
 })
 
 function saveConfig() {
@@ -338,6 +410,17 @@ function saveConfig() {
     updateChannel: formValue.value.updateChannel,
     quickThinkModelId: formValue.value.quickThinkModelId,
     deepThinkModelId: formValue.value.deepThinkModelId,
+    kronosEnable: formValue.value.kronos.enable,
+    kronosPythonPath: formValue.value.kronos.pythonPath,
+    kronosPort: formValue.value.kronos.port,
+    kronosModel: formValue.value.kronos.model,
+    kronosDevice: formValue.value.kronos.device,
+    kronosT: Number(formValue.value.kronos.t) || 1.0,
+    kronosTopP: Number(formValue.value.kronos.topP) || 0.9,
+    kronosPredLen: Number(formValue.value.kronos.predLen) || 5,
+    kronosSampleCnt: Number(formValue.value.kronos.sampleCnt) || 4,
+    kronosLazyStart: formValue.value.kronos.lazyStart,
+    kronosPickEnable: formValue.value.kronos.pickEnable,
   })
 
   systemApi.updateConfig(config).then(({data: res}) => {
@@ -952,6 +1035,59 @@ function saveMultiAgentPrompt() {
                   </n-space>
                 </n-collapse-item>
               </n-collapse>
+            </n-gi>
+
+            <n-gi :span="24">
+              <n-divider/>
+              <n-space vertical>
+                <n-space align="center">
+                  <n-tag type="info">Kronos K线预测（可选增强）</n-tag>
+                  <n-tag :type="kronosStatus === 'online' ? 'success' : kronosStatus === 'disabled' ? 'default' : 'warning'" size="small" round>
+                    {{ kronosStatus === 'online' ? '● 服务在线' : kronosStatus === 'disabled' ? '○ 未开启' : '● 服务离线' }}
+                  </n-tag>
+                  <n-button v-if="formValue.kronos.enable && kronosStatus !== 'online'" size="small" type="primary" :loading="kronosStarting" @click="startKronos">启动服务</n-button>
+                  <n-button v-if="formValue.kronos.enable && kronosStatus === 'online'" size="small" @click="stopKronos">停止服务</n-button>
+                </n-space>
+                <n-grid :cols="24" :x-gap="24">
+                  <n-form-item-gi :span="3" label="开启K线预测：" path="kronos.enable">
+                    <n-switch v-model:value="formValue.kronos.enable"/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="5" label="Python 解释器路径（留空用系统 python）：" path="kronos.pythonPath">
+                    <n-input v-model:value="formValue.kronos.pythonPath" placeholder="如 C:\\Python310\\python.exe" clearable/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="4" label="服务端口：" path="kronos.port">
+                    <n-input-number v-model:value="formValue.kronos.port" :min="1024" :max="65535"/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="6" label="模型：" path="kronos.model">
+                    <n-select v-model:value="formValue.kronos.model" :options="kronosModelOptions"/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="6" label="运行设备：" path="kronos.device">
+                    <n-select v-model:value="formValue.kronos.device" :options="kronosDeviceOptions"/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="4" label="Temperature：" path="kronos.t">
+                    <n-input-number v-model:value="formValue.kronos.t" :min="0.1" :max="2" :step="0.1"/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="4" label="top_p：" path="kronos.topP">
+                    <n-input-number v-model:value="formValue.kronos.topP" :min="0.1" :max="1" :step="0.05"/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="4" label="预测根数：" path="kronos.predLen">
+                    <n-input-number v-model:value="formValue.kronos.predLen" :min="1" :max="60"/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="4" label="采样次数：" path="kronos.sampleCnt">
+                    <n-input-number v-model:value="formValue.kronos.sampleCnt" :min="1" :max="16"/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="4" label="惰性启动（首次预测时自动拉起）：" path="kronos.lazyStart">
+                    <n-switch v-model:value="formValue.kronos.lazyStart"/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="4" label="每日推荐启用Kronos因子：" path="kronos.pickEnable">
+                    <n-switch v-model:value="formValue.kronos.pickEnable"/>
+                  </n-form-item-gi>
+                </n-grid>
+                <n-text depth="3" style="font-size: 12px">
+                  首次使用需初始化环境：pip 安装依赖并下载模型（详见 python/kronos_service/README.md）。
+                  预测结果为模型推演，仅供研究参考，不构成投资建议。
+                </n-text>
+              </n-space>
             </n-gi>
 
             <n-gi :span="24">

@@ -27,6 +27,8 @@ export function GetHoldingsSummaryDetail(arg1:number):Promise<models.HoldingsDai
 
 export function GetHoldingsSummaryList(arg1:number,arg2:number):Promise<data.HoldingsSummaryPageData>;
 
+export function GetKronosStatus():Promise<string>;
+
 export function GetStockTechnicalIndicators(arg1:string):Promise<data.StockIndicatorsResult>;
 
 export function GetTradingRecordById(arg1:number):Promise<data.TradingRecord>;
@@ -34,6 +36,16 @@ export function GetTradingRecordById(arg1:number):Promise<data.TradingRecord>;
 export function GetTradingRecordList(arg1:data.TradingRecordListQuery):Promise<data.TradingRecordPageData>;
 
 export function GetTradingRecordStatistics():Promise<data.TradingRecordStatistics>;
+
+export function PredictKLine(arg1:string,arg2:number):Promise<data.KronosPrediction>;
+
+export function BacktestKLine(arg1:string,arg2:string,arg3:number):Promise<data.KronosBacktestResult>;
+
+export function RollingBacktestKLine(arg1:string,arg2:number,arg3:number,arg4:number):Promise<data.KronosRollingReport>;
+
+export function StartKronosService():Promise<void>;
+
+export function StopKronosService():Promise<void>;
 
 export function SummarizeHoldings(arg1:number,arg2:string):Promise<void>;
 

@@ -1409,6 +1409,122 @@ export namespace data {
 	
 	
 	
+	export class KronosForecast {
+	    direction: string;
+	    changePct: number;
+	    predEnd: number;
+	    predHigh: number;
+	    predLow: number;
+	    confidence: number;
+	    predLen: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KronosForecast(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.direction = source["direction"];
+	        this.changePct = source["changePct"];
+	        this.predEnd = source["predEnd"];
+	        this.predHigh = source["predHigh"];
+	        this.predLow = source["predLow"];
+	        this.confidence = source["confidence"];
+	        this.predLen = source["predLen"];
+	    }
+	}
+	export class KronosBar {
+	    date: string;
+	    open: number;
+	    high: number;
+	    low: number;
+	    close: number;
+	    volume: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KronosBar(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.open = source["open"];
+	        this.high = source["high"];
+	        this.low = source["low"];
+	        this.close = source["close"];
+	        this.volume = source["volume"];
+	    }
+	}
+	export class KronosPrediction {
+	    bars: KronosBar[];
+	    summary?: KronosForecast;
+	
+	    static createFrom(source: any = {}) {
+	        return new KronosPrediction(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.bars = this.convertValues(source["bars"], KronosBar);
+	        this.summary = this.convertValues(source["summary"], KronosForecast);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class KronosBacktestResult {
+	    asOfDate: string;
+	    prediction?: KronosPrediction;
+	    actualBars: KronosBar[];
+	    directionHit: boolean;
+	    meanAbsErrPct: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KronosBacktestResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.asOfDate = source["asOfDate"];
+	        this.prediction = this.convertValues(source["prediction"], KronosPrediction);
+	        this.actualBars = this.convertValues(source["actualBars"], KronosBar);
+	        this.directionHit = source["directionHit"];
+	        this.meanAbsErrPct = source["meanAbsErrPct"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class TradingAiAdvice {
 	    stockCode: string;
 	    stockName: string;
@@ -1562,6 +1678,7 @@ export namespace data {
 	    industryFlow: string;
 	    news: SectorNewsItem[];
 	    aiAdvice?: TradingAiAdvice;
+	    kronos?: KronosPrediction;
 	
 	    static createFrom(source: any = {}) {
 	        return new HoldingsDeepStock(source);
@@ -1583,6 +1700,7 @@ export namespace data {
 	        this.industryFlow = source["industryFlow"];
 	        this.news = this.convertValues(source["news"], SectorNewsItem);
 	        this.aiAdvice = this.convertValues(source["aiAdvice"], TradingAiAdvice);
+	        this.kronos = this.convertValues(source["kronos"], KronosPrediction);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1792,6 +1910,9 @@ export namespace data {
 		}
 	}
 	
+	
+	
+	
 	export class MacroSnapshotEnhanced {
 	    dxy: number;
 	    eurusd: number;
@@ -1970,6 +2091,17 @@ export namespace data {
 	    windowWidth: number;
 	    windowHeight: number;
 	    enableLlmRanking?: boolean;
+	    kronosEnable: boolean;
+	    kronosPythonPath: string;
+	    kronosPort: number;
+	    kronosModel: string;
+	    kronosDevice: string;
+	    kronosT: number;
+	    kronosTopP: number;
+	    kronosPredLen: number;
+	    kronosSampleCnt: number;
+	    kronosLazyStart: boolean;
+	    kronosPickEnable: boolean;
 	    aiConfigs: AIConfig[];
 	
 	    static createFrom(source: any = {}) {
@@ -2026,6 +2158,17 @@ export namespace data {
 	        this.windowWidth = source["windowWidth"];
 	        this.windowHeight = source["windowHeight"];
 	        this.enableLlmRanking = source["enableLlmRanking"];
+	        this.kronosEnable = source["kronosEnable"];
+	        this.kronosPythonPath = source["kronosPythonPath"];
+	        this.kronosPort = source["kronosPort"];
+	        this.kronosModel = source["kronosModel"];
+	        this.kronosDevice = source["kronosDevice"];
+	        this.kronosT = source["kronosT"];
+	        this.kronosTopP = source["kronosTopP"];
+	        this.kronosPredLen = source["kronosPredLen"];
+	        this.kronosSampleCnt = source["kronosSampleCnt"];
+	        this.kronosLazyStart = source["kronosLazyStart"];
+	        this.kronosPickEnable = source["kronosPickEnable"];
 	        this.aiConfigs = this.convertValues(source["aiConfigs"], AIConfig);
 	    }
 	

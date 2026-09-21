@@ -18,6 +18,10 @@ export function GetDateRange() {
   return window['go']['handler']['DailyPickHandler']['GetDateRange']();
 }
 
+export function GetKronosFactorStats() {
+  return window['go']['handler']['DailyPickHandler']['GetKronosFactorStats']();
+}
+
 export function GetLLMRankingEnabled() {
   return window['go']['handler']['DailyPickHandler']['GetLLMRankingEnabled']();
 }

@@ -1,9 +1,11 @@
 <script setup>
 import * as stockApi from '../api/stock'
+import * as tradeApi from '../api/trade'
 import {
   CandlestickSeries,
   createChart,
   HistogramSeries,
+  LineSeries,
 } from 'lightweight-charts'
 import { NButton, NFlex, NInput, NModal, NSpin, NText, NTooltip } from 'naive-ui'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -111,6 +113,8 @@ const activeDataSource = ref('')
 let chart = null
 let candleSeries = null
 let volSeries = null
+let forecastSeries = null
+let backtestSeries = null
 let pollTimer = null
 /** 已合并的后端原始 K 线（按时间升序） */
 let mergedRawRows = []
@@ -269,6 +273,10 @@ function applySeriesFromRaw() {
   volSeries.setData(volumes)
   syncIndicators()
   syncLongPositionPriceLines()
+  // 主图数据更新后重铺预测虚K线（保持时间轴顺序）
+  if (showKronosForecast.value && lastKronosPred.value) {
+    renderKronosForecast(lastKronosPred.value)
+  }
 }
 
 function withProgrammaticTimeRange(fn) {
@@ -347,6 +355,8 @@ function disposeChart() {
     chart = null
     candleSeries = null
     volSeries = null
+    forecastSeries = null
+    backtestSeries = null
   }
   resetIndicatorHandles()
 }
@@ -509,6 +519,26 @@ function ensureChart() {
     wickUpColor: '#ef5350',
     wickDownColor: '#26a69a',
   })
+  // Kronos 预测虚K线（半透明，独立系列叠加在主图同一价格标尺）
+  forecastSeries = chart.addSeries(CandlestickSeries, {
+    upColor: 'rgba(239, 83, 80, 0.45)',
+    downColor: 'rgba(38, 166, 154, 0.45)',
+    borderUpColor: 'rgba(239, 83, 80, 0.7)',
+    borderDownColor: 'rgba(38, 166, 154, 0.7)',
+    wickUpColor: 'rgba(239, 83, 80, 0.45)',
+    wickDownColor: 'rgba(38, 166, 154, 0.45)',
+    lastValueVisible: false,
+    priceLineVisible: false,
+  })
+  // Kronos 回测对照线（预测收盘折线叠加在真实K线对应日期上，紫色虚线）
+  backtestSeries = chart.addSeries(LineSeries, {
+    color: '#7c5cd6',
+    lineWidth: 2,
+    lineStyle: 2,
+    lastValueVisible: false,
+    priceLineVisible: false,
+    crosshairMarkerVisible: true,
+  })
   volSeries = chart.addSeries(
     HistogramSeries,
     {
@@ -594,6 +624,9 @@ async function loadData() {
   mergedRawRows = []
   mergedRawRowsVersion.value++
   syncDefaultLatestPanelRow()
+  // 代码/周期切换后旧预测不再适用
+  showKronosForecast.value = false
+  clearKronosForecast()
   hasMoreOlder.value = true
   lastOlderHistoryEndTried = ''
   try {
@@ -697,6 +730,157 @@ const activeComboKey = computed(() => {
   return ''
 })
 
+// ---- Kronos AI 预测（可选增强，需在设置页开启推理服务） ----
+const showKronosForecast = ref(false)
+const kronosLoading = ref(false)
+const kronosError = ref('')
+const kronosSummary = ref(null)
+const lastKronosPred = ref(null)
+// 回测模式（历史切点预测 vs 真实走势对照）
+const kronosBtLoading = ref(false)
+const kronosBtInfo = ref(null)
+// 滚动回测（多切点 + 阈值扫描）
+const kronosRollLoading = ref(false)
+const kronosRollReport = ref(null)
+const showKronosRoll = ref(false)
+
+async function runKronosRolling() {
+  if (!props.code || kronosRollLoading.value) return
+  if (!DAILY_LIKE_KLT.has(activeKlt.value)) {
+    kronosError.value = '滚动回测目前仅支持日线周期'
+    return
+  }
+  kronosRollLoading.value = true
+  kronosError.value = ''
+  try {
+    const res = await tradeApi.rollingBacktestKLine(props.code, 5, 5, 5)
+    if (res?.error) throw new Error(res.error?.message || '滚动回测失败')
+    kronosRollReport.value = res?.data
+    showKronosRoll.value = true
+  } catch (e) {
+    kronosError.value = String(e?.message || e)
+  } finally {
+    kronosRollLoading.value = false
+  }
+}
+
+function clearKronosForecast() {
+  if (forecastSeries) {
+    try { forecastSeries.setData([]) } catch { /* ignore */ }
+  }
+  if (backtestSeries) {
+    try { backtestSeries.setData([]) } catch { /* ignore */ }
+  }
+  lastKronosPred.value = null
+  kronosSummary.value = null
+  kronosError.value = ''
+  kronosBtInfo.value = null
+}
+
+/** 回测模式：以历史切点预测，预测收盘折线叠加在真实K线上对照 */
+async function toggleKronosBacktest() {
+  if (kronosBtInfo.value) {
+    if (backtestSeries) { try { backtestSeries.setData([]) } catch { /* ignore */ } }
+    kronosBtInfo.value = null
+    return
+  }
+  if (!props.code || kronosBtLoading.value) return
+  if (!DAILY_LIKE_KLT.has(activeKlt.value)) {
+    kronosError.value = '回测验证目前仅支持日线周期'
+    return
+  }
+  kronosBtLoading.value = true
+  kronosError.value = ''
+  try {
+    const res = await tradeApi.backtestKLine(props.code, '', 5)
+    if (res?.error) throw new Error(res.error?.message || '回测失败')
+    const bt = res?.data
+    if (!bt?.prediction?.bars?.length) throw new Error('未返回回测数据（K线不足或服务不可用）')
+    // 预测收盘折线：锚点=切点真实收盘，之后逐根预测收盘（日期即真实K线日期）
+    const rows = [{ time: bt.asOfDate, value: bt.prediction.summary?.lastClose ?? bt.prediction.bars[0].open }]
+    for (const b of bt.prediction.bars) rows.push({ time: b.date, value: b.close })
+    if (!backtestSeries) throw new Error('图表未就绪')
+    backtestSeries.setData(rows)
+    kronosBtInfo.value = bt
+    // 视野对准切点前后区间（最近约40根）
+    withProgrammaticTimeRange(() => {
+      const ts = chart?.timeScale()
+      const n = mergedRawRows.length
+      if (ts?.setVisibleLogicalRange && n > 0) {
+        ts.setVisibleLogicalRange({ from: Math.max(0, n - 40), to: n + 2 })
+      }
+    })
+  } catch (e) {
+    kronosError.value = String(e?.message || e)
+    kronosBtInfo.value = null
+  } finally {
+    kronosBtLoading.value = false
+  }
+}
+
+/** 预测虚K线铺到主图：时间取真实K线之后（日线按交易日推进） */
+function renderKronosForecast(pred) {
+  if (!forecastSeries || !pred?.bars?.length) return
+  const base = mergedRawRows.length ? String(mergedRawRows[mergedRawRows.length - 1].day || '') : ''
+  const baseTs = Date.parse(extractYmdDatePart(base.replace(/\//g, '-')) + 'T12:00:00+08:00')
+  const rows = []
+  let cursor = Number.isFinite(baseTs) ? baseTs : Date.now()
+  for (const b of pred.bars) {
+    // 从预测返回的日期与最后一根真实K线日期取较大者，逐根推进 1 天（跳过周末）
+    let ts = Date.parse(`${b.date}T12:00:00+08:00`)
+    if (!Number.isFinite(ts)) ts = cursor + 86400000
+    if (ts <= cursor) ts = cursor + 86400000
+    const dow = new Date(ts).getDay()
+    if (dow === 6) ts += 2 * 86400000
+    else if (dow === 0) ts += 86400000
+    cursor = ts
+    const d = new Date(ts)
+    const time = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    rows.push({ time, open: b.open, high: b.high, low: b.low, close: b.close })
+  }
+  try {
+    forecastSeries.setData(rows)
+  } catch {
+    /* 时间冲突等异常时静默跳过，不影响主图 */
+  }
+}
+
+async function toggleKronosForecast() {
+  if (showKronosForecast.value) {
+    showKronosForecast.value = false
+    clearKronosForecast()
+    return
+  }
+  if (!props.code || kronosLoading.value) return
+  if (!DAILY_LIKE_KLT.has(activeKlt.value)) {
+    kronosError.value = 'AI预测目前仅支持日线周期'
+    return
+  }
+  kronosLoading.value = true
+  kronosError.value = ''
+  try {
+    const res = await tradeApi.predictKLine(props.code, 5)
+    if (res?.error) throw new Error(res.error?.message || '预测失败')
+    const pred = res?.data
+    if (!pred?.bars?.length) throw new Error('未返回预测数据（K线不足或服务不可用）')
+    lastKronosPred.value = pred
+    kronosSummary.value = pred.summary || null
+    renderKronosForecast(pred)
+    showKronosForecast.value = true
+    // 让预测K线进入视野
+    chart?.timeScale().getVisibleLogicalRange &&
+      withProgrammaticTimeRange(() => {
+        const lr = chart.timeScale().getVisibleLogicalRange()
+        if (lr) chart.timeScale().setVisibleLogicalRange({ from: lr.from, to: lr.to + pred.bars.length })
+      })
+  } catch (e) {
+    kronosError.value = String(e?.message || e)
+    showKronosForecast.value = false
+  } finally {
+    kronosLoading.value = false
+  }
+}
+
 
 
 
@@ -782,6 +966,35 @@ watch(
             @click="onSelectKlt(it.klt)"
           >
             {{ it.label }}
+          </NButton>
+          <NButton
+            size="tiny"
+            :loading="kronosLoading"
+            :type="showKronosForecast ? 'primary' : 'default'"
+            :secondary="!showKronosForecast"
+            title="Kronos 模型未来日K预测（需在设置页开启）"
+            @click="toggleKronosForecast"
+          >
+            AI预测
+          </NButton>
+          <NButton
+            size="tiny"
+            :loading="kronosBtLoading"
+            :type="kronosBtInfo ? 'primary' : 'default'"
+            :secondary="!kronosBtInfo"
+            title="Kronos 回测验证：以历史切点预测并与真实走势对照（需在设置页开启）"
+            @click="toggleKronosBacktest"
+          >
+            回测验证
+          </NButton>
+          <NButton
+            size="tiny"
+            :loading="kronosRollLoading"
+            secondary
+            title="Kronos 滚动回测：历史多切点批量预测，统计方向命中率与入场阈值策略（耗时较长）"
+            @click="runKronosRolling"
+          >
+            滚动回测
           </NButton>
           <span style="width: 12px" />
           <NText depth="3" style="font-size: 12px; margin-right: 2px">多单</NText>
@@ -1044,6 +1257,21 @@ watch(
               {{ activeDataSource === 'eastmoney' ? '东方财富' : activeDataSource === 'tdx-mac' ? '通达信MAC' : activeDataSource === 'tdx-mac-ex' ? '通达信MAC扩展' : activeDataSource === 'sina' ? '新浪财经' : activeDataSource === 'tencent' ? '腾讯财经' : activeDataSource === 'tdx' ? '通达信' : activeDataSource }}
             </span>
           </NText>
+          <NText v-if="kronosError" type="error" class="lw-kline-hint-text">AI预测：{{ kronosError }}</NText>
+          <NText v-else-if="kronosBtInfo" class="lw-kline-hint-text" style="color: #7c5cd6">
+            回测验证（切点 {{ kronosBtInfo.asOfDate }}）：
+            <span :style="{ color: kronosBtInfo.directionHit ? '#18a058' : '#d03050', fontWeight: 'bold' }">
+              方向{{ kronosBtInfo.directionHit ? '命中 ✓' : '未命中 ✗' }}
+            </span>
+            ｜预测收盘平均偏差 {{ kronosBtInfo.meanAbsErrPct }}%（紫色虚线=预测，仅供参考）
+          </NText>
+          <NText v-else-if="kronosSummary" class="lw-kline-hint-text" style="color: #7c5cd6">
+            Kronos预测（未来{{ kronosSummary.predLen }}日）：
+            <span :style="{ color: kronosSummary.direction === 'up' ? '#ef5350' : '#26a69a' }">
+              {{ kronosSummary.direction === 'up' ? '上涨' : '下跌' }} {{ kronosSummary.changePct > 0 ? '+' : '' }}{{ kronosSummary.changePct }}%
+            </span>
+            ｜区间 {{ kronosSummary.predLow }} ~ {{ kronosSummary.predHigh }}｜一致度 {{ kronosSummary.confidence }}/100（仅供参考）
+          </NText>
           <NSpin v-if="loading || loadingHistory" size="small" />
         </NFlex>
       </div>
@@ -1102,6 +1330,64 @@ watch(
         </div>
       </div>
     </NModal>
+    <NModal
+      v-model:show="showKronosRoll"
+      preset="card"
+      title="Kronos 滚动回测报告"
+      style="width: 720px; max-width: 94vw"
+      :bordered="false"
+    >
+      <div v-if="kronosRollReport" style="font-size: 13px">
+        <NFlex :size="16" style="margin-bottom: 10px">
+          <NText>切点 {{ kronosRollReport.cutpoints }}（失败 {{ kronosRollReport.failedCutpoints }}）</NText>
+          <NText :style="{ color: kronosRollReport.directionAcc >= 0.55 ? '#18a058' : kronosRollReport.directionAcc < 0.45 ? '#d03050' : '#e6a700', fontWeight: 'bold' }">
+            方向命中率 {{ (kronosRollReport.directionAcc * 100).toFixed(1) }}%
+          </NText>
+          <NText depth="2">买入持有基准 {{ kronosRollReport.buyHoldReturn > 0 ? '+' : '' }}{{ kronosRollReport.buyHoldReturn }}%</NText>
+          <NText depth="3">耗时 {{ kronosRollReport.elapsedSec }}s</NText>
+        </NFlex>
+        <NText strong>入场阈值扫描（预测涨幅 ≥ 阈值才入场，持有5日）</NText>
+        <table class="lw-kronos-roll-table">
+          <thead>
+            <tr><th>阈值</th><th>信号数</th><th>胜率</th><th>平均收益</th><th>复利累计</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="t in kronosRollReport.thresholds" :key="t.thresholdPct"
+                :style="t.thresholdPct === kronosRollReport.bestThreshold ? { background: 'rgba(124,92,214,0.12)' } : {}">
+              <td>≥ {{ t.thresholdPct }}%</td>
+              <td>{{ t.signals }}</td>
+              <td>{{ t.signals ? (t.winRate * 100).toFixed(0) + '%' : '-' }}</td>
+              <td :style="{ color: t.avgReturn > 0 ? '#ef5350' : t.avgReturn < 0 ? '#26a69a' : '' }">
+                {{ t.signals ? (t.avgReturn > 0 ? '+' : '') + t.avgReturn + '%' : '-' }}
+              </td>
+              <td>{{ t.signals ? (t.totalReturn > 0 ? '+' : '') + t.totalReturn + '%' : '-' }}</td>
+              <td>{{ t.thresholdPct === kronosRollReport.bestThreshold ? '⭐ 最优' : '' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <NText strong style="display:block; margin-top: 10px">切点明细</NText>
+        <table class="lw-kronos-roll-table" style="max-height: 240px; display: block; overflow-y: auto">
+          <thead>
+            <tr><th>切点</th><th>预测涨幅</th><th>方向</th><th>一致度</th><th>实际涨跌</th><th>命中</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in kronosRollReport.cuts" :key="c.date">
+              <td>{{ c.date }}</td>
+              <td>{{ c.predChange > 0 ? '+' : '' }}{{ c.predChange }}%</td>
+              <td>{{ c.direction === 'up' ? '涨' : '跌' }}</td>
+              <td>{{ c.confidence }}</td>
+              <td :style="{ color: c.actualReturn > 0 ? '#ef5350' : c.actualReturn < 0 ? '#26a69a' : '' }">
+                {{ c.actualReturn > 0 ? '+' : '' }}{{ c.actualReturn }}%
+              </td>
+              <td :style="{ color: c.directionHit ? '#18a058' : '#d03050' }">{{ c.directionHit ? '✓' : '✗' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <NText depth="3" style="display:block; margin-top: 8px; font-size: 12px">
+          历史回测不代表未来表现，模型推演仅供参考，不构成投资建议。
+        </NText>
+      </div>
+    </NModal>
   </div>
 </template>
 
@@ -1152,6 +1438,21 @@ watch(
   flex: 1 1 auto;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+.lw-kronos-roll-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: 12px;
+}
+.lw-kronos-roll-table th,
+.lw-kronos-roll-table td {
+  border: 1px solid rgba(128, 128, 128, 0.25);
+  padding: 4px 8px;
+  text-align: center;
+}
+.lw-kronos-roll-table th {
+  background: rgba(128, 128, 128, 0.08);
 }
 .lw-kline-longpos-hint {
   font-size: 11px;

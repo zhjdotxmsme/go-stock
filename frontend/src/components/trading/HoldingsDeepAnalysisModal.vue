@@ -181,6 +181,15 @@ onUnmounted(() => {
             <span v-if="s.indicators.gapStatus">；{{ s.indicators.gapStatus }}</span>
           </div>
           <div><strong>资金面：</strong>{{ s.capitalSummary || '-' }}</div>
+          <div v-if="s.kronos?.summary" style="color: #7c5cd6">
+            <strong>Kronos预测：</strong>未来{{ s.kronos.summary.predLen }}日
+            <span :style="{ color: s.kronos.summary.direction === 'up' ? '#d03050' : '#18a058' }">
+              {{ s.kronos.summary.direction === 'up' ? '上涨' : '下跌' }} {{ fmtPct(s.kronos.summary.changePct) }}
+            </span>
+            ｜期末 {{ fmt(s.kronos.summary.predEnd) }}｜区间 {{ fmt(s.kronos.summary.predLow) }} ~ {{ fmt(s.kronos.summary.predHigh) }}
+            ｜一致度 {{ fmt(s.kronos.summary.confidence) }}/100
+            <span style="color: #999">（模型推演，非投资建议）</span>
+          </div>
           <div v-if="s.industryFlow || s.industry">
             <strong>板块：</strong>{{ s.industryFlow || '所属行业 ' + s.industry }}
           </div>
