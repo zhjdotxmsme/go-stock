@@ -1,0 +1,14 @@
+# go-stock Kronos 推理服务依赖（Python 3.10+）
+fastapi
+uvicorn
+pydantic>=2
+pandas
+numpy
+torch>=2.0
+huggingface_hub
+safetensors
+einops
+# Kronos 官方模型实现：将 shiyu-coder/Kronos 仓库根目录的 model/ 目录
+# （model.py、module.py 等）放到本目录下的 model/ 子目录，或
+#   git clone https://github.com/shiyu-coder/Kronos.git kronos_repo
+# 然后把 kronos_repo/model 拷贝/链接到此处。

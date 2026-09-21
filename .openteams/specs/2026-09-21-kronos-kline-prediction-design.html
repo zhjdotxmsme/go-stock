@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kronos K线预测能力集成 — 设计文档</title>
+<style>
+  :root { --accent: #d03050; --ink: #2b3440; --muted: #6b7684; --line: #e4e9f0; --bg: #f7f9fb; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; color: var(--ink); background: var(--bg); margin: 0; padding: 32px 16px; line-height: 1.75; }
+  .page { max-width: 920px; margin: 0 auto; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 40px 48px; }
+  h1 { font-size: 26px; border-bottom: 3px solid var(--accent); padding-bottom: 12px; }
+  h2 { font-size: 19px; margin-top: 36px; color: var(--accent); }
+  h3 { font-size: 16px; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+  code, pre { font-family: Consolas, "Courier New", monospace; background: #f2f4f7; border-radius: 4px; }
+  code { padding: 1px 5px; font-size: 13px; }
+  pre { padding: 14px 16px; overflow-x: auto; font-size: 13px; border: 1px solid var(--line); }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #fafbfc; }
+  .tag { display: inline-block; background: #fdecef; color: var(--accent); border-radius: 999px; padding: 1px 10px; font-size: 12px; margin-right: 6px; }
+  .note { background: #fff8e6; border-left: 4px solid #e6a700; padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 14px; }
+  .refs a { color: #1a6dcc; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>Kronos K线预测能力集成 — 设计文档</h1>
+<p class="meta">日期：2026-09-21 ｜ 项目：go-stock ｜ 状态：已确认</p>
+
+<h2>一、背景与目标</h2>
+<p>交易日志的「持仓深度分析」（<code>backend/data/holdings_deep_analysis.go</code> + <code>frontend/src/components/trading/HoldingsDeepAnalysisModal.vue</code>）目前是
+「静态技术指标 + 资金/板块/新闻聚合 → LLM 解读」链路，缺少<strong>前瞻性</strong>：没有对未来走势的量化推演。</p>
+<p>参考项目：</p>
+<ul>
+  <li><a href="https://github.com/shiyu-coder/Kronos">Kronos（清华开源 K 线基础模型）</a>：OHLCV 序列生成式模型，可预测未来 K 线；small 版 24.7M 参数，CPU 可运行。</li>
+  <li><a href="https://github.com/Fidingks/facecat-kronos">facecat-kronos（花卷猫）</a>：Kronos 的 Python 封装，提供预测虚K线可视化、历史回测比对、T/top_p 参数调节。</li>
+</ul>
+<p><strong>目标</strong>：将 Kronos 预测做成 go-stock 的通用可选能力——</p>
+<ol>
+  <li>设置页托管本地 Python 推理服务，用户一键开关，免手动命令行；</li>
+  <li>预测能力覆盖<strong>全部 K 线图</strong>（自选股、交易日志、搜索结果等），叠加预测虚K线；</li>
+  <li>持仓深度分析同步集成预测数据并注入 LLM prompt；</li>
+  <li>提供回测比对功能，帮助用户评估预测可信度。</li>
+</ol>
+<p><strong>非目标</strong>：不做模型微调训练；不做分时级别预测（仅日线起步）；未开启功能时现有流程零改动。</p>
+
+<h2>二、架构总览</h2>
+<pre>┌─ go-stock (Go + Wails) ────────────────────────┐      ┌─ kronos_service (Python FastAPI) ──────┐
+│ 设置页 KronosConfig ─→ KronosProcessManager     │ HTTP │ POST /health   存活探测                │
+│                        (拉起/心跳/退出回收)      │─────→│ POST /predict  单只预测                │
+│ KronosClient ─→ handler.PredictKLine(code,...)  │      │ KronosPredictor(small/base, cpu/cuda)  │
+│ K线图组件「AI预测」开关 → 预测虚K线叠加           │      │ 模型: HuggingFace 镜像 / 本地 model 目录│
+│ holdings_deep_analysis.go 预测注入 prompt       │      └────────────────────────────────────────┘
+└────────────────────────────────────────────────┘</pre>
+<p>Python 服务随仓库提供（<code>python/kronos_service/</code>，单文件 FastAPI + requirements.txt）。
+go-stock 只通过 HTTP 127.0.0.1 通信，未开启时对现有功能零影响。</p>
+
+<h2>三、组件设计</h2>
+
+<h3>① 设置页「Kronos 预测」配置区</h3>
+<table>
+  <tr><th>配置项</th><th>默认值</th><th>说明</th></tr>
+  <tr><td>总开关</td><td>关</td><td>关闭时全部预测入口灰显/隐藏，现有功能不受影响</td></tr>
+  <tr><td>Python 解释器路径</td><td>自动探测</td><td>支持一键使用内置 venv（首次初始化时创建）</td></tr>
+  <tr><td>服务端口</td><td>8765</td><td>仅监听 127.0.0.1</td></tr>
+  <tr><td>模型</td><td>Kronos-small</td><td>可选 Kronos-base（102M，需更好硬件）</td></tr>
+  <tr><td>运行设备</td><td>自动</td><td>自动探测 CUDA，无则 CPU</td></tr>
+  <tr><td>预测参数</td><td>T=1.0, top_p=0.9, predLen=5, sampleCount=4</td><td>Temperature / 核心采样 / 预测根数 / 采样次数</td></tr>
+  <tr><td>惰性启动</td><td>开</td><td>首次调用预测时自动拉起服务</td></tr>
+</table>
+<p>附：状态指示灯（绿=在线 / 灰=未启动 / 红=异常）+「启动/停止」按钮 +「一键初始化」（创建 venv → pip 安装依赖（清华镜像）→ HF 镜像下载模型，进度展示）。配置持久化到现有设置存储。</p>
+
+<h3>② KronosProcessManager（Go）</h3>
+<ul>
+  <li>以子进程方式启动 Python 服务，工作目录为 <code>python/kronos_service/</code>；</li>
+  <li><code>/health</code> 心跳：3 秒超时，启动后最多等 120 秒进入在线态（首次加载模型慢）；心跳连续失败自动重启一次；</li>
+  <li>主程序退出时回收子进程（防孤儿进程）。</li>
+</ul>
+
+<h3>③ KronosClient + PredictKLine（Go handler）</h3>
+<pre>PredictKLine(stockCode string, period string, predLen int) → {
+  bars:     [{date, open, high, low, close, volume}],   // 预测的未来K线
+  summary:  { lastClose, predHigh, predLow, direction, confidence }
+}</pre>
+<ul>
+  <li>内部复用 <code>datasource.GetRouter().GetKLine</code> 取日K（lookback 120，代码经 <code>normalizeTradingRecordAPI</code> 规范化）；</li>
+  <li>confidence 由多次采样收盘价的离散度换算（离散度越小置信度越高）；</li>
+  <li>错误返回结构化错误码：<code>SERVICE_OFFLINE / TIMEOUT / MODEL_MISSING / INSUFFICIENT_DATA</code>。</li>
+</ul>
+
+<h3>④ 前端 K 线预测叠加（通用）</h3>
+<ul>
+  <li>现有 K 线图组件（<code>frontend/src/components/kline/</code>）增加「AI 预测」开关；</li>
+  <li>开启后调用 PredictKLine，在真实 K 线右侧渲染<strong>半透明虚K线</strong> + 竖向分隔线（样式参考 facecat），悬浮显示预测 OHLC 与置信度；</li>
+  <li>功能未配置或服务离线时按钮灰显并提示前往设置页开启；</li>
+  <li>自选股、交易日志、搜索等所有使用该 K 线组件的页面自动获得此能力。</li>
+</ul>
+
+<h3>⑤ 持仓深度分析集成</h3>
+<ul>
+  <li><code>GetHoldingsDeepData</code> 在功能开启时为每只持仓并行追加预测摘要，数据包新增 <code>kronosForecast</code> 字段；</li>
+  <li>前端持仓卡片新增「Kronos 预测」行（方向 + 5日区间 + 置信度）；</li>
+  <li><code>BuildHoldingsDeepPrompt</code> 注入预测数据，并要求 LLM 结合预测给出操作结论；</li>
+  <li>服务离线时<strong>自动降级</strong>为现状，不报错、不阻塞。</li>
+</ul>
+
+<h3>⑥ 回测比对（可选入口）</h3>
+<ul>
+  <li>预测面板提供「回测验证」：以历史 T-10 日为切点生成预测，与 T-10..T 真实走势对照；</li>
+  <li>展示：方向对错、收盘价平均偏差，辅助判断当前预测可信度。</li>
+</ul>
+
+<h2>四、数据流与错误处理</h2>
+<ul>
+  <li>所有调用统一经 KronosClient，30 秒超时；失败时前端统一 toast + 状态灯变红；</li>
+  <li>任何预测失败只影响预测功能本身，<strong>不阻塞</strong>行情、交易日志、持股分析主流程；</li>
+  <li>Python 侧对非法输入（K线不足 30 根、长期停牌）返回 4xx + reason，Go 侧转译为 <code>INSUFFICIENT_DATA</code>。</li>
+</ul>
+
+<h2>五、测试与验收</h2>
+<table>
+  <tr><th>层面</th><th>内容</th></tr>
+  <tr><td>Go 单测</td><td>KronosClient mock HTTP 测试；ProcessManager 启停/心跳/回收测试；holdings 数据包「含/不含预测」的 prompt 快照测试</td></tr>
+  <tr><td>Python 测试</td><td><code>/predict</code> 固定输入快照，断言输出形状与字段</td></tr>
+  <tr><td>手动验收</td><td>① 开关开启 → K线图出现预测虚K线；② 持股分析出现预测行且 prompt 含预测；③ 关闭开关 → 全部回退现状；④ 杀掉 Python 进程 → 状态灯变红、主流程不受影响</td></tr>
+</table>
+
+<h2>六、参考</h2>
+<p class="refs">
+  <a href="https://github.com/shiyu-coder/Kronos">shiyu-coder/Kronos</a> ｜
+  <a href="https://github.com/Fidingks/facecat-kronos">Fidingks/facecat-kronos</a> ｜
+  <a href="https://arxiv.org/abs/2508.02739">Kronos 论文 (arXiv:2508.02739)</a> ｜
+  <a href="https://huggingface.co/NeoQuasar/Kronos-small">HuggingFace: NeoQuasar/Kronos-small</a>
+</p>
+
+</div>
+</body>
+</html>

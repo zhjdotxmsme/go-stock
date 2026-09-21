@@ -624,8 +624,9 @@ func kronosPostBatch(ctx context.Context, cfg KronosConfigSnapshot, items []kron
 	}
 	body, _ := json.Marshal(payload)
 
-	// 批量可能耗时较长：每项最多 ~10s 的预算，上限 10 分钟
-	budget := time.Duration(len(items))*10*time.Second + 60*time.Second
+	// 批量可能耗时较长：CPU 上单次推理（lookback 最长 512）可达 20~40s，
+	// 按每项 ~30s 预算，上限 10 分钟
+	budget := time.Duration(len(items))*30*time.Second + 60*time.Second
 	if budget > 10*time.Minute {
 		budget = 10 * time.Minute
 	}

@@ -97,7 +97,7 @@ func (e *DailyPickEngine) applyKronosFactor(ctx context.Context, result []scored
 	}
 
 	e.reportProgress("kronos", 0, len(codes))
-	preds, perrs, err := KronosBatchPredict(ctx, codes, 5)
+	preds, perrs, err := KronosBatchPredict(ctx, codes, 0) // predLen=0 → 使用设置中的预测根数
 	if err != nil {
 		logger.SugaredLogger.Warnf("daily_pick: Kronos 因子批量预测失败（跳过因子）: %v", err)
 		return result

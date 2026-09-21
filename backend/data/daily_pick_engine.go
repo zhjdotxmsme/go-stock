@@ -1012,8 +1012,9 @@ func (e *DailyPickEngine) RunWithConfig(ctx context.Context, tradeDate string, c
 	wg.Wait()
 
 	// 增强管线（DSA 顺序，与 RunDailyPick 一致；失败降级，旧字段不动）：
-	// D1 九因子评分 → D2 LLM 排序 → D3 风控标记 → D10 后分析
+	// D1 九因子评分 → Kronos 因子 → D2 LLM 排序 → D3 风控标记 → D10 后分析
 	result = e.enhanceResults(result)
+	result = e.applyKronosFactor(ctx, result)
 	ranked := e.applyLLMRanking(ctx, result)
 	result = e.applyRiskToResults(result)
 	result = e.applyPostAnalysis(ctx, result)
