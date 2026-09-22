@@ -7,6 +7,8 @@ import (
 	"go-stock/backend/data"
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/logger"
+	"go-stock/backend/stockcode"
+	"go-stock/backend/util/timeutil"
 	"strconv"
 	"strings"
 	"time"
@@ -14,20 +16,10 @@ import (
 	"github.com/duke-git/lancet/v2/convertor"
 )
 
+// toTencentCode 统一委托 stockcode.Normalize（内部标准格式即腾讯行情符号：
+// sh600519/sz000001/bj430047/hk00700/usAAPL）。
 func toTencentCode(code string) string {
-	code = strings.TrimSpace(code)
-	upper := strings.ToUpper(code)
-	if strings.HasPrefix(upper, "SH") || strings.HasPrefix(upper, "SZ") {
-		return strings.ToLower(upper[:2]) + upper[2:]
-	}
-	// HK/US codes are native tencent symbols (hk00700, usAAPL) — pass through.
-	if strings.HasPrefix(upper, "HK") || strings.HasPrefix(upper, "US") {
-		return strings.ToLower(upper[:2]) + upper[2:]
-	}
-	if strings.HasPrefix(code, "6") || strings.HasPrefix(code, "68") || strings.HasPrefix(code, "9") {
-		return "sh" + code
-	}
-	return "sz" + code
+	return stockcode.Normalize(code)
 }
 
 func parseTencentQuoteResponse(text, code string) (*datasource.QuoteData, error) {
@@ -170,13 +162,8 @@ func (p *TencentKLineProvider) GetKLine(ctx context.Context, code string, period
 }
 
 func parseKLineTime(s string) time.Time {
-	if t, err := time.Parse("2006-01-02", strings.TrimSpace(s)); err == nil {
-		return t
-	}
-	if t, err := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(s)); err == nil {
-		return t
-	}
-	return time.Time{}
+	// 统一走 timeutil：本地时区解析，避免 UTC 结果与本地语义数据混合比较
+	return timeutil.MustParseDateTime(s)
 }
 
 // MootdxQuoteProvider provides real-time quotes by scraping the EastMoney
@@ -199,7 +186,7 @@ func (p *MootdxQuoteProvider) GetQuote(ctx context.Context, code string) (*datas
 	priceVal, _ := strconv.ParseFloat(strings.TrimSpace(price), 64)
 	var t time.Time
 	if priceTime != "" {
-		t, _ = time.Parse("2006-01-02 15:04:05", strings.TrimSpace(priceTime))
+		t, _ = timeutil.ParseDateTime(priceTime)
 	}
 	if t.IsZero() {
 		t = time.Now()

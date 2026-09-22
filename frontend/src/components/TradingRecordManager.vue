@@ -378,22 +378,15 @@ function openIndicators(row) {
 
 
 function formatRowTradingTime(row) {
-  console.log('formatRowTradingTime:', row)
   const t = row.TradingTime
   if (t == null || t === '') return '-'
-  let date
-  if (typeof t === 'string' && t.length >= 19 && t.includes('T')) {
-    date = new Date(t.substring(0, 19).replace('T', ' ') + ' UTC')
-  } else if (typeof t === 'string') {
-    date = new Date(t)
-  } else {
-    date = new Date(t)
-  }
-  const utc8Offset = 8 * 60 * 60 * 1000
-  const localOffset = date.getTimezoneOffset() * 60 * 1000
-  const utc8Time = new Date(date.getTime() + utc8Offset - localOffset)
+  // 后端 TradingTime 为本地时区 time.Time，Wails 序列化为带偏移的 RFC3339
+  // （如 2026-09-21T10:30:00+08:00），直接 new Date 即可得到正确瞬间；
+  // 旧实现截断后拼 " UTC" 再加双重偏移补偿，UTC+8 下显示会偏一天
+  const date = new Date(t)
+  if (isNaN(date.getTime())) return String(t)
   const pad = (n) => String(n).padStart(2, '0')
-  return `${utc8Time.getFullYear()}-${pad(utc8Time.getMonth() + 1)}-${pad(utc8Time.getDate())} ${pad(utc8Time.getHours())}:${pad(utc8Time.getMinutes())}:${pad(utc8Time.getSeconds())}`
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
 /** 统一列表行字段（Wails/JSON 可能为 PascalCase），供表格渲染与刷新使用 */

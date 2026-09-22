@@ -7,6 +7,7 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"go-stock/backend/util/timeutil"
 	"math"
 	"strings"
 	"time"
@@ -68,15 +69,9 @@ func (s *AiRecommendStocksService) GetAiRecommendStocksList(query *models.AiReco
 			"T": " ",
 			"Z": "",
 		})
-		startDate, err := time.Parse("2006-01-02 15:04:05", query.StartDate)
-		if err != nil {
-			startDate, _ = time.Parse("2006-01-02", query.StartDate)
-		}
-
-		endDate, err := time.Parse("2006-01-02 15:04:05", query.EndDate)
-		if err != nil {
-			endDate, _ = time.Parse("2006-01-02", query.EndDate)
-		}
+		// 统一本地时区解析（原 time.Parse 为 UTC，与本地存储比较会偏 8h）
+		startDate, _ := timeutil.ParseDateTime(query.StartDate)
+		endDate, _ := timeutil.ParseDateTime(query.EndDate)
 
 		q = q.Where("data_time BETWEEN ? AND ?", datetime.BeginOfDay(startDate), datetime.EndOfDay(endDate))
 	} else if query.StartDate == "" && query.EndDate == "" && keyword == "" {
@@ -87,7 +82,7 @@ func (s *AiRecommendStocksService) GetAiRecommendStocksList(query *models.AiReco
 			"T": " ",
 			"Z": "",
 		})
-		startDate, _ := time.Parse("2006-01-02", query.StartDate)
+		startDate, _ := timeutil.ParseDateTime(query.StartDate)
 		q = q.Where("data_time BETWEEN ? AND ?", datetime.BeginOfDay(startDate), datetime.EndOfDay(startDate))
 	}
 

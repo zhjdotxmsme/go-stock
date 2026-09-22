@@ -6,6 +6,7 @@ import (
 	"go-stock/backend/data"
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/logger"
+	"go-stock/backend/util/timeutil"
 	"strconv"
 	"strings"
 	"time"
@@ -55,7 +56,7 @@ func (p *TencentSnapshotProvider) GetSnapshot(ctx context.Context, code string) 
 		A1P:      toFloat64(s.A1P),
 		B1P:      toFloat64(s.B1P),
 	}
-	if t, err := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(s.Date+" "+s.Time)); err == nil {
+	if t, err := timeutil.ParseDateTime(s.Date + " " + s.Time); err == nil {
 		snap.Time = t
 	}
 	logger.SugaredLogger.Infof("datasource: snapshot %s from tencent (%s)", code, snap.Name)
@@ -82,7 +83,7 @@ func (p *EastMoneySnapshotProvider) GetSnapshot(ctx context.Context, code string
 	}
 	var t time.Time
 	if priceTime != "" {
-		t, _ = time.Parse("2006-01-02 15:04:05", strings.TrimSpace(priceTime))
+		t, _ = timeutil.ParseDateTime(priceTime)
 	}
 	if t.IsZero() {
 		t = time.Now()

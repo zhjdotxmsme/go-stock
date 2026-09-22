@@ -20,15 +20,24 @@ func TestNormalize_AShare(t *testing.T) {
 		// EastMoney secid
 		{"1.600519", "sh600519"},
 		{"0.000001", "sz000001"},
-		{"0.430047", "sz430047"}, // BJ uses SZ market in EM secid, but pure code heuristic would say bj
+		{"0.430047", "bj430047"}, // 北交所与深市共用 market 0，按 4/8/920 首码分流
+		{"0.920046", "bj920046"},
 		{"128.00700", "hk00700"},
+		{"116.00700", "hk00700"}, // 东财港股另一市场号
+		// EastMoney 美股 secid（数字市场号 + 字母代码）
+		{"105.AAPL", "usAAPL"},
+		{"106.TSLA", "usTSLA"},
 		// Pure digits (first-digit heuristic)
 		{"600519", "sh600519"},
 		{"000001", "sz000001"},
 		{"300001", "sz300001"},
 		{"430047", "bj430047"},
 		{"688001", "sh688001"},
-		{"900001", "bj900001"},
+		{"920046", "bj920046"},
+		{"900901", "sh900901"}, // 沪市 B 股
+		{"200001", "sz200001"}, // 深市 B 股
+		{"00700", "hk00700"},   // 5 位纯数字为港股
+		{"09988", "hk09988"},
 		// Uppercase prefix
 		{"SH600519", "sh600519"},
 		{"SZ000001", "sz000001"},
@@ -110,7 +119,7 @@ func TestNormalize_EdgeCases(t *testing.T) {
 		{"   ", ""},
 		{"AAPL", "usAAPL"}, // Pure letter = US ticker
 		{"7", "7"},         // Single digit, too short
-		{"12345", "12345"}, // 5 digits, cannot determine market, return as-is
+		{"12345", "hk12345"}, // 5 位纯数字按港股处理（A股/基金均为 6 位）
 	}
 
 	for _, tt := range tests {
@@ -303,7 +312,7 @@ func TestMarket(t *testing.T) {
 		{"usAAPL", "US"},
 		{"gb_AAPL", "US"},
 		{"600519", "SH"},
-		{"00700", ""},
+		{"00700", "HK"},
 		{"AAPL", "US"},
 	}
 

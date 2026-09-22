@@ -13,6 +13,7 @@ import (
 	"go-stock/backend/agent/strategy/ranking"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"go-stock/backend/stockcode"
 
 	"github.com/duke-git/lancet/v2/convertor"
 	"github.com/duke-git/lancet/v2/slice"
@@ -738,21 +739,10 @@ func scorePriceFactor(price, bollMid, bollUp, bollDown float64) float64 {
 
 // ---- Helpers ----
 
-// normalizeCode converts stock codes to Sina API format.
-// "600519.SH" → "sh600519", "000001.SZ" → "sz000001", "sh600519" → "sh600519"
+// normalizeCode 统一委托 stockcode.Normalize（支持 secid/tushare/裸码/港美股）。
+// "600519.SH" → "sh600519"，"1.600519" → "sh600519"，"sh600519" → "sh600519"
 func normalizeCode(code string) string {
-	code = strings.ToLower(code)
-	if strings.HasPrefix(code, "sh") || strings.HasPrefix(code, "sz") {
-		return code
-	}
-	if strings.Contains(code, ".") {
-		parts := strings.SplitN(code, ".", 2)
-		if parts[1] == "sh" || parts[1] == "sz" {
-			return parts[1] + parts[0]
-		}
-		return parts[0]
-	}
-	return code
+	return stockcode.Normalize(code)
 }
 
 func lenPtr(p *[]KLineData) int {

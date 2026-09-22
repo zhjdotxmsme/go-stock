@@ -6,8 +6,8 @@ import (
 	"go-stock/backend/data"
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/logger"
+	"go-stock/backend/util/timeutil"
 	"strconv"
-	"time"
 )
 
 // TDXKLineProvider was removed: MootdxKLineProvider (free_data.go, priority 5)
@@ -64,12 +64,8 @@ func ConvertKLineData(code, period string, src []data.KLineData) *datasource.KLi
 			Close:  parseFloat64(k.Close),
 			Volume: parseInt64(k.Volume),
 		}
-		for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02 15:04", "2006-01-02"} {
-			if t, err := time.Parse(layout, k.Day); err == nil {
-				bar.Time = t
-				break
-			}
-		}
+		// 统一走 timeutil：本地时区解析（time.Parse 会给 UTC，与本地语义数据比较会偏 8h）
+		bar.Time = timeutil.MustParseDateTime(k.Day)
 		dst.Bars = append(dst.Bars, bar)
 	}
 	return dst

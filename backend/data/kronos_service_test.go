@@ -35,10 +35,12 @@ func TestNormalizeKronosCode(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"1.600519", "sh600519"},
 		{"0.000001", "sz000001"},
+		{"0.430047", "bj430047"}, // 北交所与深市共用东财 market 0，按首码分流
 		{"600519.SH", "sh600519"},
 		{"000001.SZ", "sz000001"},
 		{"600519", "sh600519"},
-		{"105.AAPL", "aapl"},
+		{"105.AAPL", "usAAPL"},   // 东财美股市场号
+		{"116.00700", "hk00700"}, // 东财港股市场号（旧实现会误判为 sz00700）
 	}
 	for _, c := range cases {
 		if got := NormalizeKronosCode(c.in); got != c.want {

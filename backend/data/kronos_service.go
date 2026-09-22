@@ -16,13 +16,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/logger"
+	"go-stock/backend/stockcode"
 )
 
 // KronosForecast 单只持仓/股票的预测摘要（供数据包与 prompt 使用）
@@ -679,24 +679,10 @@ func orDefaultStr(v, d string) string {
 }
 
 // NormalizeKronosCode 将前端 K 线组件使用的代码（东经前缀 "1.600519"/"0.000001"/"105.AAPL"、
-// 后缀 "600519.SH"、裸码 "600519" 等）规范为 K 线接口使用的代码。
+// 后缀 "600519.SH"、裸码 "600519"、港股 "116.00700" 等）规范为内部标准格式。
+// 统一委托 stockcode.Normalize（下游 datasource router 会再次幂等规范化）。
 func NormalizeKronosCode(code string) string {
-	code = strings.TrimSpace(code)
-	if idx := strings.Index(code, "."); idx > 0 {
-		prefix, rest := code[:idx], code[idx+1:]
-		switch prefix {
-		case "0": // 深市
-			code = "sz" + rest
-		case "1": // 沪市
-			code = "sh" + rest
-		default:
-			if _, err := strconv.Atoi(prefix); err == nil && len(prefix) <= 3 && len(rest) != 6 {
-				// 美股/港股等东财市场前缀（105/106/107/116...），保留主体
-				code = rest
-			}
-		}
-	}
-	return normalizeTradingRecordAPI(code)
+	return stockcode.Normalize(code)
 }
 
 // PredictKLineForStock 预测单只股票未来日K（供 Wails handler 调用）。

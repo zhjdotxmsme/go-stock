@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-stock/backend/logger"
+	"go-stock/backend/stockcode"
 	"math"
 	"strconv"
 	"strings"
@@ -34,28 +35,15 @@ func (receiver StockDataApi) f10Request(url string, result any) error {
 	return nil
 }
 
+// normalizeF10Code 统一委托 stockcode.ToTushare（sh600519/600519/1.600519 → 600519.SH）。
 func normalizeF10Code(stockCode string) string {
 	if strutil.ContainsAny(stockCode, []string{"."}) {
 		return stockCode
 	}
-	converted := ConvertStockCodeToTushareCode(stockCode)
-	if strutil.ContainsAny(converted, []string{"."}) {
+	if converted := stockcode.ToTushare(stockCode); strutil.ContainsAny(converted, []string{"."}) {
 		return converted
 	}
-	code := RemoveAllNonDigitChar(stockCode)
-	if strings.HasPrefix(code, "6") || strings.HasPrefix(code, "9") {
-		return code + ".SH"
-	}
-	if strings.HasPrefix(code, "0") || strings.HasPrefix(code, "3") {
-		return code + ".SZ"
-	}
-	if strings.HasPrefix(code, "4") || strings.HasPrefix(code, "8") {
-		return code + ".BJ"
-	}
-	if strings.HasPrefix(code, "5") {
-		return code + ".SH"
-	}
-	return code + ".SZ"
+	return RemoveAllNonDigitChar(stockCode)
 }
 
 type F10GenericResp struct {

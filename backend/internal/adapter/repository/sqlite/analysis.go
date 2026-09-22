@@ -12,6 +12,7 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/internal/domain/analysis"
 	"go-stock/backend/models"
+	"go-stock/backend/util/timeutil"
 )
 
 // AnalysisRepository implements repository.AnalysisRepository.
@@ -391,14 +392,11 @@ func (r *AnalysisRepository) UpsertPromptByRoleKey(ctx context.Context, roleKey,
 
 var dateTZReplacer = strings.NewReplacer("T", " ", "Z", "")
 
-// parseFlexDate 先按 "2006-01-02 15:04:05" 解析，失败退化为 "2006-01-02"。
+// parseFlexDate 统一走 timeutil（本地时区多 layout；原 time.Parse 为 UTC，
+// 与 glebarez 存的本地时间文本比较会产生最多 8h 边界偏移）。
 func parseFlexDate(s string) time.Time {
 	s = dateTZReplacer.Replace(s)
-	if t, err := time.Parse("2006-01-02 15:04:05", s); err == nil {
-		return t
-	}
-	t, _ := time.Parse("2006-01-02", s)
-	return t
+	return timeutil.MustParseDateTime(s)
 }
 
 // beginOfDay / endOfDay 与 lancet datetime.BeginOfDay/EndOfDay 等价。

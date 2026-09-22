@@ -13,6 +13,7 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"go-stock/backend/stockcode"
 	"io"
 	"io/ioutil"
 	url2 "net/url"
@@ -2609,35 +2610,14 @@ func fifoAvgUnitCost(lots []tradingRecordFIFOLot, sellVol int64) (avg float64, o
 	return cost / float64(got), true
 }
 
-// normalizeTradingRecordAPI 将交易日志中的代码转为实时/K 线接口使用的代码
+// normalizeTradingRecordAPI 将交易日志中的代码转为内部标准格式（实时/K 线接口统一入口）。
+// 统一委托 stockcode.Normalize（支持 sh/sz/bj/hk/us、东财 secid、tushare 后缀、裸码启发式）。
 func normalizeTradingRecordAPI(stockCode string) string {
-	apiCode := stockCode
+	apiCode := strings.TrimSpace(stockCode)
 	if strings.Contains(apiCode, " - ") {
 		apiCode = strings.Split(apiCode, " - ")[0]
 	}
-	apiCode = strings.ToLower(apiCode)
-	if strings.HasSuffix(apiCode, ".sh") {
-		apiCode = "sh" + strings.TrimSuffix(apiCode, ".sh")
-	} else if strings.HasSuffix(apiCode, ".sz") {
-		apiCode = "sz" + strings.TrimSuffix(apiCode, ".sz")
-	} else if strings.HasSuffix(apiCode, ".bj") {
-		apiCode = "bj" + strings.TrimSuffix(apiCode, ".bj")
-	} else if strings.HasPrefix(apiCode, "6") {
-		apiCode = "sh" + apiCode
-	} else if strings.HasPrefix(apiCode, "0") || strings.HasPrefix(apiCode, "3") {
-		apiCode = "sz" + apiCode
-	} else if strings.HasPrefix(apiCode, "4") || strings.HasPrefix(apiCode, "8") {
-		apiCode = "bj" + apiCode
-	} else if len(apiCode) == 6 {
-		// 场内基金代码：15/16 开头为深市 ETF/LOF，50/51/52/56/58 开头为沪市 ETF/LOF
-		switch apiCode[:2] {
-		case "15", "16":
-			apiCode = "sz" + apiCode
-		case "50", "51", "52", "56", "58":
-			apiCode = "sh" + apiCode
-		}
-	}
-	return apiCode
+	return stockcode.Normalize(apiCode)
 }
 
 // resolveTradingRecordClosePrice 按交易日期解析收盘价或现价（无缓存，供写入快照与列表补拉共用）

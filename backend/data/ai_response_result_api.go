@@ -3,7 +3,7 @@ package data
 import (
 	"go-stock/backend/db"
 	"go-stock/backend/models"
-	"time"
+	"go-stock/backend/util/timeutil"
 
 	"github.com/duke-git/lancet/v2/datetime"
 	"github.com/duke-git/lancet/v2/strutil"
@@ -45,15 +45,9 @@ func (s *AIResponseResultService) GetAIResponseResultList(query models.AIRespons
 			"Z": "",
 		})
 
-		startDate, err := time.Parse("2006-01-02 15:04:05", query.StartDate)
-		if err != nil {
-			startDate, _ = time.Parse("2006-01-02", query.StartDate)
-		}
-
-		endDate, err := time.Parse("2006-01-02 15:04:05", query.EndDate)
-		if err != nil {
-			endDate, _ = time.Parse("2006-01-02", query.EndDate)
-		}
+		// 统一本地时区解析（原 time.Parse 为 UTC，与本地存储比较会偏 8h）
+		startDate, _ := timeutil.ParseDateTime(query.StartDate)
+		endDate, _ := timeutil.ParseDateTime(query.EndDate)
 		q = q.Where("created_at BETWEEN ? AND ?", datetime.BeginOfDay(startDate), datetime.EndOfDay(endDate))
 		//q = q.Where("created_at BETWEEN ? AND ?", query.StartDate, query.EndDate)
 	}

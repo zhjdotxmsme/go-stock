@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-stock/backend/logger"
+	"go-stock/backend/stockcode"
 	"io"
 	"math/rand"
 	"net"
@@ -395,80 +396,37 @@ func (receiver *EastMoneyKLineApi) GetAdjustedKLine(stockCode, adjustType string
 }
 
 // convertStockCode 转换股票代码为东方财富格式
-// 输入：000001 或 sz000001 或 000001.SZ
-// 输出：0.000001 或 1.600000
+// 输入：000001 或 sz000001 或 000001.SZ 或 1.600519 或 hk00700
+// 输出：0.000001 或 1.600519 或 128.00700
+// 统一委托 stockcode.ToEastMoney；不支持的输入（如美股）原样返回由上游兜底。
 func (receiver *EastMoneyKLineApi) convertStockCode(stockCode string) string {
-	stockCode = strings.ToUpper(strings.TrimSpace(stockCode))
+	stockCode = strings.TrimSpace(stockCode)
 
-	// 如果已经包含点号，说明是标准格式
-	if strings.Contains(stockCode, ".") {
-		parts := strings.Split(stockCode, ".")
-		if len(parts) == 2 {
-			code := parts[0]
-			market := parts[1]
-			// 清理 code 中的非数字前缀（如 "中国西电 - 601179" → "601179"）
-			if !validator.IsNumber(code) {
-				code = extractNumericCode(code)
-				if code == "" {
-					return stockCode
-				}
-			}
-
-			switch market {
-			case "SH", "SS":
-				return "1." + code
-			case "SZ":
-				return "0." + code
-			case "BJ":
-				return "0." + code
-			case "HK":
-				return "128." + code
-			case "BK":
-				return "90." + code
-
-			default:
-				return stockCode
-			}
+	// 板块代码（"0475.BK"）保留旧的 90. 市场号映射
+	if upper := strings.ToUpper(stockCode); strings.HasSuffix(upper, ".BK") {
+		code := stockCode[:len(stockCode)-3]
+		if !validator.IsNumber(code) {
+			code = extractNumericCode(code)
 		}
-	}
-
-	// 处理带市场前缀的代码
-	if strings.HasPrefix(stockCode, "SH") || strings.HasPrefix(stockCode, "SZ") || strings.HasPrefix(stockCode, "BJ") {
-		market := stockCode[:2]
-		code := stockCode[2:]
-
-		switch market {
-		case "SH":
-			return "1." + code
-		case "SZ":
-			return "0." + code
-		case "BJ":
-			return "0." + code
-		case "HK":
-			return "128." + code
-		case "BK":
+		if code != "" {
 			return "90." + code
-		default:
-			return stockCode
+		}
+		return stockCode
+	}
+
+	// 混杂显示名（如 "中国西电 - 601179.SH"）先提取数字代码
+	if i := strings.Index(stockCode, "."); i >= 0 {
+		left, right := stockCode[:i], stockCode[i+1:]
+		if !validator.IsNumber(left) && extractNumericCode(left) != "" {
+			if num := extractNumericCode(left); num != "" {
+				stockCode = num + "." + right
+			}
 		}
 	}
 
-	// 纯数字代码，根据代码规则判断市场
-	if len(stockCode) >= 1 && validator.IsNumber(stockCode) {
-		firstChar := stockCode[0:1]
-		switch firstChar {
-		case "6": // 沪市主板
-			return "1." + stockCode
-		case "8", "9": // 北交所
-			return "0." + stockCode
-		case "0", "3": // 深市
-			return "0." + stockCode
-		default:
-			// 其他情况默认按深市处理
-			return stockCode
-		}
+	if secid := stockcode.ToEastMoney(stockCode); secid != "" {
+		return secid
 	}
-
 	return stockCode
 }
 
@@ -726,10 +684,9 @@ func AggregateKLineEveryN(src *[]KLineData, n int) *[]KLineData {
 	return &out
 }
 
-// ValidateStockCode 验证股票代码是否有效
+// ValidateStockCode 验证股票代码是否有效（能映射为东财 secid 即有效）
 func (receiver *EastMoneyKLineApi) ValidateStockCode(stockCode string) bool {
-	secid := receiver.convertStockCode(stockCode)
-	return secid != ""
+	return stockcode.ToEastMoney(stockCode) != ""
 }
 
 // GetKLineCount 获取指定时间段内的 K 线数量

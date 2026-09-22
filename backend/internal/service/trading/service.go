@@ -15,6 +15,7 @@ import (
 	"go-stock/backend/internal/domain/stock"
 	"go-stock/backend/internal/port/repository"
 	"go-stock/backend/logger"
+	"go-stock/backend/stockcode"
 )
 
 // PriceFunc 获取股票实时价格的函数类型(入参为规范化后的代码,如 sh600519),
@@ -292,34 +293,12 @@ func (s *Service) GetHoldingsDetail(ctx context.Context) ([]stock.HoldingsPositi
 	return positions, nil
 }
 
-// normalizeAPICode 将交易日志中的代码转为实时/K 线接口使用的代码。
-// 规则与 data 层 normalizeTradingRecordAPI 逐字一致。
+// normalizeAPICode 将交易日志中的代码转为内部标准格式（实时/K 线接口统一入口）。
+// 统一委托 stockcode.Normalize，与 data 层 normalizeTradingRecordAPI 行为一致。
 func normalizeAPICode(stockCode string) string {
-	apiCode := stockCode
+	apiCode := strings.TrimSpace(stockCode)
 	if strings.Contains(apiCode, " - ") {
 		apiCode = strings.Split(apiCode, " - ")[0]
 	}
-	apiCode = strings.ToLower(apiCode)
-	if strings.HasSuffix(apiCode, ".sh") {
-		apiCode = "sh" + strings.TrimSuffix(apiCode, ".sh")
-	} else if strings.HasSuffix(apiCode, ".sz") {
-		apiCode = "sz" + strings.TrimSuffix(apiCode, ".sz")
-	} else if strings.HasSuffix(apiCode, ".bj") {
-		apiCode = "bj" + strings.TrimSuffix(apiCode, ".bj")
-	} else if strings.HasPrefix(apiCode, "6") {
-		apiCode = "sh" + apiCode
-	} else if strings.HasPrefix(apiCode, "0") || strings.HasPrefix(apiCode, "3") {
-		apiCode = "sz" + apiCode
-	} else if strings.HasPrefix(apiCode, "4") || strings.HasPrefix(apiCode, "8") {
-		apiCode = "bj" + apiCode
-	} else if len(apiCode) == 6 {
-		// 场内基金代码：15/16 开头为深市 ETF/LOF，50/51/52/56/58 开头为沪市 ETF/LOF
-		switch apiCode[:2] {
-		case "15", "16":
-			apiCode = "sz" + apiCode
-		case "50", "51", "52", "56", "58":
-			apiCode = "sh" + apiCode
-		}
-	}
-	return apiCode
+	return stockcode.Normalize(apiCode)
 }

@@ -7,7 +7,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/duke-git/lancet/v2/slice"
-	"github.com/duke-git/lancet/v2/strutil"
+	"go-stock/backend/stockcode"
 )
 
 // @Author spark
@@ -49,20 +49,15 @@ func RemoveAllDigitChar(s string) string {
 	return re.ReplaceAllString(s, "")
 }
 
-// ConvertStockCodeToTushareCode 将股票代码转换为tushare的股票代码
+// ConvertStockCodeToTushareCode 将股票代码转换为tushare的股票代码（统一委托 stockcode.ToTushare）
 func ConvertStockCodeToTushareCode(stockCode string) string {
-	//提取非数字
-	if strutil.HasPrefixAny(stockCode, []string{"SH", "sh", "SZ", "sz", "BJ", "bj", "HK", "hk"}) {
-		stockCode = RemoveAllNonDigitChar(stockCode) + "." + strings.ToUpper(RemoveAllDigitChar(stockCode))
-	}
-	return stockCode
+	return stockcode.ToTushare(stockCode)
 }
 
-// ConvertTushareCodeToStockCode 将tushare股票代码转换为的普通股票代码
+// ConvertTushareCodeToStockCode 将tushare股票代码转换为内部标准格式（统一委托 stockcode.Normalize）
+// 注意：旧实现对东财 secid（如 "1.600519"）会产生 "1600519" 之类的乱码，已修复。
 func ConvertTushareCodeToStockCode(stockCode string) string {
-	//提取非数字
-	stockCode = strings.ToLower(RemoveAllDigitChar(stockCode)) + RemoveAllNonDigitChar(stockCode)
-	return strings.ReplaceAll(stockCode, ".", "")
+	return stockcode.Normalize(stockCode)
 }
 func ConvertTushareCodeToStockCodes(a []string) []string {
 	return slice.Map(a, func(i int, s string) string {
