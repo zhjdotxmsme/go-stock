@@ -19,8 +19,7 @@ import aiRecommendStocksList from "../components/aiRecommendStocksList.vue"
 import stockChangesMonitor from "../components/stockChangesMonitor.vue"
 import uplimitLadder from "../components/uplimitLadder.vue"
 import promptTemplateList from "../components/promptTemplateList.vue"
-import allStockList from "../components/allStockList.vue"
-import SelectStock from "../components/SelectStock.vue"
+import ScreeningWorkbench from "../components/ScreeningWorkbench.vue"
 
 // 系统管理组件
 import cronTaskManager from "../components/cron-task-manager.vue"
@@ -53,8 +52,10 @@ const routes = [
     { path: '/research/changes', component: stockChangesMonitor, name: 'researchChanges' },
     { path: '/research/uplimit', component: uplimitLadder, name: 'researchUplimit' },
     { path: '/research/prompts', component: promptTemplateList, name: 'researchPrompts' },
-    { path: '/analysis/pattern', component: allStockList, name: 'analysisPattern' },
-    { path: '/analysis/screening', component: SelectStock, name: 'analysisScreening' },
+    // 选股工作台（合并原 形态选股/指标选股；旧路径重定向到对应 tab，旧组件摘除路由保留代码）
+    { path: '/analysis/workbench', component: ScreeningWorkbench, name: 'analysisWorkbench' },
+    { path: '/analysis/pattern', redirect: { name: 'analysisWorkbench', query: { tab: 'pattern' } } },
+    { path: '/analysis/screening', redirect: { name: 'analysisWorkbench', query: { tab: 'strategy' } } },
 
     // 系统管理
     { path: '/system/cron', component: cronTaskManager, name: 'systemCron' },

@@ -208,6 +208,9 @@ type TradingRecord struct {
 	AiComment string `gorm:"type:text"`
 	// RecordedClosePrice 保存时写入的当日收盘价或现价快照，列表盈亏计算优先使用，减少重复请求行情
 	RecordedClosePrice float64 `json:"recordedClosePrice" gorm:"column:recorded_close_price"`
+	// SignalSnapshot 买入时点的信号快照（signal.SignalMatch 列表 JSON），复盘"当时信号 vs 事后走势"用；
+	// 快照是增强信息，缺失（空串）不影响交易记录本身
+	SignalSnapshot string `json:"signalSnapshot" gorm:"column:signal_snapshot;type:text"`
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 }
@@ -2565,6 +2568,11 @@ func (receiver StockDataApi) AddTradingRecord(record TradingRecord) (uint, error
 	}
 
 	receiver.fillTradingRecordCloseSnapshot(&record)
+
+	// 买入时机信号快照（"当时信号 vs 事后走势"复盘用；失败降级为空，不影响保存）
+	if record.Direction == "买入" {
+		record.SignalSnapshot = snapshotBuySignals(context.Background(), record.StockCode, record.TradingTime)
+	}
 
 	// 保存到数据库
 	err := db.Dao.Model(&TradingRecord{}).Create(&record).Error

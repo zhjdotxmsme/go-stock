@@ -42,6 +42,10 @@ export function GetHoldingsDetail() {
   return window['go']['handler']['TradingRecordHandler']['GetHoldingsDetail']();
 }
 
+export function GetHoldingsSignals() {
+  return window['go']['handler']['TradingRecordHandler']['GetHoldingsSignals']();
+}
+
 export function GetHoldingsSummaryDetail(arg1) {
   return window['go']['handler']['TradingRecordHandler']['GetHoldingsSummaryDetail'](arg1);
 }
@@ -56,6 +60,22 @@ export function GetKronosStatus() {
 
 export function GetStockTechnicalIndicators(arg1) {
   return window['go']['handler']['TradingRecordHandler']['GetStockTechnicalIndicators'](arg1);
+}
+
+export function GetStockSignals(arg1) {
+  return window['go']['handler']['TradingRecordHandler']['GetStockSignals'](arg1);
+}
+
+export function GetStocksSignals(arg1) {
+  return window['go']['handler']['TradingRecordHandler']['GetStocksSignals'](arg1);
+}
+
+export function GetStockSignalsAsOf(arg1, arg2) {
+  return window['go']['handler']['TradingRecordHandler']['GetStockSignalsAsOf'](arg1, arg2);
+}
+
+export function GetSignalRegistry() {
+  return window['go']['handler']['TradingRecordHandler']['GetSignalRegistry']();
 }
 
 export function GetTradingRecordById(arg1) {

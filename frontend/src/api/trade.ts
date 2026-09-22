@@ -86,6 +86,38 @@ export async function getHoldingsDetail() {
 }
 
 /**
+ * 持仓信号徽章数据（本地信号引擎判定）：stockCode → 命中信号列表
+ * Go: GetHoldingsSignals() map[string][]signal.SignalMatch
+ */
+export async function getHoldingsSignals() {
+  return callApi(TradingRecordHandler.GetHoldingsSignals)
+}
+
+/**
+ * 单股最新信号判定（选股工作台「本地验证」复用）
+ * Go: GetStockSignals(stockCode string) []signal.SignalMatch
+ */
+export async function getStockSignals(stockCode: string) {
+  return callApi(TradingRecordHandler.GetStockSignals, stockCode)
+}
+
+/**
+ * 历史时点信号判定（复盘用）
+ * Go: GetStockSignalsAsOf(stockCode, tradeDate string) []signal.SignalMatch
+ */
+export async function getStockSignalsAsOf(stockCode: string, tradeDate: string) {
+  return callApi(TradingRecordHandler.GetStockSignalsAsOf, stockCode, tradeDate)
+}
+
+/**
+ * 信号注册表元数据（展示文案统一来源）
+ * Go: GetSignalRegistry() []signal.SignalDef
+ */
+export async function getSignalRegistry() {
+  return callApi(TradingRecordHandler.GetSignalRegistry)
+}
+
+/**
  * 获取单股全套技术指标与文字解读
  * Go: GetStockTechnicalIndicators(code string) *data.StockIndicatorsResult
  */
@@ -227,6 +259,10 @@ export default {
   checkFrequentTrading,
   getStockRealTimePrice,
   getHoldingsDetail,
+  getHoldingsSignals,
+  getStockSignals,
+  getStockSignalsAsOf,
+  getSignalRegistry,
   getStockTechnicalIndicators,
   summarizeHoldings,
   abortSummarizeHoldings,

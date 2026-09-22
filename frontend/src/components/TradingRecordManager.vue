@@ -21,6 +21,7 @@ import {
   NStatistic,
   NTag,
   NText,
+  NTooltip,
   NAutoComplete,
   useMessage,
   useNotification
@@ -759,6 +760,40 @@ const columnsRef = ref([
         return h(NText, { depth: 3 }, { default: () => '-' })
       }
       return h(NText, { type: 'info' }, { default: () => row.aiComment.replace(/[#*`|\->]/g, ' ').replace(/\s+/g, ' ').trim() })
+    }
+  },
+  {
+    title: '买入信号',
+    key: 'signalSnapshot',
+    width: 170,
+    render(row) {
+      const raw = row.SignalSnapshot ?? row.signalSnapshot
+      if (!raw) {
+        return h(NText, { depth: 3 }, { default: () => '-' })
+      }
+      let arr = []
+      try {
+        arr = JSON.parse(raw)
+      } catch (e) {
+        return h(NText, { depth: 3 }, { default: () => '-' })
+      }
+      if (!Array.isArray(arr) || !arr.length) {
+        return h(NText, { depth: 3 }, { default: () => '-' })
+      }
+      const tagType = (d) => ({ bullish: 'error', bearish: 'success', warning: 'warning' })[d] || 'info'
+      const tags = arr.slice(0, 3).map((sig) =>
+        h(NTooltip, { trigger: 'hover' }, {
+          trigger: () => h(NTag, {
+            size: 'small', bordered: false, type: tagType(sig.direction),
+            style: 'margin-right: 2px; cursor: help'
+          }, { default: () => sig.name }),
+          default: () => `${sig.category}｜${sig.tip}`
+        })
+      )
+      if (arr.length > 3) {
+        tags.push(h(NText, { depth: 3 }, { default: () => `+${arr.length - 3}` }))
+      }
+      return tags
     }
   },
   {

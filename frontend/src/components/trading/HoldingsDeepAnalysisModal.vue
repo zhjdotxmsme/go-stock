@@ -1,6 +1,6 @@
 <script setup>
 import { nextTick, onUnmounted, ref, watch } from 'vue'
-import { NButton, NFlex, NModal, NSelect, NSpin, NTag, useMessage } from 'naive-ui'
+import { NButton, NFlex, NModal, NSelect, NSpin, NTag, NTooltip, useMessage } from 'naive-ui'
 import { MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
 import { EventsOff, EventsOn } from '../../../wailsjs/runtime'
@@ -19,10 +19,21 @@ const message = useMessage()
 const aiConfigs = ref([])
 const aiConfigId = ref(null)
 const deepData = ref([])
+const holdingsSignals = ref({})
 const loadingData = ref(false)
 const generating = ref(false)
 const aiContent = ref('')
 const scrollRef = ref(null)
+
+// 信号方向 → 标签颜色（红涨绿跌：多头红、空头绿）
+const signalTagType = (d) => ({ bullish: 'error', bearish: 'success', warning: 'warning' })[d] || 'info'
+
+function loadHoldingsSignals() {
+  holdingsSignals.value = {}
+  tradeApi.getHoldingsSignals().then(({ data: res }) => {
+    holdingsSignals.value = res || {}
+  }).catch((e) => console.error('获取持仓信号失败:', e))
+}
 
 const fmt = (v) => (typeof v === 'number' && isFinite(v) ? v.toFixed(2) : '-')
 const fmtPct = (v) => (typeof v === 'number' && isFinite(v) ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%' : '-')
@@ -107,6 +118,7 @@ watch(() => props.show, (v) => {
     aiContent.value = ''
     loadAiConfigs()
     loadDeepData()
+    loadHoldingsSignals()
   } else {
     handleClose()
   }
@@ -159,6 +171,19 @@ onUnmounted(() => {
             </n-tag>
             <n-tag size="small" type="info" round>仓位 {{ fmt(s.positionPct) }}%</n-tag>
           </n-flex>
+        </n-flex>
+
+        <!-- 信号徽章：本地信号引擎判定，悬停查看说明 -->
+        <n-flex v-if="(holdingsSignals[s.stockCode] || []).length" align="center" :size="4" style="margin-top: 6px">
+          <span style="font-size: 12px; color: #999">信号：</span>
+          <n-tooltip v-for="sig in holdingsSignals[s.stockCode]" :key="sig.key" trigger="hover">
+            <template #trigger>
+              <n-tag size="small" :type="signalTagType(sig.direction)" :bordered="false" style="cursor: help">
+                {{ sig.name }}
+              </n-tag>
+            </template>
+            <span style="display: inline-block; max-width: 260px">{{ sig.category }}｜{{ sig.tip }}</span>
+          </n-tooltip>
         </n-flex>
 
         <div style="margin-top: 8px; font-size: 13px; line-height: 1.8">

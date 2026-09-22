@@ -2,6 +2,7 @@
 import {h, onBeforeMount, onMounted, ref, reactive} from 'vue'
 import * as stockApi from "../api/stock"
 import * as systemApi from "../api/system"
+import * as tradeApi from "../api/trade"
 import {NButton, NInput, NTag, NText, NIcon, NTooltip, NPopover, useMessage, useNotification, NDataTable, NSpace, NPagination} from "naive-ui";
 import {HelpCircleOutline} from "@vicons/ionicons5";
 import sparkLine from "./stockSparkLine.vue"
@@ -137,6 +138,31 @@ const columnsRef = ref([
       const type = rate >= 0 ? 'error' : 'success'
       const sign = rate >= 0 ? '+' : ''
       return h(NText, { type: type }, { default: () => `${sign}${rate.toFixed(2)}%` })
+    }
+  },
+  {
+    title: '本地验证(信号)',
+    key: 'localVerify',
+    width: 180,
+    render(row) {
+      const matches = localVerifyOf(row.SECUCODE)
+      if (!matches.length) {
+        return h(NText, { depth: 3 }, { default: () => localVerifyLoadingRef.value ? '验证中…' : '-' })
+      }
+      const tagType = (d) => ({ bullish: 'error', bearish: 'success', warning: 'warning' })[d] || 'info'
+      const tags = matches.slice(0, 3).map((sig) =>
+        h(NTooltip, { trigger: 'hover' }, {
+          trigger: () => h(NTag, {
+            size: 'small', bordered: false, type: tagType(sig.direction),
+            style: 'margin-right: 2px; cursor: help'
+          }, { default: () => sig.name }),
+          default: () => `${sig.category}｜${sig.tip}`
+        })
+      )
+      if (matches.length > 3) {
+        tags.push(h(NText, { depth: 3 }, { default: () => `+${matches.length - 3}` }))
+      }
+      return tags
     }
   },
   {
@@ -308,6 +334,7 @@ function loadStocks(page, pageSize) {
         paginationReactive.page = page
         paginationReactive.pageCount = Math.ceil(res.result.count / pageSize)
         paginationReactive.itemCount = res.result.count
+        loadLocalVerify(res.result.data)
       } else {
         dataRef.value = []
         paginationReactive.page = 1
@@ -321,6 +348,29 @@ function loadStocks(page, pageSize) {
       loadingRef.value = false
     })
   }
+}
+
+// 本地验证：对东财粗筛结果逐只跑本地信号引擎，标注实际命中信号（异步，失败静默降级）
+const localVerifyRef = ref({})
+const localVerifyLoadingRef = ref(false)
+
+function loadLocalVerify(rows) {
+  const codes = (rows || []).map(r => r.SECUCODE).filter(Boolean)
+  localVerifyRef.value = {}
+  if (!codes.length) return
+  localVerifyLoadingRef.value = true
+  tradeApi.getStocksSignals(codes).then(({data: res}) => {
+    // 东财 SECUCODE 形如 "600519.SH"；引擎缓存键为传入的原始 code，直接按原样回填
+    localVerifyRef.value = res || {}
+  }).catch(err => {
+    console.error('本地验证失败:', err)
+  }).finally(() => {
+    localVerifyLoadingRef.value = false
+  })
+}
+
+function localVerifyOf(secucode) {
+  return localVerifyRef.value?.[secucode] || []
 }
 function handleReset(){
   for (const g of filterGroups) {

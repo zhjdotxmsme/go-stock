@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go-stock/backend/data"
+	"go-stock/backend/data/signal"
 	"go-stock/backend/emitter"
 	"go-stock/backend/internal/adapter/datasource"
 	"go-stock/backend/internal/adapter/repository/sqlite"
@@ -330,6 +331,50 @@ func (h *TradingRecordHandler) GetHoldingsDetail() ([]data.HoldingsPosition, err
 		})
 	}
 	return result, nil
+}
+
+// GetHoldingsSignals 持仓信号徽章数据：stockCode → 命中信号列表（信号引擎本地判定）。
+// 顺带异步触发逃顶类信号预警（同日同股同信号仅通知一次，尊重"本地推送"开关）。
+func (h *TradingRecordHandler) GetHoldingsSignals() (map[string][]signal.SignalMatch, error) {
+	positions, err := h.svc.GetHoldingsDetail(h.currentCtx())
+	if err != nil {
+		return nil, err
+	}
+	dataPositions := make([]data.HoldingsPosition, 0, len(positions))
+	names := map[string]string{}
+	for _, p := range positions {
+		dataPositions = append(dataPositions, data.HoldingsPosition{
+			StockCode: p.StockCode,
+			StockName: p.StockName,
+		})
+		names[p.StockCode] = p.StockName
+	}
+	result := data.GetHoldingsSignals(h.currentCtx(), dataPositions)
+	go func() {
+		defer func() { _ = recover() }()
+		data.CheckHoldingsExitAlerts(result, names)
+	}()
+	return result, nil
+}
+
+// GetStockSignals 单股最新信号判定（选股工作台「本地验证」列复用）。
+func (h *TradingRecordHandler) GetStockSignals(stockCode string) []signal.SignalMatch {
+	return data.EvaluateStockSignals(h.currentCtx(), stockCode)
+}
+
+// GetStocksSignals 批量最新信号判定（工作台结果列表整页本地验证）。
+func (h *TradingRecordHandler) GetStocksSignals(codes []string) map[string][]signal.SignalMatch {
+	return data.EvaluateStocksSignals(h.currentCtx(), codes)
+}
+
+// GetStockSignalsAsOf 历史时点信号判定（复盘用）。
+func (h *TradingRecordHandler) GetStockSignalsAsOf(stockCode, tradeDate string) []signal.SignalMatch {
+	return data.EvaluateStockSignalsAsOf(h.currentCtx(), stockCode, tradeDate)
+}
+
+// GetSignalRegistry 信号注册表元数据（前端徽章/工作台展示文案统一来源）。
+func (h *TradingRecordHandler) GetSignalRegistry() []signal.SignalDef {
+	return signal.Registry()
 }
 
 // GetHoldingsDeepData 持仓深度分析数据包（本地聚合：直白关键价位 + 技术指标 +

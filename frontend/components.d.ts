@@ -81,6 +81,7 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     ScoreRing: typeof import('./src/components/ScoreRing.vue')['default']
+    ScreeningWorkbench: typeof import('./src/components/ScreeningWorkbench.vue')['default']
     SelectStock: typeof import('./src/components/SelectStock.vue')['default']
     Settings: typeof import('./src/components/settings.vue')['default']
     SkillManager: typeof import('./src/components/skill-manager.vue')['default']

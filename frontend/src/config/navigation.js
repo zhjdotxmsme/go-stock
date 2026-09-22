@@ -286,16 +286,10 @@ export function createMenuOptions(deps) {
           to: { name: 'klineAnalysis' },
         }),
         routeItem({
-          title: '形态选股',
+          title: '选股工作台',
           groupKey: MENU_GROUP_KEYS.ANALYSIS,
           icon: icons.SearchOutline,
-          to: { name: 'analysisPattern' },
-        }),
-        routeItem({
-          title: '指标选股',
-          groupKey: MENU_GROUP_KEYS.ANALYSIS,
-          icon: icons.BoxSearch20Regular,
-          to: { name: 'analysisScreening' },
+          to: { name: 'analysisWorkbench' },
         }),
         routeItem({
           title: '每日选股',
