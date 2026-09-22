@@ -294,15 +294,15 @@ func (r *StockRepository) CountBuyTradingRecords(ctx context.Context, stockCode 
 // ---------------------------------------------------------------------------
 
 func (r *StockRepository) AddFollow(ctx context.Context, stockCode, stockName string) error {
-	return resultErr((data.StockDataApi{}).Follow(stockCode))
+	return resultErr(data.NewStockDataApi().Follow(stockCode))
 }
 
 func (r *StockRepository) RemoveFollow(ctx context.Context, stockCode string) error {
-	return resultErr((data.StockDataApi{}).UnFollow(stockCode))
+	return resultErr(data.NewStockDataApi().UnFollow(stockCode))
 }
 
 func (r *StockRepository) GetFollowList(ctx context.Context, groupID int) ([]stock.FollowedStock, error) {
-	list := (data.StockDataApi{}).GetFollowList(groupID)
+	list := data.NewStockDataApi().GetFollowList(groupID)
 	if list == nil {
 		return nil, nil
 	}
@@ -314,19 +314,19 @@ func (r *StockRepository) GetFollowList(ctx context.Context, groupID int) ([]sto
 }
 
 func (r *StockRepository) SetCostPriceAndVolume(ctx context.Context, stockCode string, price float64, volume int64) error {
-	return resultErr((data.StockDataApi{}).SetCostPriceAndVolume(price, volume, stockCode))
+	return resultErr(data.NewStockDataApi().SetCostPriceAndVolume(price, volume, stockCode))
 }
 
 func (r *StockRepository) SetTradingPrice(ctx context.Context, stockCode string, entryPrice, takeProfitPrice, stopLossPrice, costPrice float64) error {
-	return resultErr((data.StockDataApi{}).SetTradingPrice(entryPrice, takeProfitPrice, stopLossPrice, costPrice, stockCode))
+	return resultErr(data.NewStockDataApi().SetTradingPrice(entryPrice, takeProfitPrice, stopLossPrice, costPrice, stockCode))
 }
 
 func (r *StockRepository) SetAlarmChangePercent(ctx context.Context, stockCode string, changePercent, alarmPrice float64) error {
-	return resultErr((data.StockDataApi{}).SetAlarmChangePercent(changePercent, alarmPrice, stockCode))
+	return resultErr(data.NewStockDataApi().SetAlarmChangePercent(changePercent, alarmPrice, stockCode))
 }
 
 func (r *StockRepository) SetStockSort(ctx context.Context, stockCode string, sort int64) error {
-	(data.StockDataApi{}).SetStockSort(sort, stockCode)
+	data.NewStockDataApi().SetStockSort(sort, stockCode)
 	return nil
 }
 
