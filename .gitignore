@@ -152,3 +152,4 @@ data/result.md
 .pnpm-store/
 mobile/data/
 *.syso.bak
+.worktrees/
