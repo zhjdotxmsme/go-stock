@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"go-stock/backend/data"
 	"go-stock/backend/data/backtest"
+	"go-stock/backend/data/khunter"
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
@@ -137,6 +138,7 @@ func (a *CronTaskApi) GetTaskTypes() []lo.Tuple2[string, string] {
 		{A: "global_stock_index_cache", B: "全球指数缓存"},
 		{A: "stock_change_save", B: "异动数据保存"},
 		{A: "kline_sync", B: "K线数据同步"},
+		{A: "khunter_daily_pipeline", B: "狩猎场每日流水线"},
 	}
 }
 
@@ -218,6 +220,8 @@ func (a *CronTaskApi) executeTaskByType(ctx context.Context, task *models.CronTa
 		return a.executeStockChangeSave(ctx, task)
 	case "kline_sync":
 		return a.executeKLineSync(ctx, task)
+	case "khunter_daily_pipeline":
+		return a.executeKhunterDailyPipeline(ctx, task)
 	case "custom":
 		return a.executeCustomTask(ctx, task)
 	default:
@@ -355,6 +359,17 @@ func (a *CronTaskApi) executeKLineSync(ctx context.Context, task *models.CronTas
 	}
 	svc := &backtest.Service{}
 	return svc.StartHistoricalSync(params.Years)
+}
+
+func (a *CronTaskApi) executeKhunterDailyPipeline(ctx context.Context, task *models.CronTask) error {
+	logger.SugaredLogger.Infof("执行狩猎场每日流水线任务：%s", task.Name)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	_, err := khunter.NewService().RunPipeline("")
+	return err
 }
 
 func (a *CronTaskApi) executeMarketAnalysis(ctx context.Context, task *models.CronTask) error {

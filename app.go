@@ -36,6 +36,7 @@ type App struct {
 	systemHandler       *handler.SystemHandler
 	tradingHandler      *handler.TradingRecordHandler
 	stockChangeHandler  *handler.StockChangeHandler
+	khunterHandler      *handler.KhunterHandler
 }
 
 // NewApp creates a new App application struct
@@ -75,6 +76,7 @@ func NewApp() *App {
 	app.systemHandler = handler.NewSystemHandler(cache, func() context.Context { return app.ctx }, emit, c, Version, VersionCommit, OFFICIAL_STATEMENT, BuildKey, icon, alipay, wxpay, wxgzh, userManual)
 	app.tradingHandler = handler.NewDefaultTradingRecordHandler(func() context.Context { return app.ctx }, emit)
 	app.stockChangeHandler = handler.NewDefaultStockChangeHandler(func() context.Context { return app.ctx })
+	app.khunterHandler = handler.NewKhunterHandler(emit)
 	return app
 }
 

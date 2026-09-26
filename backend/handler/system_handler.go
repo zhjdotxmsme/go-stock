@@ -835,6 +835,22 @@ func (h *SystemHandler) InitCronTasks() {
 			logger.SugaredLogger.Info("已自动创建异动数据保存定时任务")
 		}
 	}
+	if !cronApi.ExistsByTaskType("khunter_daily_pipeline") {
+		task := &models.CronTask{
+			Name:        "狩猎场每日流水线",
+			CronExpr:    "0 0 17 * * *",
+			TaskType:    "khunter_daily_pipeline",
+			Enable:      true,
+			Status:      "active",
+			Description: "每日 17:00 执行狩猎场流水线（数据抓取、评分、信号与狩猎名单生成）",
+		}
+		err := cronApi.Create(task)
+		if err != nil {
+			logger.SugaredLogger.Errorf("自动创建狩猎场每日流水线任务失败：%v", err)
+		} else {
+			logger.SugaredLogger.Info("已自动创建狩猎场每日流水线定时任务")
+		}
+	}
 	tasks := cronApi.GetAll()
 	if len(tasks) == 0 {
 		return

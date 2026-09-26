@@ -257,6 +257,7 @@ func main() {
 			app.fundHandler,
 			app.commodityHandler,
 			app.newsHandler,
+			app.khunterHandler,
 		},
 		// Windows platform specific options
 		Windows: &windows.Options{
