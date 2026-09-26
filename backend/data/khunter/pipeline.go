@@ -68,7 +68,9 @@ func resolveTradeDate(tradeDate string) string {
 
 // RunPipeline 每日流水线（spec 第 7 节 8 步）。tradeDate 为空取最近交易日。
 func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error) {
+	input := tradeDate
 	tradeDate = resolveTradeDate(tradeDate)
+	logger.SugaredLogger.Infof("khunter pipeline start: tradeDate=%s (input=%q)", tradeDate, input)
 	if err := EnsureMigrate(); err != nil {
 		return nil, err
 	}

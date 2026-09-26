@@ -56,6 +56,33 @@ func TestQueryUpsertAndMissing(t *testing.T) {
 	assert.Equal(t, float64(999), queried2[1].Open)
 }
 
+// TestUpsertSanitizesDirtyBars 回归：mootdx 指数脏数据（2099 年未来日期/无法解析日期）
+// 必须被 UpsertKLines 丢弃，否则会污染 MAX(trade_date) 派生逻辑（khunter resolveTradeDate）。
+func TestUpsertSanitizesDirtyBars(t *testing.T) {
+	orig := db.Dao
+	db.Dao = setupInMemoryDB(t)
+	defer func() { db.Dao = orig }()
+
+	ctx := context.Background()
+	store := NewKLineStore()
+
+	bars := []models.KLineBar{
+		{StockCode: "sz399006", Period: "day", TradeDate: "2099-02-11", Close: -3.39, Source: "mootdx_kline"},
+		{StockCode: "sz399006", Period: "day", TradeDate: "not-a-date", Close: 1, Source: "mootdx_kline"},
+		{StockCode: "sz399006", Period: "day", TradeDate: "2024-01-03", Close: 1800, Source: "test"},
+	}
+	require.NoError(t, store.UpsertKLines(ctx, bars))
+
+	var count int64
+	require.NoError(t, db.Dao.Model(&models.KLineBar{}).Count(&count).Error)
+	assert.Equal(t, int64(1), count, "只有合法日期的 bar 应入库")
+
+	var latest string
+	require.NoError(t, db.Dao.Model(&models.KLineBar{}).Where("period = ?", "day").
+		Select("MAX(trade_date)").Scan(&latest).Error)
+	assert.Equal(t, "2024-01-03", latest)
+}
+
 func TestFindMissingDateRanges(t *testing.T) {
 	orig := db.Dao
 	db.Dao = setupInMemoryDB(t)

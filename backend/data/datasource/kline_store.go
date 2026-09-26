@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"go-stock/backend/db"
+	"go-stock/backend/logger"
 	"go-stock/backend/models"
 	"go-stock/backend/stockcode"
+	"go-stock/backend/util/timeutil"
 
 	"github.com/go-resty/resty/v2"
 	"gorm.io/gorm/clause"
@@ -52,6 +54,10 @@ func (s *KLineStore) UpsertKLines(ctx context.Context, bars []models.KLineBar) e
 	const defaultBatchSize = 1000
 	batchSize := defaultBatchSize
 
+	bars = sanitizeBars(bars)
+	if len(bars) == 0 {
+		return nil
+	}
 	bars = deduplicateBars(bars)
 
 	for i := 0; i < len(bars); i += batchSize {
@@ -83,6 +89,37 @@ func deduplicateBars(bars []models.KLineBar) []models.KLineBar {
 		}
 	}
 	return deduped
+}
+
+// sanitizeBars 丢弃脏数据 K 线：trade_date 无法解析或晚于明天。
+// 背景：mootdx 对指数（sh000001/sz399006）的日线记录解码错误，产生 2037~2099 年
+// 的未来日期行（价格同样错误，如 close=-3.39），污染 MAX(trade_date) 派生逻辑——
+// khunter resolveTradeDate 曾因此把交易日解析成 2099 年，导致全策略「无当日数据」零产出。
+func sanitizeBars(bars []models.KLineBar) []models.KLineBar {
+	cutoff := timeutil.DateStr(time.Now().AddDate(0, 0, 1))
+	out := make([]models.KLineBar, 0, len(bars))
+	var firstBad models.KLineBar
+	dropped := 0
+	for _, b := range bars {
+		d := b.TradeDate
+		if len(d) > len(timeutil.DateLayout) {
+			d = d[:len(timeutil.DateLayout)] // 容忍 "2006-01-02 15:04:05" 截断为日期
+		}
+		t, err := timeutil.ParseDate(d)
+		if err != nil || timeutil.DateStr(t) > cutoff {
+			if dropped == 0 {
+				firstBad = b
+			}
+			dropped++
+			continue
+		}
+		out = append(out, b)
+	}
+	if dropped > 0 {
+		logger.SugaredLogger.Warnf("kline sanitize: 丢弃 %d 条脏数据（日期无法解析或晚于 %s），首条: %s %s %s source=%s close=%v",
+			dropped, cutoff, firstBad.StockCode, firstBad.Period, firstBad.TradeDate, firstBad.Source, firstBad.Close)
+	}
+	return out
 }
 
 // FindMissingDateRanges computes missing date intervals given [start, end] and existing bars.
