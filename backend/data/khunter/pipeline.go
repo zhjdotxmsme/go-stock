@@ -173,8 +173,9 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 	}
 	res.Scored = len(scores)
 
-	// 6. 大盘风险档位（沪深300；取不到数据按 LevelOf(0) 保守"注意"档）
+	// 6. 大盘风险档位（沪深300；取不到数据按 LevelOf(0) 保守"注意"档，同样落库）
 	lv := risk.LevelOf(0)
+	var1d := 0.0
 	if bars, err := datasource.NewKLineStore().QueryKLines(ctx, "sh000300", "day",
 		time.Now().AddDate(0, 0, -750).Format("2006-01-02"), tradeDate, false); err == nil && len(bars) > 100 {
 		returns := make([]float64, 0, len(bars)-1)
@@ -184,12 +185,13 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 			}
 		}
 		_, _, hybrid := risk.VaR(returns, 0.99)
+		var1d = hybrid
 		lv = risk.LevelOf(hybrid)
-		_ = repo.SaveRiskLevel(&models.KhunterRiskLevel{
-			Date: tradeDate, Var1d: hybrid, Var5d: risk.MultiDay(hybrid, 5),
-			Level: lv.Name, PositionLimit: lv.PositionLimit, ScoreExtra: lv.ScoreExtra,
-		})
 	}
+	_ = repo.SaveRiskLevel(&models.KhunterRiskLevel{
+		Date: tradeDate, Var1d: var1d, Var5d: risk.MultiDay(var1d, 5),
+		Level: lv.Name, PositionLimit: lv.PositionLimit, ScoreExtra: lv.ScoreExtra,
+	})
 	res.RiskLevel = lv.Name
 
 	// 7. 狩猎场筛选：总分 ≥ 阈值 且 现价 ≥ 支撑位×0.98
