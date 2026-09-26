@@ -298,6 +298,12 @@ export function createMenuOptions(deps) {
           to: { name: 'dailyPick' },
         }),
         routeItem({
+          title: '狩猎场',
+          groupKey: MENU_GROUP_KEYS.ANALYSIS,
+          icon: icons.Flag,
+          to: { name: 'khunter' },
+        }),
+        routeItem({
           title: '回测验证',
           groupKey: MENU_GROUP_KEYS.ANALYSIS,
           icon: icons.AlarmOutline,

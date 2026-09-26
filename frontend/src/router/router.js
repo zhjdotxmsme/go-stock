@@ -10,6 +10,7 @@ import klineAnalysis from "../components/kline-analysis.vue"
 import backtestPanel from "../components/BacktestPanel.vue"
 import dataManager from "../components/DataManager.vue"
 import dailyPickPanel from "../components/DailyPickPanel.vue"
+import khunterPanel from "../components/KhunterPanel.vue"
 import commodityView from "../components/commodity.vue"
 import newsView from '../components/NewsPage.vue'
 
@@ -40,6 +41,7 @@ const routes = [
     { path: '/kline-analysis', component: klineAnalysis, name: 'klineAnalysis' },
     { path: '/backtest', component: backtestPanel, name: 'backtest' },
     { path: '/daily-pick', component: dailyPickPanel, name: 'dailyPick' },
+    { path: '/khunter', component: khunterPanel, name: 'khunter' },
 
     // 数据 & 资讯
     { path: '/data-manager', component: dataManager, name: 'data-manager' },

@@ -53,6 +53,7 @@ declare module 'vue' {
     HotTopics: typeof import('./src/components/HotTopics.vue')['default']
     IndustryMoneyRank: typeof import('./src/components/industryMoneyRank.vue')['default']
     IndustryResearchReportList: typeof import('./src/components/IndustryResearchReportList.vue')['default']
+    KhunterPanel: typeof import('./src/components/KhunterPanel.vue')['default']
     KlineAnalysis: typeof import('./src/components/kline-analysis.vue')['default']
     KLineChart: typeof import('./src/components/KLineChart.vue')['default']
     KlineIndicatorSidebar: typeof import('./src/components/kline/KlineIndicatorSidebar.vue')['default']
