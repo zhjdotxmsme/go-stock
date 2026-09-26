@@ -117,7 +117,7 @@ async function run() {
   running.value = true
   lastRunText.value = '流水线运行中...'
   try {
-    await runPipeline(today)
+    await runPipeline('')
   } catch (e) {
     running.value = false
     lastRunText.value = ''
@@ -371,6 +371,12 @@ EventsOn('khunter:progress', (msg: any) => {
   }
   const r = msg.result || {}
   lastRunText.value = `最近运行：信号 ${r.Signals ?? 0} / 候选 ${r.Candidates ?? 0} / 评分 ${r.Scored ?? 0} / 入池 ${r.Hunted ?? 0} / 移除 ${r.Removed ?? 0}`
+  const td = r.TradeDate ?? r.tradeDate
+  if (td) {
+    const ts = new Date(td + 'T00:00:00').getTime()
+    scoreDateTs.value = ts
+    signalDateTs.value = ts
+  }
   message.success('狩猎场流水线运行完成')
   loadScores(); loadSignals(); loadRisk()
 })

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"go-stock/backend/data/khunter/risk"
+	"go-stock/backend/db"
 	"go-stock/backend/models"
 )
 
@@ -41,5 +42,23 @@ func TestHuntingThreshold(t *testing.T) {
 	}
 	if got := HuntingThreshold(risk.Level{Name: "正常", PositionLimit: 1.0, ScoreExtra: 0}); got != 60 {
 		t.Fatalf("expect 60, got %v", got)
+	}
+}
+
+func TestResolveTradeDate(t *testing.T) {
+	// 显式传入照用
+	if got := resolveTradeDate("2026-09-24"); got != "2026-09-24" {
+		t.Fatalf("explicit: %v", got)
+	}
+	// 空值：取本地日 K 最新交易日
+	setupTestDB(t)
+	if err := db.Dao.AutoMigrate(&models.KLineBar{}); err != nil {
+		t.Fatalf("migrate kline: %v", err)
+	}
+	db.Dao.Create(&models.KLineBar{StockCode: "600519", Period: "day", TradeDate: "2026-09-23"})
+	db.Dao.Create(&models.KLineBar{StockCode: "600519", Period: "day", TradeDate: "2026-09-25"})
+	db.Dao.Create(&models.KLineBar{StockCode: "600519", Period: "week", TradeDate: "2026-09-26"})
+	if got := resolveTradeDate(""); got != "2026-09-25" {
+		t.Fatalf("expect 最新日K交易日 2026-09-25（忽略周线）, got %v", got)
 	}
 }

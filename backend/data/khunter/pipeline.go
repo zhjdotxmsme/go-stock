@@ -46,18 +46,34 @@ type PipelineResult struct {
 	Hunted     int
 	Removed    int
 	RiskLevel  string
+	TradeDate  string
 }
 
-// RunPipeline 每日流水线（spec 第 7 节 8 步）。tradeDate 为空取今天。
-func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error) {
-	if tradeDate == "" {
-		tradeDate = time.Now().Format("2006-01-02")
+// resolveTradeDate 解析流水线交易日：显式传入则照用；为空时取本地日 K 最新交易日
+// （周末/节假日手动运行时回退到最近有数据的交易日），本地无数据回退今天。
+func resolveTradeDate(tradeDate string) string {
+	if tradeDate != "" {
+		return tradeDate
 	}
+	var latest string
+	if db.Dao != nil {
+		_ = db.Dao.Model(&models.KLineBar{}).Where("period = ?", "day").
+			Select("MAX(trade_date)").Scan(&latest).Error
+	}
+	if latest == "" {
+		return time.Now().Format("2006-01-02")
+	}
+	return latest
+}
+
+// RunPipeline 每日流水线（spec 第 7 节 8 步）。tradeDate 为空取最近交易日。
+func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error) {
+	tradeDate = resolveTradeDate(tradeDate)
 	if err := EnsureMigrate(); err != nil {
 		return nil, err
 	}
 	repo := NewRepo()
-	res := &PipelineResult{}
+	res := &PipelineResult{TradeDate: tradeDate}
 
 	// 1. 全市场股票清单
 	type stockBasic struct {
