@@ -40,6 +40,11 @@ func (h *DailyPickHandler) RunDailyPick(tradeDate string, topN int) ([]models.Da
 	return h.svc.RunDailyPick(tradeDate, topN)
 }
 
+// GetPickStrategies returns metadata (name/description) of all configured pick strategies.
+func (h *DailyPickHandler) GetPickStrategies() []data.PickStrategyInfo {
+	return h.svc.GetPickStrategies()
+}
+
 func (h *DailyPickHandler) RunDailyPickAsync(tradeDate string, topN int) {
 	h.svc.RunDailyPickAsync(tradeDate, topN)
 }

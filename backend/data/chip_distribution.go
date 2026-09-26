@@ -17,16 +17,22 @@ type ChipBin struct {
 
 // ChipDistributionResult 输出给前端/AI 的筹码分布结果。
 type ChipDistributionResult struct {
-	StockCode   string    `json:"stockCode"`
-	Days        int       `json:"days"`
-	Bins        int       `json:"bins"`
-	Current     float64   `json:"current"`     // 最新收盘价（取最后一根 K）
-	AvgCost     float64   `json:"avgCost"`     // 平均成本（加权均价）
-	ProfitRatio float64   `json:"profitRatio"` // 获利筹码占比（价位 <= Current）
-	MinPrice    float64   `json:"minPrice"`
-	MaxPrice    float64   `json:"maxPrice"`
-	SumVol      float64   `json:"sumVol"`
-	Items       []ChipBin `json:"items"`
+	StockCode   string     `json:"stockCode"`
+	Days        int        `json:"days"`
+	Bins        int        `json:"bins"`
+	Current     float64    `json:"current"`     // 最新收盘价（取最后一根 K）
+	AvgCost     float64    `json:"avgCost"`     // 平均成本（加权均价）
+	MedianCost  float64    `json:"medianCost"`  // 中位成本（累计筹码达 50% 的价位，对齐东财"平均成本"口径）
+	CostRange90 [2]float64 `json:"costRange90"` // 90% 成本区间 [低, 高]（5%/95% 分位）
+	CostRange70 [2]float64 `json:"costRange70"` // 70% 成本区间 [低, 高]（15%/85% 分位）
+	// 筹码集中度 = (高-低)/(高+低)，越小越集中；与东财筹码图口径一致
+	Concentration90 float64   `json:"concentration90"`
+	Concentration70 float64   `json:"concentration70"`
+	ProfitRatio     float64   `json:"profitRatio"` // 获利筹码占比（价位 <= Current）
+	MinPrice        float64   `json:"minPrice"`
+	MaxPrice        float64   `json:"maxPrice"`
+	SumVol          float64   `json:"sumVol"`
+	Items           []ChipBin `json:"items"`
 }
 
 // ChipDistributionCalculator 使用历史 K 线 + 换手率近似计算筹码分布：
@@ -138,18 +144,65 @@ func (c *ChipDistributionCalculator) Calculate(stockCode string, kLines []KLineD
 		profitRatio = profitVol / sum
 	}
 
+	medianCost := chipPriceAtQuantile(dist, minP, width, sum, 0.5)
+	costRange90 := [2]float64{
+		chipPriceAtQuantile(dist, minP, width, sum, 0.05),
+		chipPriceAtQuantile(dist, minP, width, sum, 0.95),
+	}
+	costRange70 := [2]float64{
+		chipPriceAtQuantile(dist, minP, width, sum, 0.15),
+		chipPriceAtQuantile(dist, minP, width, sum, 0.85),
+	}
+
 	return &ChipDistributionResult{
-		StockCode:   stockCode,
-		Days:        len(kLines),
-		Bins:        bins,
-		Current:     round(cur, 4),
-		AvgCost:     round(avgCost, 4),
-		ProfitRatio: round(profitRatio, 6),
-		MinPrice:    round(minP, 4),
-		MaxPrice:    round(maxP, 4),
-		SumVol:      round(sum, 4),
-		Items:       items,
+		StockCode:       stockCode,
+		Days:            len(kLines),
+		Bins:            bins,
+		Current:         round(cur, 4),
+		AvgCost:         round(avgCost, 4),
+		MedianCost:      round(medianCost, 4),
+		CostRange90:     [2]float64{round(costRange90[0], 4), round(costRange90[1], 4)},
+		CostRange70:     [2]float64{round(costRange70[0], 4), round(costRange70[1], 4)},
+		Concentration90: round(chipConcentration(costRange90), 6),
+		Concentration70: round(chipConcentration(costRange70), 6),
+		ProfitRatio:     round(profitRatio, 6),
+		MinPrice:        round(minP, 4),
+		MaxPrice:        round(maxP, 4),
+		SumVol:          round(sum, 4),
+		Items:           items,
 	}, nil
+}
+
+// chipPriceAtQuantile 返回累计筹码达到 q*sumVol 时所在 bin 的中心价（分位成本价）。
+// 空 bin 不命中；q=0 返回第一个有筹码的价位（最低成本价）。分布为空或 q 越界时返回 0。
+func chipPriceAtQuantile(dist []float64, minP, width, sumVol, q float64) float64 {
+	if sumVol <= 0 || q < 0 || q > 1 {
+		return 0
+	}
+	target := q * sumVol
+	acc := 0.0
+	for i, v := range dist {
+		if v > 0 && acc+v >= target {
+			return minP + (float64(i)+0.5)*width
+		}
+		acc += v
+	}
+	// 累计误差兜底：返回最后一个非空 bin
+	for i := len(dist) - 1; i >= 0; i-- {
+		if dist[i] > 0 {
+			return minP + (float64(i)+0.5)*width
+		}
+	}
+	return 0
+}
+
+// chipConcentration 筹码集中度：(高-低)/(高+低)，区间无效时返回 0。
+func chipConcentration(priceRange [2]float64) float64 {
+	lo, hi := priceRange[0], priceRange[1]
+	if lo <= 0 || hi <= 0 || hi+lo == 0 || hi < lo {
+		return 0
+	}
+	return (hi - lo) / (hi + lo)
 }
 
 func (r *ChipDistributionResult) TopN(n int) []ChipBin {

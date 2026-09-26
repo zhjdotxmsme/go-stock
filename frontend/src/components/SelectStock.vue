@@ -2,6 +2,7 @@
 import {h, onBeforeMount, onMounted, onUnmounted, ref, reactive, computed} from 'vue'
 import * as stockApi from "../api/stock";
 import * as marketApi from "../api/market";
+import * as dailyPickApi from "../api/dailyPick";
 import * as systemApi from "../api/system";
 
 import {useMessage, NText, NTag, NButton, NPopconfirm, NCard, NTooltip, NSpace, NEllipsis} from 'naive-ui'
@@ -106,6 +107,13 @@ const dataList = ref([])
 const hotStrategy = ref([])
 const customStrategies = ref([])
 const traceInfo = ref('')
+const pickStrategies = ref<Array<{ code: string, name: string, description: string }>>([])
+const showStrategyInfoModal = ref(false)
+const strategyInfoMap = computed(() => {
+  const m: Record<string, { name: string, description: string }> = {}
+  for (const s of pickStrategies.value) m[s.code] = s
+  return m
+})
 const tableScrollX = ref(2800)
 const leftTab = ref('hot')
 const showSaveModal = ref(false)
@@ -131,7 +139,14 @@ function displayAIPickResult(picks) {
     {title: '股票代码', key: 'stockCode', width: 100},
     {title: '股票名称', key: 'stockName', width: 120, ellipsis: {tooltip: true}},
     {title: '评分', key: 'score', width: 80, sorter: (a, b) => a.score - b.score},
-    {title: '策略', key: 'strategyName', width: 100},
+    {title: '策略', key: 'strategyName', width: 100,
+      render: (row: any) => {
+        const tag = h(NTag, {size: 'small', type: 'info', bordered: false}, {default: () => row.strategyName || '-'})
+        const desc = strategyInfoMap.value[row.strategyCode]?.description
+        return desc
+          ? h(NTooltip, {trigger: 'hover', placement: 'top'}, {trigger: () => tag, default: () => desc})
+          : tag
+      }},
     {title: '得分原因', key: 'reason', width: 400, ellipsis: {tooltip: true}},
   ]
   dataList.value = picks.map((p, i) => ({
@@ -140,6 +155,7 @@ function displayAIPickResult(picks) {
     stockName: p.StockName,
     score: p.Score,
     strategyName: p.StrategyName,
+    strategyCode: p.StrategyCode,
     reason: p.Reason,
     SECURITY_CODE: p.StockCode,
     SECURITY_SHORT_NAME: p.StockName,
@@ -423,6 +439,10 @@ onBeforeMount(() => {
     message.error(err)
   })
   loadCustomStrategies()
+  // 选股策略说明（失败静默，不影响主流程）
+  dailyPickApi.getPickStrategies().then((res: any) => {
+    pickStrategies.value = res || []
+  }).catch(() => {})
 })
 
 function loadCustomStrategies() {
@@ -642,6 +662,15 @@ function openCenteredWindow(url, width, height) {
           </template>
         </n-ellipsis>
         <n-button
+          v-if="pickStrategies.length > 0"
+          size="tiny"
+          quaternary
+          type="info"
+          @click="showStrategyInfoModal = true"
+        >
+          策略说明
+        </n-button>
+        <n-button
           v-if="dataList.length > 0"
           size="tiny"
           type="warning"
@@ -705,6 +734,21 @@ function openCenteredWindow(url, width, height) {
         <n-input v-model:value="saveForm.description" type="textarea" :rows="2" placeholder="可选，对策略的简要说明"/>
       </n-form-item>
     </n-form>
+  </n-modal>
+
+  <n-modal v-model:show="showStrategyInfoModal" preset="card" title="选股策略说明" style="width: 640px; max-width: calc(100vw - 32px);">
+    <n-text depth="3" style="font-size: 12px; display: block; margin-bottom: 8px;">
+      每日选股对每个策略打分（0-100），取各策略最高分入选；命中策略行内「策略」列悬停可查看对应说明。
+    </n-text>
+    <n-list bordered size="small">
+      <n-list-item v-for="s in pickStrategies" :key="s.code">
+        <div style="display: flex; align-items: baseline; gap: 8px;">
+          <n-tag size="small" type="info" :bordered="false">{{ s.name }}</n-tag>
+          <n-text depth="3" style="font-size: 12px;">{{ s.code }}</n-text>
+        </div>
+        <div style="margin-top: 4px; font-size: 13px;">{{ s.description }}</div>
+      </n-list-item>
+    </n-list>
   </n-modal>
 
   <n-modal

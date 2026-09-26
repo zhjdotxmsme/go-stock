@@ -37,3 +37,10 @@ type StrategyResult struct {
 	Factors map[string]float64 // per-factor breakdown
 	Signal  string             // e.g. "MA5>MA10>MA20多头排列，BIAS+4.2%"
 }
+
+// PickStrategyInfo 选股策略元信息（供前端展示策略说明）。
+type PickStrategyInfo struct {
+	Code        string `json:"code"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}

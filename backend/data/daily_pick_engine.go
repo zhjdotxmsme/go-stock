@@ -96,8 +96,22 @@ func NewDailyPickEngine() *DailyPickEngine {
 			&MFIFlowStrategy{},
 			&OBVDivergenceStrategy{},
 			&DonchianBreakoutStrategy{},
+
+			// ===== 形态策略（移植自 InStock 选股规则）=====
+			&ParkingApronStrategy{},
+			&BacktraceMA250Strategy{},
+			&HighTightFlagStrategy{},
 		},
 	}
+}
+
+// StrategiesInfo 返回当前引擎装配的策略元信息列表（供前端策略说明展示）。
+func (e *DailyPickEngine) StrategiesInfo() []PickStrategyInfo {
+	out := make([]PickStrategyInfo, 0, len(e.strategies))
+	for _, s := range e.strategies {
+		out = append(out, PickStrategyInfo{Code: s.Code(), Name: s.Name(), Description: s.Description()})
+	}
+	return out
 }
 
 // WithStrategies replaces the default strategy list. Useful for testing.

@@ -48,6 +48,11 @@ func (s *DailyPickService) WithEmitter(emit ProgressEmitter) *DailyPickService {
 	return s
 }
 
+// GetPickStrategies 返回当前装配的选股策略元信息（名称/说明），供前端策略说明展示。
+func (s *DailyPickService) GetPickStrategies() []PickStrategyInfo {
+	return s.engine.StrategiesInfo()
+}
+
 // emitProgress 发送一条进度事件；未注入发射器时静默丢弃。
 func (s *DailyPickService) emitProgress(payload map[string]any) {
 	if s.emit != nil {

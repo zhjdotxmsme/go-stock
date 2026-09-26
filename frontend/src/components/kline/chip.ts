@@ -67,6 +67,29 @@ export function addChipVolumeKernel(dist, bins, minP, width, low, high, vol, cen
   }
 }
 
+// 返回累计筹码达到 q*sumVol 时所在 bin 的中心价（分位成本价）。
+// 空 bin 不命中；q=0 返回第一个有筹码的价位；分布为空或 q 越界返回 0。
+function chipPriceAtQuantile(dist, minP, width, sumVol, q) {
+  if (!(sumVol > 0) || q < 0 || q > 1) return 0
+  const target = q * sumVol
+  let acc = 0
+  for (let i = 0; i < dist.length; i++) {
+    const v = dist[i]
+    if (v > 0 && acc + v >= target) return minP + (i + 0.5) * width
+    acc += v
+  }
+  for (let i = dist.length - 1; i >= 0; i--) {
+    if (dist[i] > 0) return minP + (i + 0.5) * width
+  }
+  return 0
+}
+
+// 筹码集中度：(高-低)/(高+低)，区间无效时返回 0。与东财筹码图口径一致。
+function chipConcentration(lo, hi) {
+  if (!(lo > 0) || !(hi > 0) || hi < lo || hi + lo === 0) return 0
+  return (hi - lo) / (hi + lo)
+}
+
 export function calcChipDistribution(rows, bins) {
   if (!rows?.length || bins <= 0) return { items: [], avgCost: 0, profitRatio: 0, current: 0 }
   let minP = Infinity, maxP = 0
@@ -109,5 +132,20 @@ export function calcChipDistribution(rows, bins) {
   }
   if (sum > 0) avgCost /= sum
   const profitRatio = sum > 0 ? profitVol / sum : 0
-  return { items, avgCost: Math.round(avgCost * 10000) / 10000, profitRatio: Math.round(profitRatio * 1e6) / 1e6, current: Math.round(cur * 10000) / 10000, minPrice: minP, maxPrice: maxP }
+  const medianCost = chipPriceAtQuantile(dist, minP, width, sum, 0.5)
+  const range90 = [chipPriceAtQuantile(dist, minP, width, sum, 0.05), chipPriceAtQuantile(dist, minP, width, sum, 0.95)]
+  const range70 = [chipPriceAtQuantile(dist, minP, width, sum, 0.15), chipPriceAtQuantile(dist, minP, width, sum, 0.85)]
+  return {
+    items,
+    avgCost: Math.round(avgCost * 10000) / 10000,
+    medianCost: Math.round(medianCost * 10000) / 10000,
+    costRange90: range90.map((v) => Math.round(v * 100) / 100),
+    costRange70: range70.map((v) => Math.round(v * 100) / 100),
+    concentration90: Math.round(chipConcentration(range90[0], range90[1]) * 1e6) / 1e6,
+    concentration70: Math.round(chipConcentration(range70[0], range70[1]) * 1e6) / 1e6,
+    profitRatio: Math.round(profitRatio * 1e6) / 1e6,
+    current: Math.round(cur * 10000) / 10000,
+    minPrice: minP,
+    maxPrice: maxP,
+  }
 }

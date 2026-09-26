@@ -26,6 +26,10 @@ export function GetLLMRankingEnabled() {
   return window['go']['handler']['DailyPickHandler']['GetLLMRankingEnabled']();
 }
 
+export function GetPickStrategies() {
+  return window['go']['handler']['DailyPickHandler']['GetPickStrategies']();
+}
+
 export function GetLatestPicks(arg1) {
   return window['go']['handler']['DailyPickHandler']['GetLatestPicks'](arg1);
 }

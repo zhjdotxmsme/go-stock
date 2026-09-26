@@ -175,6 +175,19 @@ const {
   defaultLatestRawRow,
 })
 
+// ---- 筹码说明与集中度状态 ----
+const chipTip = '估算各价位的持仓成本占比：按换手率逐日衰减历史筹码，当日成交量按成本中枢（VWAP/典型价）近似分布\n' +
+  '均成本：全部筹码的加权平均成本\n' +
+  '获利比例：现价下方的筹码占比；>90% 获利盘沉重警惕抛压，<10% 套牢盘重反弹阻力小\n' +
+  '90%/70% 成本区间：对应比例筹码所在的价格带，筹码图上的蓝色虚线为 90% 区间上下沿\n' +
+  '集中度=(区间高-低)/(高+低)，越小越集中：<10% 高度集中（主力控盘特征），10~20% 较集中，>20% 分散\n' +
+  '为估算值，与东财等软件可能有小差异；移动鼠标到历史 K 线可回看当日筹码'
+function concTag(v) {
+  if (v < 0.1) return { label: '高度集中', cls: 'lw-chip__tag--hot' }
+  if (v < 0.2) return { label: '较集中', cls: 'lw-chip__tag--mid' }
+  return { label: '分散', cls: 'lw-chip__tag--loose' }
+}
+
 
 import { indicatorTips } from './kline/indicators/tips'
 import { allCombos } from './kline/indicators/combos'
@@ -616,7 +629,7 @@ async function loadData() {
     volSeries?.setData([])
     syncLongPositionPriceLines()
     chipItems.value = []
-    chipMeta.value = { avgCost: 0, profitRatio: 0, current: 0, hoverDate: '', minPrice: 0, maxPrice: 0 }
+    chipMeta.value = { avgCost: 0, medianCost: 0, costRange90: [0, 0], costRange70: [0, 0], concentration90: 0, concentration70: 0, profitRatio: 0, current: 0, hoverDate: '', minPrice: 0, maxPrice: 0 }
     return
   }
   loading.value = true
@@ -1226,13 +1239,27 @@ watch(
           >
             <div class="lw-chip__head">
               <span class="lw-chip__title">筹码分布</span>
+              <NTooltip trigger="hover" placement="bottom-start" :style="{ maxWidth: '380px' }">
+                <template #trigger><span class="lw-chip__help">?</span></template>
+                <div class="lw-chip__tip">{{ chipTip }}</div>
+              </NTooltip>
               <span v-if="chipMeta.hoverDate" class="lw-chip__meta">
                 {{ chipMeta.hoverDate }}
               </span>
-              <span v-if="chipItems.length" class="lw-chip__meta">
-                均成本 {{ chipMeta.avgCost.toFixed(2) }} · 获利
-                {{ (chipMeta.profitRatio * 100).toFixed(1) }}%
-              </span>
+            </div>
+            <div v-if="chipItems.length" class="lw-chip__meta">
+              均成本 {{ chipMeta.avgCost.toFixed(2) }} · 获利
+              {{ (chipMeta.profitRatio * 100).toFixed(1) }}%
+            </div>
+            <div v-if="chipItems.length && chipMeta.concentration90 > 0" class="lw-chip__meta">
+              90%成本 {{ chipMeta.costRange90[0].toFixed(2) }}-{{ chipMeta.costRange90[1].toFixed(2) }}
+              集中{{ (chipMeta.concentration90 * 100).toFixed(1) }}%
+              <span class="lw-chip__tag" :class="concTag(chipMeta.concentration90).cls">{{ concTag(chipMeta.concentration90).label }}</span>
+            </div>
+            <div v-if="chipItems.length && chipMeta.concentration70 > 0" class="lw-chip__meta">
+              70%成本 {{ chipMeta.costRange70[0].toFixed(2) }}-{{ chipMeta.costRange70[1].toFixed(2) }}
+              集中{{ (chipMeta.concentration70 * 100).toFixed(1) }}%
+              <span class="lw-chip__tag" :class="concTag(chipMeta.concentration70).cls">{{ concTag(chipMeta.concentration70).label }}</span>
             </div>
             <div v-if="!chipItems.length" class="lw-chip__empty">
               {{ mergedRawRows.length ? '移动鼠标到K线查看' : '暂无K线数据' }}
@@ -1605,6 +1632,50 @@ watch(
 }
 .lw-chip--dark .lw-chip__meta {
   color: #94a3b8;
+}
+.lw-chip__help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 1;
+  cursor: help;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+  flex-shrink: 0;
+}
+.lw-chip--dark .lw-chip__help {
+  color: #94a3b8;
+  border-color: #475569;
+}
+.lw-chip__tip {
+  white-space: pre-line;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.lw-chip__tag {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 3px;
+  margin-left: 2px;
+}
+.lw-chip__tag--hot {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+}
+.lw-chip__tag--mid {
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.12);
+}
+.lw-chip__tag--loose {
+  color: #64748b;
+  background: rgba(100, 116, 139, 0.12);
 }
 .lw-chip__empty {
   font-size: 11px;

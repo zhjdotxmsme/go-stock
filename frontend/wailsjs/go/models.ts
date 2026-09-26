@@ -572,6 +572,11 @@ export namespace data {
 	    bins: number;
 	    current: number;
 	    avgCost: number;
+	    medianCost: number;
+	    costRange90: number[];
+	    costRange70: number[];
+	    concentration90: number;
+	    concentration70: number;
 	    profitRatio: number;
 	    minPrice: number;
 	    maxPrice: number;
@@ -589,6 +594,11 @@ export namespace data {
 	        this.bins = source["bins"];
 	        this.current = source["current"];
 	        this.avgCost = source["avgCost"];
+	        this.medianCost = source["medianCost"];
+	        this.costRange90 = source["costRange90"];
+	        this.costRange70 = source["costRange70"];
+	        this.concentration90 = source["concentration90"];
+	        this.concentration70 = source["concentration70"];
 	        this.profitRatio = source["profitRatio"];
 	        this.minPrice = source["minPrice"];
 	        this.maxPrice = source["maxPrice"];
@@ -634,6 +644,22 @@ export namespace data {
 	        this.unit = source["unit"];
 	        this.change = source["change"];
 	        this.date = source["date"];
+	    }
+	}
+	export class PickStrategyInfo {
+	    code: string;
+	    name: string;
+	    description: string;
+
+	    static createFrom(source: any = {}) {
+	        return new PickStrategyInfo(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.description = source["description"];
 	    }
 	}
 	export class FuturesContractPanel {

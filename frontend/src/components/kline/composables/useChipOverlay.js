@@ -14,7 +14,7 @@ export function useChipOverlay(ctx) {
   const chipBins = ref(80)
   const chipCanvasRef = ref(null)
   const chipItems = ref([])
-  const chipMeta = ref({ avgCost: 0, profitRatio: 0, current: 0, hoverDate: '', minPrice: 0, maxPrice: 0 })
+  const chipMeta = ref({ avgCost: 0, medianCost: 0, costRange90: [0, 0], costRange70: [0, 0], concentration90: 0, concentration70: 0, profitRatio: 0, current: 0, hoverDate: '', minPrice: 0, maxPrice: 0 })
 
   let chipUpdateTimer = null
 
@@ -51,11 +51,30 @@ export function useChipOverlay(ctx) {
       }
       ctx.fillRect(w - bw, y, bw, barH - 0.5)
     }
+    const minP = chipMeta.value.minPrice || 0
+    const maxP = chipMeta.value.maxPrice || 0
+    const priceY = (p) => ((p - minP) / (maxP - minP)) * h
+    if (maxP > minP) {
+      // 90% 成本区间上下沿（蓝色虚线）
+      const [r90lo, r90hi] = chipMeta.value.costRange90 || [0, 0]
+      const edges = [r90lo, r90hi].filter((p) => p > minP && p < maxP)
+      if (edges.length) {
+        ctx.strokeStyle = isDark ? 'rgba(96, 165, 250, 0.85)' : 'rgba(59, 130, 246, 0.75)'
+        ctx.lineWidth = 1
+        ctx.setLineDash([2, 3])
+        for (const p of edges) {
+          const y = priceY(p)
+          ctx.beginPath()
+          ctx.moveTo(0, y)
+          ctx.lineTo(w, y)
+          ctx.stroke()
+        }
+        ctx.setLineDash([])
+      }
+    }
     if (cur > 0) {
-      const minP = chipMeta.value.minPrice || 0
-      const maxP = chipMeta.value.maxPrice || 0
       if (maxP > minP && cur >= minP && cur <= maxP) {
-        const curY = ((cur - minP) / (maxP - minP)) * h
+        const curY = priceY(cur)
         ctx.strokeStyle = isDark ? '#fbbf24' : '#d97706'
         ctx.lineWidth = 1
         ctx.setLineDash([4, 3])
@@ -113,6 +132,11 @@ export function useChipOverlay(ctx) {
     chipItems.value = result.items
     chipMeta.value = {
       avgCost: result.avgCost,
+      medianCost: result.medianCost || 0,
+      costRange90: result.costRange90 || [0, 0],
+      costRange70: result.costRange70 || [0, 0],
+      concentration90: result.concentration90 || 0,
+      concentration70: result.concentration70 || 0,
       profitRatio: result.profitRatio,
       current: result.current,
       hoverDate: r ? extractYmdDatePart(String(r.day || '').replace(/\//g, '-')) : '',

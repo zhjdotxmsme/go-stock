@@ -95,6 +95,16 @@ export async function getKronosFactorStats(): Promise<any> {
   return r.data
 }
 
+/**
+ * 获取选股策略元信息（名称/说明）
+ * Go: GetPickStrategies() []data.PickStrategyInfo
+ */
+export async function getPickStrategies(): Promise<any> {
+  const r = await callApi(DailyPickHandler.GetPickStrategies)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
+}
+
 export default {
   runDailyPick,
   runDailyPickAsync,
@@ -106,4 +116,5 @@ export default {
   getLLMRankingEnabled,
   setLLMRankingEnabled,
   getKronosFactorStats,
+  getPickStrategies,
 }
