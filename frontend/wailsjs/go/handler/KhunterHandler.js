@@ -6,6 +6,10 @@ export function GetHunting(arg1) {
   return window['go']['handler']['KhunterHandler']['GetHunting'](arg1);
 }
 
+export function GetKellySuggestions() {
+  return window['go']['handler']['KhunterHandler']['GetKellySuggestions']();
+}
+
 export function GetRiskLevel() {
   return window['go']['handler']['KhunterHandler']['GetRiskLevel']();
 }

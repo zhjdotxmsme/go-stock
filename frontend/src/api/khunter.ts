@@ -52,6 +52,15 @@ export async function getRiskLevel(): Promise<any> {
 }
 
 /**
+ * 各策略半凯利建议仓位（配置缺失返回空数组）
+ */
+export async function getKellySuggestions(): Promise<any[]> {
+  const r = await callApi(KhunterHandler.GetKellySuggestions)
+  if (!r?.success) throw new Error(r?.message || '调用失败')
+  return r.data ?? []
+}
+
+/**
  * 异步信号级回测（进度经 khunter:backtest_progress，结果经 khunter:backtest_done 推送）
  */
 export async function runBacktest(codes: string[], startDate: string, endDate: string, holdingDays: number): Promise<any> {
@@ -66,5 +75,6 @@ export default {
   getSignals,
   getHunting,
   getRiskLevel,
+  getKellySuggestions,
   runBacktest,
 }

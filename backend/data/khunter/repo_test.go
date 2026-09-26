@@ -71,3 +71,39 @@ func TestRepoMoneyFlowUpsert(t *testing.T) {
 		t.Fatalf("GetMoneyFlow: %v %+v", err, got)
 	}
 }
+
+func TestRepoHuntingTracking(t *testing.T) {
+	setupTestDB(t)
+	r := NewRepo()
+
+	h := models.KhunterHunting{Code: "600519", Name: "贵州茅台", EnterDate: "2026-09-23",
+		EnterScore: 70, SupportPrice: 1650, Status: "追踪中"}
+	if err := r.SaveHunting(&h); err != nil {
+		t.Fatalf("SaveHunting: %v", err)
+	}
+	if h.ID == 0 {
+		t.Fatal("SaveHunting 未回填 ID")
+	}
+
+	// 追踪天数累加
+	for i := 0; i < 2; i++ {
+		if err := r.IncrTrackDays(h.ID); err != nil {
+			t.Fatalf("IncrTrackDays: %v", err)
+		}
+	}
+	got, err := r.GetHuntingList("追踪中")
+	if err != nil || len(got) != 1 || got[0].TrackDays != 2 {
+		t.Fatalf("GetHuntingList: %v %+v", err, got)
+	}
+
+	// 破位移除：状态切换后不再出现在"追踪中"
+	if err := r.UpdateHuntingStatus(h.ID, "已移除"); err != nil {
+		t.Fatalf("UpdateHuntingStatus: %v", err)
+	}
+	if got, err = r.GetHuntingList("追踪中"); err != nil || len(got) != 0 {
+		t.Fatalf("追踪中应为空: %v %+v", err, got)
+	}
+	if got, err = r.GetHuntingList("已移除"); err != nil || len(got) != 1 || got[0].TrackDays != 2 {
+		t.Fatalf("已移除列表: %v %+v", err, got)
+	}
+}

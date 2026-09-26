@@ -49,6 +49,11 @@ func (h *KhunterHandler) GetHunting(status string) ([]models.KhunterHunting, err
 	return h.svc.GetHunting(status)
 }
 
+// GetKellySuggestions 各策略半凯利建议仓位（配置缺失返回空列表）
+func (h *KhunterHandler) GetKellySuggestions() []khunter.KellySuggestion {
+	return h.svc.GetKellySuggestions()
+}
+
 func (h *KhunterHandler) GetRiskLevel() (*models.KhunterRiskLevel, error) {
 	return h.svc.GetRiskLevel()
 }

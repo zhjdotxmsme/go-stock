@@ -44,6 +44,7 @@ type PipelineResult struct {
 	Candidates int
 	Scored     int
 	Hunted     int
+	Removed    int
 	RiskLevel  string
 }
 
@@ -215,6 +216,36 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 		}
 		if err := repo.SaveHunting(&h); err == nil {
 			res.Hunted++
+		}
+	}
+
+	// 8. 狩猎场追踪：追踪中标的每日 TrackDays+1；最新收盘跌破支撑位（无 ×0.98 缓冲）→ 已移除
+	tracked, err := repo.GetHuntingList("追踪中")
+	if err != nil {
+		logger.SugaredLogger.Warnf("khunter 追踪列表读取失败: %v", err)
+		return res, nil
+	}
+	for _, h := range tracked {
+		if h.EnterDate == tradeDate {
+			continue // 当日新入选不计天数
+		}
+		bars := lastBars[h.Code]
+		if len(bars) == 0 {
+			if b, err := strategy.LoadDailyBars(ctx, h.Code, 30); err == nil {
+				bars = b
+			}
+		}
+		if len(bars) == 0 || bars[len(bars)-1].TradeDate < tradeDate {
+			continue // 停牌/无当日行情，无法判定破位也不计天数
+		}
+		if bars[len(bars)-1].Close < h.SupportPrice {
+			if err := repo.UpdateHuntingStatus(h.ID, "已移除"); err == nil {
+				res.Removed++
+			}
+			continue
+		}
+		if err := repo.IncrTrackDays(h.ID); err != nil {
+			logger.SugaredLogger.Warnf("khunter 追踪天数更新失败 %s: %v", h.Code, err)
 		}
 	}
 	return res, nil

@@ -83,6 +83,11 @@
             <n-text depth="3" style="font-size:12px">评估日期 {{ risk.date || '-' }}<template v-if="risk.scoreExtra">，评分加成 {{ risk.scoreExtra }}</template></n-text>
           </n-card>
           <n-empty v-else description="暂无风险档位数据，请先运行流水线" />
+          <n-card size="small" style="max-width:720px" title="各策略凯利建议仓位">
+            <n-data-table v-if="kelly.length" :columns="kellyColumns" :data="kelly" :loading="kellyLoading"
+              :bordered="true" :single-line="false" striped size="small" :pagination="false" />
+            <n-empty v-else description="未配置凯利参数" />
+          </n-card>
         </n-space>
       </n-tab-pane>
     </n-tabs>
@@ -96,7 +101,7 @@ import { PlayOutline } from '@vicons/ionicons5'
 import { format } from 'date-fns'
 
 import RadarChart from './charts/RadarChart.vue'
-import { runPipeline, getScores, getSignals, getHunting, getRiskLevel, runBacktest } from '../api/khunter'
+import { runPipeline, getScores, getSignals, getHunting, getRiskLevel, getKellySuggestions, runBacktest } from '../api/khunter'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 
 const message = useMessage()
@@ -330,6 +335,31 @@ async function loadRisk() {
   } finally { riskLoading.value = false }
 }
 
+// 各策略凯利建议仓位（半凯利，spec D6）
+const kelly = ref<any[]>([])
+const kellyLoading = ref(false)
+
+const kellyColumns: any[] = [
+  { title: '策略', key: 'strategy', render: (r: any) => r.strategy ?? r.Strategy },
+  { title: '胜率', key: 'winRate', width: 100, align: 'center',
+    render: (r: any) => (((r.winRate ?? 0) * 100).toFixed(1) + '%') },
+  { title: '盈亏比', key: 'plRatio', width: 100, align: 'center',
+    render: (r: any) => (r.plRatio ?? 0).toFixed(2) },
+  { title: '建议仓位', key: 'fraction', width: 120, align: 'center',
+    render: (r: any) => {
+      const f = r.fraction ?? 0
+      return f > 0 ? (f * 100).toFixed(1) + '%' : '不建议开仓'
+    } },
+]
+
+async function loadKelly() {
+  kellyLoading.value = true
+  try {
+    kelly.value = await getKellySuggestions()
+  } catch (e) { message.error('加载凯利建议失败: ' + e)
+  } finally { kellyLoading.value = false }
+}
+
 // ===== 后端事件 =====
 EventsOn('khunter:progress', (msg: any) => {
   if (!msg || typeof msg !== 'object' || !msg.done) return
@@ -340,7 +370,7 @@ EventsOn('khunter:progress', (msg: any) => {
     return
   }
   const r = msg.result || {}
-  lastRunText.value = `最近运行：信号 ${r.Signals ?? 0} / 候选 ${r.Candidates ?? 0} / 评分 ${r.Scored ?? 0} / 入池 ${r.Hunted ?? 0}`
+  lastRunText.value = `最近运行：信号 ${r.Signals ?? 0} / 候选 ${r.Candidates ?? 0} / 评分 ${r.Scored ?? 0} / 入池 ${r.Hunted ?? 0} / 移除 ${r.Removed ?? 0}`
   message.success('狩猎场流水线运行完成')
   loadScores(); loadSignals(); loadRisk()
 })
@@ -369,7 +399,7 @@ onUnmounted(() => {
 })
 
 onMounted(() => {
-  loadScores(); loadSignals(); loadRisk()
+  loadScores(); loadSignals(); loadRisk(); loadKelly()
 })
 </script>
 

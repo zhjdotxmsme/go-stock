@@ -4,6 +4,7 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/models"
 
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -82,6 +83,18 @@ func (r *Repo) GetHuntingList(status string) ([]models.KhunterHunting, error) {
 		q = q.Where("status = ?", status)
 	}
 	return rows, q.Find(&rows).Error
+}
+
+// UpdateHuntingStatus 更新狩猎场条目状态（追踪中 / 已移除）
+func (r *Repo) UpdateHuntingStatus(id uint, status string) error {
+	return db.Dao.Model(&models.KhunterHunting{}).Where("id = ?", id).
+		Update("status", status).Error
+}
+
+// IncrTrackDays 追踪天数 +1
+func (r *Repo) IncrTrackDays(id uint) error {
+	return db.Dao.Model(&models.KhunterHunting{}).Where("id = ?", id).
+		Update("track_days", gorm.Expr("track_days + 1")).Error
 }
 
 func (r *Repo) SaveRiskLevel(rl *models.KhunterRiskLevel) error {

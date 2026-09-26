@@ -3067,6 +3067,29 @@ export namespace handler {
 
 }
 
+export namespace khunter {
+	
+	export class KellySuggestion {
+	    strategy: string;
+	    winRate: number;
+	    plRatio: number;
+	    fraction: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KellySuggestion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.strategy = source["strategy"];
+	        this.winRate = source["winRate"];
+	        this.plRatio = source["plRatio"];
+	        this.fraction = source["fraction"];
+	    }
+	}
+
+}
+
 export namespace lo {
 	
 	export class Tuple2_string_string_ {
