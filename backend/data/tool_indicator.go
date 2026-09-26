@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"go-stock/backend/data/datasource"
+	"go-stock/backend/data/indicator"
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
@@ -402,153 +403,62 @@ func calcSMA(data []float64, period int) float64 {
 	return round2(sum / float64(period))
 }
 
+// calcMACD 统一委托 indicator.MACD（SMA 种子 EMA，talib/同花顺口径），取最新有效值。
+// 注意：DIF/DEA 预热需 slow+signal-1≈34 根 K 线，不足返回全 0（旧实现
+// 混用 SMA 种子与首值种子两种 EMA 口径，DIF 与 DEA 不可比，已修复）。
 func calcMACD(close []float64, fast, slow, signal int) map[string]float64 {
-	n := len(close)
-	emaFast := calcEMA(close, fast)
-	emaSlow := calcEMA(close, slow)
-	macdLine := emaFast - emaSlow
-
-	// Build MACD line history for signal calculation
-	macdHistory := make([]float64, n)
-	emaF := calcEMAFirst(close, fast)
-	emaS := calcEMAFirst(close, slow)
-	for i := 0; i < n; i++ {
-		if i == 0 {
-			emaF = close[i]
-			emaS = close[i]
-		} else {
-			emaF = emaF + (2.0/(float64(fast)+1))*(close[i]-emaF)
-			emaS = emaS + (2.0/(float64(slow)+1))*(close[i]-emaS)
-		}
-		macdHistory[i] = emaF - emaS
+	dif, dea, hist := indicator.MACD(close, fast, slow, signal)
+	d, dok := indicator.LastValid(dif)
+	s, sok := indicator.LastValid(dea)
+	h, hok := indicator.LastValid(hist)
+	if !dok || !sok || !hok {
+		return map[string]float64{"MACD": 0, "Signal": 0, "Histogram": 0}
 	}
-
-	signalLine := calcEMALast(macdHistory, signal)
-	histogram := macdLine - signalLine
-
 	return map[string]float64{
-		"MACD":      round2(macdLine),
-		"Signal":    round2(signalLine),
-		"Histogram": round2(histogram),
+		"MACD":      round2(d),
+		"Signal":    round2(s),
+		"Histogram": round2(h),
 	}
 }
 
-func calcEMAFirst(data []float64, period int) float64 {
-	sum := 0.0
-	for i := 0; i < period && i < len(data); i++ {
-		sum += data[i]
-	}
-	return sum / float64(period)
-}
-
-func calcEMA(data []float64, period int) float64 {
-	n := len(data)
-	if n < period {
-		return 0
-	}
-	multiplier := 2.0 / (float64(period) + 1)
-	ema := calcSMA(data[:period], period)
-	for i := period; i < n; i++ {
-		ema = (data[i]-ema)*multiplier + ema
-	}
-	return ema
-}
-
-func calcEMALast(data []float64, period int) float64 {
-	n := len(data)
-	if n < period {
-		return 0
-	}
-	multiplier := 2.0 / (float64(period) + 1)
-	ema := calcSMA(data[:period], period)
-	for i := period; i < n; i++ {
-		ema = (data[i]-ema)*multiplier + ema
-	}
-	return ema
-}
-
+// calcRSI 统一委托 indicator.RSI（Cutler 式 SMA 平滑），取最新有效值。
+// 数据不足或全平（无涨跌）时返回中性值 50。
 func calcRSI(data []float64, period int) float64 {
-	n := len(data)
-	if n < period+1 {
-		return 50
+	if v, ok := indicator.LastValid(indicator.RSI(data, period)); ok {
+		return round2(v)
 	}
-	gains, losses := 0.0, 0.0
-	for i := n - period; i < n; i++ {
-		diff := data[i] - data[i-1]
-		if diff > 0 {
-			gains += diff
-		} else {
-			losses -= diff
-		}
-	}
-	avgGain := gains / float64(period)
-	avgLoss := losses / float64(period)
-	if avgLoss == 0 {
-		return 100
-	}
-	rs := avgGain / avgLoss
-	return round2(100 - 100/(1+rs))
+	return 50
 }
 
+// calcKDJ 统一委托 indicator.KDJ（同花顺口径：RSV 全序列 + SMA(X,3,1) 递推，初值 50），
+// 取最新值。数据不足 n 根时返回中性 50/50/50（旧单日近似口径已废弃，数值对齐软件）。
 func calcKDJ(high, low, close []float64, n, k int) map[string]float64 {
-	length := len(high)
-	if length < n {
+	if len(close) < n {
 		return map[string]float64{"K": 50, "D": 50, "J": 50}
 	}
-
-	// Find highest high and lowest low in last n periods
-	start := length - n
-	hh := high[start]
-	ll := low[start]
-	for i := start; i < length; i++ {
-		if high[i] > hh {
-			hh = high[i]
-		}
-		if low[i] < ll {
-			ll = low[i]
-		}
-	}
-
-	lastClose := close[length-1]
-	var rsv float64
-	if hh != ll {
-		rsv = (lastClose - ll) / (hh - ll) * 100
-	} else {
-		rsv = 50
-	}
-
-	// Simplified: use single-period calculation
-	kVal := 2.0/3.0*50 + 1.0/3.0*rsv
-	dVal := 2.0/3.0*50 + 1.0/3.0*kVal
-	jVal := 3*kVal - 2*dVal
-
+	kS, dS, jS := indicator.KDJ(high, low, close, n, k, k)
+	kk, _ := indicator.LastValid(kS)
+	dd, _ := indicator.LastValid(dS)
+	jj, _ := indicator.LastValid(jS)
 	return map[string]float64{
-		"K": round2(kVal),
-		"D": round2(dVal),
-		"J": round2(jVal),
+		"K": round2(kk),
+		"D": round2(dd),
+		"J": round2(jj),
 	}
 }
 
+// calcBOLL 统一委托 indicator.BOLL（SMA + 总体标准差，同花顺口径），取最新有效值。
 func calcBOLL(close []float64, period int, multiplier float64) map[string]float64 {
-	n := len(close)
-	if n < period {
+	if len(close) < period {
 		return map[string]float64{"Mid": 0, "Up": 0, "Down": 0}
 	}
-
-	start := n - period
-	mid := calcSMA(close, period)
-
-	// Calculate standard deviation
-	sumSq := 0.0
-	for i := start; i < n; i++ {
-		diff := close[i] - mid
-		sumSq += diff * diff
+	midS, upS, lowS := indicator.BOLL(close, period, multiplier)
+	mid, mok := indicator.LastValid(midS)
+	up, uok := indicator.LastValid(upS)
+	down, dok := indicator.LastValid(lowS)
+	if !mok || !uok || !dok {
+		return map[string]float64{"Mid": 0, "Up": 0, "Down": 0}
 	}
-	std := math.Sqrt(sumSq / float64(period))
-
-	up := mid + multiplier*std
-	down := mid - multiplier*std
-
 	return map[string]float64{
 		"Mid":  round2(mid),
 		"Up":   round2(up),
@@ -605,18 +515,13 @@ func calcCCI(high, low, close []float64, period int) float64 {
 	return round2((tp[period-1] - mean) / (0.015 * md))
 }
 
+// calcATR 统一委托 indicator.ATR（Wilder 递推，同花顺/通达信口径），取最新有效值。
+// 旧「最后 period 根 TR 简单平均」口径与软件数值不一致，已废弃。
 func calcATR(high, low, close []float64, period int) float64 {
-	n := len(close)
-	if n < period+1 {
-		return 0
+	if v, ok := indicator.LastValid(indicator.ATR(high, low, close, period)); ok {
+		return round2(v)
 	}
-	sum := 0.0
-	for i := n - period; i < n; i++ {
-		tr := math.Max(high[i]-low[i], math.Abs(high[i]-close[i-1]))
-		tr = math.Max(tr, math.Abs(low[i]-close[i-1]))
-		sum += tr
-	}
-	return round2(sum / float64(period))
+	return 0
 }
 
 func calcOBV(close, volume []float64) float64 {

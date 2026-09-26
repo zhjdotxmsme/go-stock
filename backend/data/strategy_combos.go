@@ -82,22 +82,10 @@ func comboJoinSignal(parts ...string) string {
 	return out
 }
 
-// comboMACDSeries 以 indicator.EMA 级联构造 MACD 序列（DIF/DEA/HIST），
-// 与 data 包 calcMACD 的 fast/slow/signal 默认参数一致；NaN 按算术传播。
+// comboMACDSeries 返回 MACD 序列（DIF/DEA/HIST），统一委托 indicator.MACD
+// （SMA 种子 EMA，talib/同花顺口径）；NaN 按算术传播。
 func comboMACDSeries(close []float64, fast, slow, signal int) (dif, dea, hist []float64) {
-	ef := indicator.EMA(close, fast)
-	es := indicator.EMA(close, slow)
-	n := len(close)
-	dif = make([]float64, n)
-	for i := 0; i < n; i++ {
-		dif[i] = ef[i] - es[i]
-	}
-	dea = indicator.EMA(dif, signal)
-	hist = make([]float64, n)
-	for i := 0; i < n; i++ {
-		hist[i] = dif[i] - dea[i]
-	}
-	return dif, dea, hist
+	return indicator.MACD(close, fast, slow, signal)
 }
 
 // comboSMASeries 简单移动平均序列（indicator 包未导出 SMA，本地补一个供 BOLL 使用）。
@@ -150,31 +138,10 @@ func comboBOLLSeries(close []float64, period int, mult float64) (mid, up, down [
 	return mid, up, down
 }
 
-// comboRSISeries Cutler 式 RSI 序列（SMA 平滑），用于「拐头」等需要序列的判定。
+// comboRSISeries Cutler 式 RSI 序列（SMA 平滑），统一委托 indicator.RSI，
+// 用于「拐头」等需要序列的判定。
 func comboRSISeries(close []float64, period int) []float64 {
-	n := len(close)
-	out := make([]float64, n)
-	for i := range out {
-		out[i] = math.NaN()
-	}
-	if period <= 0 || n <= period {
-		return out
-	}
-	for i := period; i < n; i++ {
-		var up, dn float64
-		for j := i - period + 1; j <= i; j++ {
-			d := close[j] - close[j-1]
-			if d > 0 {
-				up += d
-			} else {
-				dn -= d
-			}
-		}
-		if up+dn > 0 {
-			out[i] = up / (up + dn) * 100
-		}
-	}
-	return out
+	return indicator.RSI(close, period)
 }
 
 // comboVolRatio20 最新成交量相对 20 日均量的比值（量比），不足 21 根返回 false。

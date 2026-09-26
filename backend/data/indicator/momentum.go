@@ -223,3 +223,92 @@ func smiBundle(high, low, close []float64, kPeriod, dPeriod, emaPeriod int) (smi
 	signal = EMA(smi, dPeriod)
 	return
 }
+
+// --- 以下为本包新增（非 JS calc.ts 移植），供后端各模块统一 MACD/RSI 口径 ---
+
+// MACD 返回 DIF/DEA/HIST 序列：DIF=EMA(fast)-EMA(slow)，DEA=EMA(DIF,signal)，
+// HIST=DIF-DEA。基于本包 SMA 种子版 EMA（talib 口径），预热期 NaN 按算术传播。
+// 与同花顺/通达信的 MACD 一致；旧 data.calcMACD 的 DEA 曾用首值种子 EMA，
+// 与 DIF 口径不一致，已统一至此实现。
+func MACD(close []float64, fast, slow, signal int) (dif, dea, hist []float64) {
+	ef := EMA(close, fast)
+	es := EMA(close, slow)
+	n := len(close)
+	dif = nanSlice(n)
+	for i := range n {
+		dif[i] = ef[i] - es[i]
+	}
+	dea = EMA(dif, signal)
+	hist = nanSlice(n)
+	for i := range n {
+		hist[i] = dif[i] - dea[i]
+	}
+	return
+}
+
+// RSI 为 Cutler 式（SMA 平滑）RSI 序列：out[i] 取窗口 (i-period, i] 的
+// period 个涨跌差，up/(up+down)*100；窗口涨跌全为 0 时该位 NaN。
+// 首个有效值在 i=period。与同花顺 RSI 的 N 日简单平均口径一致。
+func RSI(close []float64, period int) []float64 {
+	n := len(close)
+	out := nanSlice(n)
+	if period <= 0 || n <= period {
+		return out
+	}
+	for i := period; i < n; i++ {
+		var up, dn float64
+		for j := i - period + 1; j <= i; j++ {
+			d := close[j] - close[j-1]
+			if d > 0 {
+				up += d
+			} else {
+				dn -= d
+			}
+		}
+		if up+dn > 0 {
+			out[i] = up / (up + dn) * 100
+		}
+	}
+	return out
+}
+
+// KDJ 返回同花顺/通达信口径的 K/D/J 序列：RSV=(close-LLV(low,n))/(HHV(high,n)-LLV(low,n))*100，
+// K=SMA(RSV,m1,1)，D=SMA(K,m2,1)，J=3K-2D；SMA(X,N,1) 即 X/N + prev*(N-1)/N 递推。
+// K/D 初值 50（上市首日起递推，窗口不足 n 时用已有全部数据），与软件行为一致。
+// hh==ll（一字板）时该位 RSV=50。序列从首根起即有值，无 NaN 预热期。
+// 旧 data.calcKDJ 只算最后一天 RSV、K/D 从常数 50 递推一次，数值严重偏离软件口径，已废弃。
+func KDJ(high, low, close []float64, n, m1, m2 int) (k, d, j []float64) {
+	length := len(close)
+	k = nanSlice(length)
+	d = nanSlice(length)
+	j = nanSlice(length)
+	if length == 0 || n <= 0 || m1 <= 0 || m2 <= 0 {
+		return
+	}
+	prevK, prevD := 50.0, 50.0
+	for i := 0; i < length; i++ {
+		start := i - n + 1
+		if start < 0 {
+			start = 0
+		}
+		hh, ll := high[start], low[start]
+		for m := start + 1; m <= i; m++ {
+			if high[m] > hh {
+				hh = high[m]
+			}
+			if low[m] < ll {
+				ll = low[m]
+			}
+		}
+		rsv := 50.0
+		if hh != ll {
+			rsv = (close[i] - ll) / (hh - ll) * 100
+		}
+		prevK = (prevK*float64(m1-1) + rsv) / float64(m1)
+		prevD = (prevD*float64(m2-1) + prevK) / float64(m2)
+		k[i] = prevK
+		d[i] = prevD
+		j[i] = 3*prevK - 2*prevD
+	}
+	return
+}

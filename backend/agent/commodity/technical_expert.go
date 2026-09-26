@@ -7,6 +7,7 @@ import (
 	"go-stock/backend/agent/multi"
 	"go-stock/backend/data"
 	"go-stock/backend/data/datasource"
+	"go-stock/backend/data/indicator"
 	"go-stock/backend/logger"
 	"io"
 	"math"
@@ -79,8 +80,12 @@ func (e *TechnicalExpert) buildTechnicalIndicators(klines []datasource.KLineBar)
 	}
 
 	closes := make([]float64, len(klines))
+	highs := make([]float64, len(klines))
+	lows := make([]float64, len(klines))
 	for i, k := range klines {
 		closes[i] = k.Close
+		highs[i] = k.High
+		lows[i] = k.Low
 	}
 
 	ma5 := calcSMA(closes, 5)
@@ -90,17 +95,10 @@ func (e *TechnicalExpert) buildTechnicalIndicators(klines []datasource.KLineBar)
 
 	rsi14 := calcRSI(closes, 14)
 	macd, macdSignal, macdHist := calcMACD(closes, 12, 26, 9)
-	atr14 := calcATR(klines, 14)
+	atr14 := calcATR(highs, lows, closes, 14)
 	bbMiddle, bbUpper, bbLower, bbWidth := calcBollinger(closes, 20, 2)
 
 	lastClose := closes[len(closes)-1]
-
-	highs := make([]float64, len(klines))
-	lows := make([]float64, len(klines))
-	for i, k := range klines {
-		highs[i] = k.High
-		lows[i] = k.Low
-	}
 
 	periodHigh := maxSlice(highs, len(highs)-20, len(highs))
 	periodLow := minSlice(lows, len(lows)-20, len(lows))
@@ -154,99 +152,49 @@ func (e *TechnicalExpert) buildTechnicalIndicators(klines []datasource.KLineBar)
 	return result + klinePreview
 }
 
-func calcEMA(data []float64, period int) float64 {
-	if len(data) < period || period <= 0 {
-		return 0
-	}
-	multiplier := 2.0 / (float64(period) + 1)
-	ema := data[0]
-	for i := 1; i < len(data); i++ {
-		ema = (data[i]-ema)*multiplier + ema
-	}
-	return math.Round(ema*100) / 100
-}
-
+// calcMACD 统一委托 indicator.MACD（SMA 种子 EMA，talib/同花顺口径），
+// 与 data 包个股 MACD 同口径；预热期不足（< slow+signal-1 根）返回 0,0,0。
 func calcMACD(data []float64, fastPeriod, slowPeriod, signalPeriod int) (macd, signal, hist float64) {
-	if len(data) < slowPeriod+signalPeriod {
+	difS, deaS, histS := indicator.MACD(data, fastPeriod, slowPeriod, signalPeriod)
+	d, dok := indicator.LastValid(difS)
+	s, sok := indicator.LastValid(deaS)
+	h, hok := indicator.LastValid(histS)
+	if !dok || !sok || !hok {
 		return 0, 0, 0
 	}
-
-	// Calculate EMAs for the entire series
-	emaFast := make([]float64, len(data))
-	emaSlow := make([]float64, len(data))
-	multiplierFast := 2.0 / (float64(fastPeriod) + 1)
-	multiplierSlow := 2.0 / (float64(slowPeriod) + 1)
-
-	emaFast[0] = data[0]
-	emaSlow[0] = data[0]
-	for i := 1; i < len(data); i++ {
-		emaFast[i] = (data[i]-emaFast[i-1])*multiplierFast + emaFast[i-1]
-		emaSlow[i] = (data[i]-emaSlow[i-1])*multiplierSlow + emaSlow[i-1]
-	}
-
-	macdLine := make([]float64, len(data))
-	for i := 0; i < len(data); i++ {
-		macdLine[i] = emaFast[i] - emaSlow[i]
-	}
-
-	// Calculate signal line (EMA of MACD line)
-	signalLine := make([]float64, len(data))
-	signalLine[0] = macdLine[0]
-	multiplierSignal := 2.0 / (float64(signalPeriod) + 1)
-	for i := 1; i < len(data); i++ {
-		signalLine[i] = (macdLine[i]-signalLine[i-1])*multiplierSignal + signalLine[i-1]
-	}
-
-	macd = math.Round(macdLine[len(macdLine)-1]*100) / 100
-	signal = math.Round(signalLine[len(signalLine)-1]*100) / 100
-	hist = math.Round((macd-signal)*100) / 100
+	macd = math.Round(d*100) / 100
+	signal = math.Round(s*100) / 100
+	hist = math.Round(h*100) / 100
 	return macd, signal, hist
 }
 
-func calcATR(klines []datasource.KLineBar, period int) float64 {
-	if len(klines) < period+1 {
-		return 0
+// calcATR 统一委托 indicator.ATR（Wilder 递推，同花顺/通达信口径），取最新有效值。
+// 旧「最后 period 根 TR 简单平均」实现注释谎称 Wilder 且与软件数值不一致，已废弃。
+func calcATR(high, low, close []float64, period int) float64 {
+	if v, ok := indicator.LastValid(indicator.ATR(high, low, close, period)); ok {
+		return math.Round(v*100) / 100
 	}
-	trueRanges := make([]float64, len(klines))
-	trueRanges[0] = klines[0].High - klines[0].Low
-	for i := 1; i < len(klines); i++ {
-		tr1 := klines[i].High - klines[i].Low
-		tr2 := math.Abs(klines[i].High - klines[i-1].Close)
-		tr3 := math.Abs(klines[i].Low - klines[i-1].Close)
-		trueRanges[i] = math.Max(tr1, math.Max(tr2, tr3))
-	}
-
-	// Wilder's smoothing
-	atr := 0.0
-	for i := len(trueRanges) - period; i < len(trueRanges); i++ {
-		atr += trueRanges[i]
-	}
-	atr /= float64(period)
-	return math.Round(atr*100) / 100
+	return 0
 }
 
+// calcBollinger 统一委托 indicator.BOLL（SMA + 总体标准差，同花顺口径），取最新有效值；
+// width=(upper-lower)/middle 按未舍入值计算。
 func calcBollinger(data []float64, period int, stdDevFactor float64) (middle, upper, lower, width float64) {
 	if len(data) < period {
 		return 0, 0, 0, 0
 	}
-	middle = calcSMA(data, period)
-
-	// Calculate standard deviation
-	sum := 0.0
-	for i := len(data) - period; i < len(data); i++ {
-		diff := data[i] - middle
-		sum += diff * diff
+	midS, upS, lowS := indicator.BOLL(data, period, stdDevFactor)
+	m, mok := indicator.LastValid(midS)
+	u, uok := indicator.LastValid(upS)
+	l, lok := indicator.LastValid(lowS)
+	if !mok || !uok || !lok || m == 0 {
+		return 0, 0, 0, 0
 	}
-	stdDev := math.Sqrt(sum / float64(period))
-
-	upper = middle + stdDevFactor*stdDev
-	lower = middle - stdDevFactor*stdDev
-	width = (upper - lower) / middle
-
-	upper = math.Round(upper*100) / 100
-	lower = math.Round(lower*100) / 100
-	width = math.Round(width*1000) / 1000
-	return middle, upper, lower, width
+	middle = m
+	upper = math.Round(u*100) / 100
+	lower = math.Round(l*100) / 100
+	width = math.Round((u-l)/m*1000) / 1000
+	return
 }
 
 func macdLabel(macd, signal, hist float64) string {
@@ -300,26 +248,13 @@ func calcSMA(data []float64, period int) float64 {
 	return math.Round(sum/float64(period)*100) / 100
 }
 
+// calcRSI 统一委托 indicator.RSI（Cutler 式 SMA 平滑），与 data 包个股 RSI 同口径；
+// 数据不足或全平时返回 0。
 func calcRSI(data []float64, period int) float64 {
-	if len(data) < period+1 {
-		return 0
+	if v, ok := indicator.LastValid(indicator.RSI(data, period)); ok {
+		return math.Round(v*10) / 10
 	}
-	var avgGain, avgLoss float64
-	for i := len(data) - period; i < len(data); i++ {
-		change := data[i] - data[i-1]
-		if change > 0 {
-			avgGain += change
-		} else {
-			avgLoss += -change
-		}
-	}
-	avgGain /= float64(period)
-	avgLoss /= float64(period)
-	if avgLoss == 0 {
-		return 100
-	}
-	rs := avgGain / avgLoss
-	return math.Round((100-(100/(1+rs)))*10) / 10
+	return 0
 }
 
 func maxSlice(data []float64, start, end int) float64 {

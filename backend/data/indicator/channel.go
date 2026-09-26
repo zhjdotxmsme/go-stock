@@ -56,8 +56,16 @@ func atrValues(high, low, close []float64, period int) []float64 {
 	return out
 }
 
-// bollingerBands 对应 JS bollingerBands（calc.ts L101，BOLL 旧实现不重复导出，
-// 仅供 TTMSqueeze 内联调用逻辑）。mid=smaNullAsZero(close, period)；
+// ATR 导出 atrValues（Wilder 口径，同花顺/通达信一致）：
+// 首值 = 前 period 根 TR 简单平均（下标 period-1），之后 (prev*(period-1)+tr)/period 递推；
+// 预热期 NaN。旧 data.calcATR / commodity.calcATR 的「最后 period 根 SMA」口径
+// 数值与软件不一致，已统一至此实现。
+func ATR(high, low, close []float64, period int) []float64 {
+	return atrValues(high, low, close, period)
+}
+
+// bollingerBands 对应 JS bollingerBands（calc.ts L101，供 TTMSqueeze 内联与导出
+// 包装 BOLL 共用）。mid=smaNullAsZero(close, period)；
 // std 为总体标准差（除以 period）；upper=mid+mult*std，lower=mid-mult*std。
 func bollingerBands(close []float64, period int, mult float64) (mid, upper, lower []float64) {
 	mid = smaNullAsZero(close, period)
@@ -75,6 +83,12 @@ func bollingerBands(close []float64, period int, mult float64) (mid, upper, lowe
 		lower[i] = m - mult*std
 	}
 	return mid, upper, lower
+}
+
+// BOLL 导出 bollingerBands（mid=SMA，std=总体标准差，上下轨 mid±mult*std），
+// 与同花顺 BOLL 口径一致；预热期 NaN。
+func BOLL(close []float64, period int, mult float64) (mid, upper, lower []float64) {
+	return bollingerBands(close, period, mult)
 }
 
 // Keltner 肯特纳通道，移植自 JS keltnerChannelValues（calc.ts L281，
