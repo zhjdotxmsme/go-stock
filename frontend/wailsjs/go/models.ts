@@ -5251,49 +5251,6 @@ export namespace models {
 		    return a;
 		}
 	}
-
-}
-
-export namespace service {
-	
-	export class DailyPickBacktestResult {
-	    stockCode: string;
-	    stockName: string;
-	    tradeDate: string;
-	    score: number;
-	    strategyCode: string;
-	    strategyName: string;
-	    reason: string;
-	    totalReturn: number;
-	    win: boolean;
-	    holdingDays: number;
-	    maxDrawdown: number;
-	    entryPrice: number;
-	    exitPrice: number;
-	    slippageWarning: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new DailyPickBacktestResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.stockCode = source["stockCode"];
-	        this.stockName = source["stockName"];
-	        this.tradeDate = source["tradeDate"];
-	        this.score = source["score"];
-	        this.strategyCode = source["strategyCode"];
-	        this.strategyName = source["strategyName"];
-	        this.reason = source["reason"];
-	        this.totalReturn = source["totalReturn"];
-	        this.win = source["win"];
-	        this.holdingDays = source["holdingDays"];
-	        this.maxDrawdown = source["maxDrawdown"];
-	        this.entryPrice = source["entryPrice"];
-	        this.exitPrice = source["exitPrice"];
-	        this.slippageWarning = source["slippageWarning"];
-	    }
-	}
 	export class KhunterScore {
 	    id: number;
 	    code: string;
@@ -5498,6 +5455,49 @@ export namespace service {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace service {
+	
+	export class DailyPickBacktestResult {
+	    stockCode: string;
+	    stockName: string;
+	    tradeDate: string;
+	    score: number;
+	    strategyCode: string;
+	    strategyName: string;
+	    reason: string;
+	    totalReturn: number;
+	    win: boolean;
+	    holdingDays: number;
+	    maxDrawdown: number;
+	    entryPrice: number;
+	    exitPrice: number;
+	    slippageWarning: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DailyPickBacktestResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stockCode = source["stockCode"];
+	        this.stockName = source["stockName"];
+	        this.tradeDate = source["tradeDate"];
+	        this.score = source["score"];
+	        this.strategyCode = source["strategyCode"];
+	        this.strategyName = source["strategyName"];
+	        this.reason = source["reason"];
+	        this.totalReturn = source["totalReturn"];
+	        this.win = source["win"];
+	        this.holdingDays = source["holdingDays"];
+	        this.maxDrawdown = source["maxDrawdown"];
+	        this.entryPrice = source["entryPrice"];
+	        this.exitPrice = source["exitPrice"];
+	        this.slippageWarning = source["slippageWarning"];
+	    }
 	}
 
 }
