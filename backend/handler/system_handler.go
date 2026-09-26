@@ -851,6 +851,23 @@ func (h *SystemHandler) InitCronTasks() {
 			logger.SugaredLogger.Info("已自动创建狩猎场每日流水线定时任务")
 		}
 	}
+	if !cronApi.ExistsByTaskType("kline_sync") {
+		task := &models.CronTask{
+			Name:        "K线数据同步",
+			CronExpr:    "0 30 15 * * *",
+			TaskType:    "kline_sync",
+			Params:      `{"years":1}`,
+			Enable:      true,
+			Status:      "active",
+			Description: "每日 15:30 增量同步全市场日K（狩猎场流水线 17:00 依赖本地K线新鲜度）",
+		}
+		err := cronApi.Create(task)
+		if err != nil {
+			logger.SugaredLogger.Errorf("自动创建K线数据同步任务失败：%v", err)
+		} else {
+			logger.SugaredLogger.Info("已自动创建K线数据同步定时任务")
+		}
+	}
 	tasks := cronApi.GetAll()
 	if len(tasks) == 0 {
 		return

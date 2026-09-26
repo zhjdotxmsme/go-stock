@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"go-stock/backend/data"
+	"go-stock/backend/data/backtest"
 	"go-stock/backend/handler"
 	"sync"
 	"time"
@@ -134,6 +135,8 @@ func (a *App) domReady(ctx context.Context) {
 		go initStockDataUS(a.ctx)
 	}
 	updateBasicInfo()
+	// 恢复进程重启前遗留的 K 线同步任务（workers 是进程内 goroutine，重启后无人消费）
+	go backtest.NewService().ResumePendingSyncTasks()
 	a.registerStartupCronTasks()
 }
 

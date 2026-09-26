@@ -138,6 +138,8 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 		}(st.Code, st.Name)
 	}
 	wg.Wait()
+	logger.SugaredLogger.Infof("khunter pipeline scan done: %d/%d 只本地K线新鲜(>=%s)，信号 %d 条",
+		len(lastBars), len(stocks), tradeDate, len(signals))
 	if err := repo.SaveSignals(signals); err != nil {
 		return res, err
 	}

@@ -172,6 +172,23 @@ func (s *Service) StartHistoricalSync(years int) error {
 	return nil
 }
 
+// ResumePendingSyncTasks 应用启动时恢复未完成的 K 线同步。
+// 消费者是进程内 goroutine（syncWorkersRunning 为内存态），进程重启后
+// DB 中遗留的 pending 任务无人消费，需在此重新拉起 workers。
+func (s *Service) ResumePendingSyncTasks() {
+	var cnt int64
+	if err := db.Dao.Model(&models.KLineSyncLog{}).
+		Where("status = ?", history.SyncStatusPending).Count(&cnt).Error; err != nil {
+		logger.SugaredLogger.Warnf("查询待同步 K 线任务失败: %v", err)
+		return
+	}
+	if cnt == 0 {
+		return
+	}
+	logger.SugaredLogger.Infof("发现 %d 个待执行 K 线同步任务，恢复后台同步", cnt)
+	startSyncWorkers()
+}
+
 // syncWorkerCount is the number of goroutines consuming pending sync tasks.
 const syncWorkerCount = 3
 
