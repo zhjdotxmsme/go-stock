@@ -1,6 +1,8 @@
 package khunter
 
 import (
+	"errors"
+
 	"go-stock/backend/db"
 	"go-stock/backend/models"
 
@@ -107,6 +109,9 @@ func (r *Repo) SaveRiskLevel(rl *models.KhunterRiskLevel) error {
 func (r *Repo) GetLatestRiskLevel() (*models.KhunterRiskLevel, error) {
 	var row models.KhunterRiskLevel
 	err := db.Dao.Order("date DESC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
