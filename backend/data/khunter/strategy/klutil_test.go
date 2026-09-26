@@ -88,18 +88,23 @@ func TestPctChange(t *testing.T) {
 }
 
 func TestSwingHighs(t *testing.T) {
-	highs := []float64{1, 3, 2, 5, 4, 6, 1, 2, 1}
-	// leftRight=2：i=3(5) 左右两根均小于它 → 是；i=5(6) 右侧只有 3 根且 1<6,2<6 但右窗需满 2 → i=5 右侧有 [1,2] 满足
+	// 对称窗口：严格大于左右各 2 根
+	highs := []float64{1, 3, 2, 5, 4, 2, 1, 8, 6, 7, 1}
+	// i=3(5): 左右 [3,2],[4,2] 均 <5 ✓；i=7(8): 左右 [2,1],[6,7] 均 <8 ✓
 	got := SwingHighs(highs, 2)
-	if len(got) != 2 || got[0] != 3 || got[1] != 5 {
-		t.Fatalf("expect [3 5], got %v", got)
+	if len(got) != 2 || got[0] != 3 || got[1] != 7 {
+		t.Fatalf("expect [3 7], got %v", got)
 	}
-	// 最右侧 2 根不参与（右窗不足）
-	highs2 := []float64{1, 3, 2, 5, 4, 6, 1, 9, 1}
-	got2 := SwingHighs(highs2, 2)
-	for _, i := range got2 {
-		if i == 7 {
-			t.Fatalf("i=7 右窗不足 2，不应成为 swing high")
+	// 右侧有更高者则排除（i=3 的右窗含 6>5）
+	highs2 := []float64{1, 3, 2, 5, 4, 6, 1, 2, 1}
+	if got2 := SwingHighs(highs2, 2); len(got2) != 1 || got2[0] != 5 {
+		t.Fatalf("对称语义应排除 i=3, expect [5], got %v", got2)
+	}
+	// 最右侧 2 根不参与（右窗不足，无未来函数）
+	highs3 := []float64{1, 3, 2, 5, 4, 6, 1, 9, 1}
+	for _, i := range SwingHighs(highs3, 2) {
+		if i >= len(highs3)-2 {
+			t.Fatalf("i=%d 右窗不足 2，不应成为 swing high", i)
 		}
 	}
 }

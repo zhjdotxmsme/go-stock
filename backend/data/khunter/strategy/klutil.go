@@ -91,14 +91,16 @@ func PctChange(bars []models.KLineBar, i int) float64 {
 	return (bars[i].Close - prev) / prev
 }
 
-// SwingHighs 返回正序下标：high[i] 严格大于左侧各 leftRight 根的最高价，
-// 且右侧至少还有 leftRight 根数据（右窗不足的下标不参与，无未来函数）。
-// 注意：仅约束左窗——右侧出现更高高点不否决当前摆动点（与 klutil_test.go 的断言一致）。
+// SwingHighs 返回正序下标：high[i] 严格大于左右各 leftRight 根的最高价（对称分形，对齐 KHunter）。
+// 右侧不足 leftRight 根的下标不参与（无未来函数）。
 func SwingHighs(highs []float64, leftRight int) []int {
 	var out []int
 	for i := leftRight; i+leftRight < len(highs); i++ {
 		ok := true
-		for j := i - leftRight; j < i; j++ {
+		for j := i - leftRight; j <= i+leftRight; j++ {
+			if j == i {
+				continue
+			}
 			if highs[j] >= highs[i] {
 				ok = false
 				break
