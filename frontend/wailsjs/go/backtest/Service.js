@@ -26,6 +26,10 @@ export function GetSyncProgress() {
   return window['go']['backtest']['Service']['GetSyncProgress']();
 }
 
+export function ResumePendingSyncTasks() {
+  return window['go']['backtest']['Service']['ResumePendingSyncTasks']();
+}
+
 export function RunBatchBacktest(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
   return window['go']['backtest']['Service']['RunBatchBacktest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
 }

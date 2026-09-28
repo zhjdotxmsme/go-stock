@@ -11,15 +11,15 @@ export function GetDailyPicks(arg1:models.DailyPickQuery):Promise<models.DailyPi
 
 export function GetDateRange():Promise<string|string>;
 
-export function GetKronosFactorStats():Promise<Record<string, any>>;
+export function GetKronosFactorStats():Promise<data.KronosFactorStats>;
 
 export function GetLLMRankingEnabled():Promise<boolean>;
-
-export function GetPickStrategies():Promise<Array<data.PickStrategyInfo>>;
 
 export function GetLatestPicks(arg1:number):Promise<Array<models.DailyPick>>;
 
 export function GetLatestUnreviewedPicks():Promise<Array<models.DailyPick>>;
+
+export function GetPickStrategies():Promise<Array<data.PickStrategyInfo>>;
 
 export function GetReviewSummary(arg1:string):Promise<Record<string, any>>;
 

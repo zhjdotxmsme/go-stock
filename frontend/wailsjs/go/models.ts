@@ -646,22 +646,6 @@ export namespace data {
 	        this.date = source["date"];
 	    }
 	}
-	export class PickStrategyInfo {
-	    code: string;
-	    name: string;
-	    description: string;
-
-	    static createFrom(source: any = {}) {
-	        return new PickStrategyInfo(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.code = source["code"];
-	        this.name = source["name"];
-	        this.description = source["description"];
-	    }
-	}
 	export class FuturesContractPanel {
 	    code: string;
 	    name: string;
@@ -1513,44 +1497,6 @@ export namespace data {
 		    return a;
 		}
 	}
-	export class KronosBacktestResult {
-	    asOfDate: string;
-	    prediction?: KronosPrediction;
-	    actualBars: KronosBar[];
-	    directionHit: boolean;
-	    meanAbsErrPct: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new KronosBacktestResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.asOfDate = source["asOfDate"];
-	        this.prediction = this.convertValues(source["prediction"], KronosPrediction);
-	        this.actualBars = this.convertValues(source["actualBars"], KronosBar);
-	        this.directionHit = source["directionHit"];
-	        this.meanAbsErrPct = source["meanAbsErrPct"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 	export class TradingAiAdvice {
 	    stockCode: string;
 	    stockName: string;
@@ -1936,8 +1882,161 @@ export namespace data {
 		}
 	}
 	
+	export class KronosBacktestResult {
+	    asOfDate: string;
+	    prediction?: KronosPrediction;
+	    actualBars: KronosBar[];
+	    directionHit: boolean;
+	    meanAbsErrPct: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KronosBacktestResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.asOfDate = source["asOfDate"];
+	        this.prediction = this.convertValues(source["prediction"], KronosPrediction);
+	        this.actualBars = this.convertValues(source["actualBars"], KronosBar);
+	        this.directionHit = source["directionHit"];
+	        this.meanAbsErrPct = source["meanAbsErrPct"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class KronosFactorStats {
+	    samples: number;
+	    hits: number;
+	    hitRate: number;
+	    avgPred: number;
+	    avgT1: number;
+	    currentW: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KronosFactorStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.samples = source["samples"];
+	        this.hits = source["hits"];
+	        this.hitRate = source["hitRate"];
+	        this.avgPred = source["avgPred"];
+	        this.avgT1 = source["avgT1"];
+	        this.currentW = source["currentW"];
+	    }
+	}
 	
 	
+	export class KronosRollingCut {
+	    date: string;
+	    predChange: number;
+	    direction: string;
+	    confidence: number;
+	    actualReturn: number;
+	    directionHit: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new KronosRollingCut(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.predChange = source["predChange"];
+	        this.direction = source["direction"];
+	        this.confidence = source["confidence"];
+	        this.actualReturn = source["actualReturn"];
+	        this.directionHit = source["directionHit"];
+	    }
+	}
+	export class KronosThresholdStat {
+	    thresholdPct: number;
+	    signals: number;
+	    wins: number;
+	    winRate: number;
+	    avgReturn: number;
+	    totalReturn: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KronosThresholdStat(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.thresholdPct = source["thresholdPct"];
+	        this.signals = source["signals"];
+	        this.wins = source["wins"];
+	        this.winRate = source["winRate"];
+	        this.avgReturn = source["avgReturn"];
+	        this.totalReturn = source["totalReturn"];
+	    }
+	}
+	export class KronosRollingReport {
+	    stockCode: string;
+	    cutpoints: number;
+	    failedCutpoints: number;
+	    directionHits: number;
+	    directionAcc: number;
+	    buyHoldReturn: number;
+	    cuts: KronosRollingCut[];
+	    thresholds: KronosThresholdStat[];
+	    bestThreshold: number;
+	    elapsedSec: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KronosRollingReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.stockCode = source["stockCode"];
+	        this.cutpoints = source["cutpoints"];
+	        this.failedCutpoints = source["failedCutpoints"];
+	        this.directionHits = source["directionHits"];
+	        this.directionAcc = source["directionAcc"];
+	        this.buyHoldReturn = source["buyHoldReturn"];
+	        this.cuts = this.convertValues(source["cuts"], KronosRollingCut);
+	        this.thresholds = this.convertValues(source["thresholds"], KronosThresholdStat);
+	        this.bestThreshold = source["bestThreshold"];
+	        this.elapsedSec = source["elapsedSec"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	export class MacroSnapshotEnhanced {
 	    dxy: number;
@@ -2007,6 +2106,22 @@ export namespace data {
 		}
 	}
 	
+	export class PickStrategyInfo {
+	    code: string;
+	    name: string;
+	    description: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PickStrategyInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	    }
+	}
 	
 	export class Sector {
 	    id: string;
@@ -2702,6 +2817,7 @@ export namespace data {
 	    Mindset: string;
 	    AiComment: string;
 	    recordedClosePrice: number;
+	    signalSnapshot: string;
 	    // Go type: time
 	    CreatedAt: any;
 	    // Go type: time
@@ -2729,6 +2845,7 @@ export namespace data {
 	        this.Mindset = source["Mindset"];
 	        this.AiComment = source["AiComment"];
 	        this.recordedClosePrice = source["recordedClosePrice"];
+	        this.signalSnapshot = source["signalSnapshot"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
 	    }
@@ -2769,6 +2886,7 @@ export namespace data {
 	    Mindset: string;
 	    AiComment: string;
 	    recordedClosePrice: number;
+	    signalSnapshot: string;
 	    // Go type: time
 	    CreatedAt: any;
 	    // Go type: time
@@ -2799,6 +2917,7 @@ export namespace data {
 	        this.Mindset = source["Mindset"];
 	        this.AiComment = source["AiComment"];
 	        this.recordedClosePrice = source["recordedClosePrice"];
+	        this.signalSnapshot = source["signalSnapshot"];
 	        this.CreatedAt = this.convertValues(source["CreatedAt"], null);
 	        this.UpdatedAt = this.convertValues(source["UpdatedAt"], null);
 	        this.closePrice = source["closePrice"];
@@ -4128,6 +4247,11 @@ export namespace models {
 	    return3d: number;
 	    return5d: number;
 	    strategyMult: number;
+	    kronosDirection: string;
+	    kronosChangePct: number;
+	    kronosConfidence: number;
+	    kronosScore: number;
+	    kronosHit: string;
 	    finalScore: number;
 	    screenScore: number;
 	    llmScore: number;
@@ -4250,6 +4374,11 @@ export namespace models {
 	        this.return3d = source["return3d"];
 	        this.return5d = source["return5d"];
 	        this.strategyMult = source["strategyMult"];
+	        this.kronosDirection = source["kronosDirection"];
+	        this.kronosChangePct = source["kronosChangePct"];
+	        this.kronosConfidence = source["kronosConfidence"];
+	        this.kronosScore = source["kronosScore"];
+	        this.kronosHit = source["kronosHit"];
 	        this.finalScore = source["finalScore"];
 	        this.screenScore = source["screenScore"];
 	        this.llmScore = source["llmScore"];
@@ -4456,6 +4585,211 @@ export namespace models {
 	        this.profitRate = source["profitRate"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class KhunterHunting {
+	    id: number;
+	    code: string;
+	    name: string;
+	    enterDate: string;
+	    enterScore: number;
+	    supportPrice: number;
+	    status: string;
+	    trackDays: number;
+	    // Go type: time
+	    createdAt: any;
+	    // Go type: time
+	    updatedAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new KhunterHunting(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.enterDate = source["enterDate"];
+	        this.enterScore = source["enterScore"];
+	        this.supportPrice = source["supportPrice"];
+	        this.status = source["status"];
+	        this.trackDays = source["trackDays"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class KhunterRiskLevel {
+	    id: number;
+	    date: string;
+	    var1d: number;
+	    var5d: number;
+	    level: string;
+	    positionLimit: number;
+	    scoreExtra: number;
+	    // Go type: time
+	    createdAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new KhunterRiskLevel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.date = source["date"];
+	        this.var1d = source["var1d"];
+	        this.var5d = source["var5d"];
+	        this.level = source["level"];
+	        this.positionLimit = source["positionLimit"];
+	        this.scoreExtra = source["scoreExtra"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class KhunterScore {
+	    id: number;
+	    code: string;
+	    scoreDate: string;
+	    technical: number;
+	    moneyflow: number;
+	    fundamental: number;
+	    sector: number;
+	    event: number;
+	    total: number;
+	    level: string;
+	    vetoReason: string;
+	    degraded: boolean;
+	    details: string;
+	    // Go type: time
+	    createdAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new KhunterScore(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.code = source["code"];
+	        this.scoreDate = source["scoreDate"];
+	        this.technical = source["technical"];
+	        this.moneyflow = source["moneyflow"];
+	        this.fundamental = source["fundamental"];
+	        this.sector = source["sector"];
+	        this.event = source["event"];
+	        this.total = source["total"];
+	        this.level = source["level"];
+	        this.vetoReason = source["vetoReason"];
+	        this.degraded = source["degraded"];
+	        this.details = source["details"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class KhunterSignal {
+	    id: number;
+	    code: string;
+	    name: string;
+	    strategy: string;
+	    signalDate: string;
+	    keyDate: string;
+	    keyDateType: string;
+	    close: number;
+	    volumeRatio: number;
+	    reasons: string;
+	    details: string;
+	    // Go type: time
+	    createdAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new KhunterSignal(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.strategy = source["strategy"];
+	        this.signalDate = source["signalDate"];
+	        this.keyDate = source["keyDate"];
+	        this.keyDateType = source["keyDateType"];
+	        this.close = source["close"];
+	        this.volumeRatio = source["volumeRatio"];
+	        this.reasons = source["reasons"];
+	        this.details = source["details"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -5300,211 +5634,6 @@ export namespace models {
 		    return a;
 		}
 	}
-	export class KhunterScore {
-	    id: number;
-	    code: string;
-	    scoreDate: string;
-	    technical: number;
-	    moneyflow: number;
-	    fundamental: number;
-	    sector: number;
-	    event: number;
-	    total: number;
-	    level: string;
-	    vetoReason: string;
-	    degraded: boolean;
-	    details: string;
-	    // Go type: time
-	    createdAt: any;
-
-	    static createFrom(source: any = {}) {
-	        return new KhunterScore(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.code = source["code"];
-	        this.scoreDate = source["scoreDate"];
-	        this.technical = source["technical"];
-	        this.moneyflow = source["moneyflow"];
-	        this.fundamental = source["fundamental"];
-	        this.sector = source["sector"];
-	        this.event = source["event"];
-	        this.total = source["total"];
-	        this.level = source["level"];
-	        this.vetoReason = source["vetoReason"];
-	        this.degraded = source["degraded"];
-	        this.details = source["details"];
-	        this.createdAt = this.convertValues(source["createdAt"], null);
-	    }
-
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class KhunterSignal {
-	    id: number;
-	    code: string;
-	    name: string;
-	    strategy: string;
-	    signalDate: string;
-	    keyDate: string;
-	    keyDateType: string;
-	    close: number;
-	    volumeRatio: number;
-	    reasons: string;
-	    details: string;
-	    // Go type: time
-	    createdAt: any;
-
-	    static createFrom(source: any = {}) {
-	        return new KhunterSignal(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.code = source["code"];
-	        this.name = source["name"];
-	        this.strategy = source["strategy"];
-	        this.signalDate = source["signalDate"];
-	        this.keyDate = source["keyDate"];
-	        this.keyDateType = source["keyDateType"];
-	        this.close = source["close"];
-	        this.volumeRatio = source["volumeRatio"];
-	        this.reasons = source["reasons"];
-	        this.details = source["details"];
-	        this.createdAt = this.convertValues(source["createdAt"], null);
-	    }
-
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class KhunterHunting {
-	    id: number;
-	    code: string;
-	    name: string;
-	    enterDate: string;
-	    enterScore: number;
-	    supportPrice: number;
-	    status: string;
-	    trackDays: number;
-	    // Go type: time
-	    createdAt: any;
-	    // Go type: time
-	    updatedAt: any;
-
-	    static createFrom(source: any = {}) {
-	        return new KhunterHunting(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.code = source["code"];
-	        this.name = source["name"];
-	        this.enterDate = source["enterDate"];
-	        this.enterScore = source["enterScore"];
-	        this.supportPrice = source["supportPrice"];
-	        this.status = source["status"];
-	        this.trackDays = source["trackDays"];
-	        this.createdAt = this.convertValues(source["createdAt"], null);
-	        this.updatedAt = this.convertValues(source["updatedAt"], null);
-	    }
-
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class KhunterRiskLevel {
-	    id: number;
-	    date: string;
-	    var1d: number;
-	    var5d: number;
-	    level: string;
-	    positionLimit: number;
-	    scoreExtra: number;
-	    // Go type: time
-	    createdAt: any;
-
-	    static createFrom(source: any = {}) {
-	        return new KhunterRiskLevel(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.date = source["date"];
-	        this.var1d = source["var1d"];
-	        this.var5d = source["var5d"];
-	        this.level = source["level"];
-	        this.positionLimit = source["positionLimit"];
-	        this.scoreExtra = source["scoreExtra"];
-	        this.createdAt = this.convertValues(source["createdAt"], null);
-	    }
-
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
 
 }
 
@@ -5546,6 +5675,51 @@ export namespace service {
 	        this.entryPrice = source["entryPrice"];
 	        this.exitPrice = source["exitPrice"];
 	        this.slippageWarning = source["slippageWarning"];
+	    }
+	}
+
+}
+
+export namespace signal {
+	
+	export class SignalDef {
+	    key: string;
+	    name: string;
+	    category: string;
+	    direction: string;
+	    tip: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SignalDef(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.name = source["name"];
+	        this.category = source["category"];
+	        this.direction = source["direction"];
+	        this.tip = source["tip"];
+	    }
+	}
+	export class SignalMatch {
+	    key: string;
+	    name: string;
+	    category: string;
+	    direction: string;
+	    tip: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SignalMatch(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.name = source["name"];
+	        this.category = source["category"];
+	        this.direction = source["direction"];
+	        this.tip = source["tip"];
 	    }
 	}
 

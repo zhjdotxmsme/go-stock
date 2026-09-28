@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>狩猎场系统设计文档 — KHunter 移植版</title>
+<style>
+  :root {
+    --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; --text: #1e293b;
+    --muted: #64748b; --border: #e2e8f0; --ok: #16a34a; --warn: #d97706; --danger: #dc2626;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+  .container { max-width: 1080px; margin: 0 auto; padding: 32px 24px 80px; }
+  header.hero { background: linear-gradient(135deg, #1e3a8a, #2563eb); color: #fff; border-radius: 16px; padding: 40px 36px; margin-bottom: 32px; }
+  header.hero h1 { font-size: 28px; margin-bottom: 8px; }
+  header.hero p { opacity: .9; }
+  .badges { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: 3px 14px; font-size: 13px; }
+  h2 { font-size: 21px; margin: 40px 0 16px; padding-left: 12px; border-left: 4px solid var(--primary); }
+  h3 { font-size: 16px; margin: 24px 0 10px; color: var(--primary); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 12px 0; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #eff6ff; font-weight: 600; }
+  code { background: #f1f5f9; border-radius: 4px; padding: 1px 6px; font-size: 13px; color: #be185d; }
+  pre { background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 18px 20px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+  pre code { background: none; color: inherit; padding: 0; }
+  .decision { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px 20px; margin-bottom: 12px; }
+  .decision b { color: var(--ok); }
+  .warn-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 16px 20px; margin: 12px 0; }
+  .warn-box b { color: var(--warn); }
+  .danger-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px 20px; margin: 12px 0; }
+  .danger-box b { color: var(--danger); }
+  ul, ol { padding-left: 22px; margin: 8px 0; }
+  .toc { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 24px; }
+  .toc a { color: var(--primary); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  .tag { display: inline-block; border-radius: 4px; padding: 0 8px; font-size: 12px; font-weight: 600; }
+  .tag.ok { background: #dcfce7; color: #166534; }
+  .tag.warn { background: #fef9c3; color: #854d0e; }
+  .muted { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header class="hero">
+  <h1>狩猎场系统设计文档（KHunter 移植版）</h1>
+  <p>go-stock 新增并行量化体系：5 个 K 线形态策略 + 五维评分 + VaR 风控 + 半凯利仓位 + 回测验证</p>
+  <div class="badges">
+    <span class="badge">日期 2026-09-25</span>
+    <span class="badge">状态 已通过设计评审</span>
+    <span class="badge">参考 github.com/ling-0729/KHunter</span>
+  </div>
+</header>
+
+<nav class="toc card">
+  <b>目录</b>
+  <ol>
+    <li><a href="#decisions">已确认的关键决策</a></li>
+    <li><a href="#arch">总体架构与代码结构</a></li>
+    <li><a href="#model">数据模型（新表）</a></li>
+    <li><a href="#strategies">形态策略规格（5 个）</a></li>
+    <li><a href="#scoring">五维评分系统</a></li>
+    <li><a href="#risk">风控与仓位（VaR / 四档 / 半凯利）</a></li>
+    <li><a href="#pipeline">每日流水线与调度</a></li>
+    <li><a href="#backtest">回测适配</a></li>
+    <li><a href="#frontend">前端页面</a></li>
+    <li><a href="#testing">错误处理与测试</a></li>
+    <li><a href="#traps">移植陷阱清单（以 KHunter 代码实际行为为准）</a></li>
+  </ol>
+</nav>
+
+<h2 id="decisions">1. 已确认的关键决策</h2>
+<div class="decision"><b>D1 并行体系：</b>新建 <code>backend/data/khunter/</code> 独立模块，不改动现有三套策略/评分体系（strategy_*.go、daily_pick_engine、agent/strategy/scoring）。表统一 <code>khunter_</code> 前缀。</div>
+<div class="decision"><b>D2 全量移植：</b>范围包含五维评分 + VaR 风控 + 凯利仓位 + 回测，一次到位。</div>
+<div class="decision"><b>D3 回测复用：</b>复用现有 <code>backend/data/backtest/</code> 引擎，通过适配层翻译信号；凯利仓位作为引擎的仓位策略选项注入。KHunter 的加仓取大者/亏损冷却/PTrade 实盘规则不移植。</div>
+<div class="decision"><b>D4 完整前端：</b>新增"狩猎场"路由页，含评分排行（雷达图）、策略信号、回测结果、风险看板 4 个 tab，Vue3 + Naive UI + ECharts。</div>
+<div class="decision"><b>D5 资金流历史落库：</b>新增 <code>khunter_money_flow_daily</code> 表，避免全市场评分时逐股实时拉东财接口被限流。</div>
+<div class="decision"><b>D6 半凯利：</b>采用 f*/2，clamp 到 [0, 15%]（KHunter 代码实际是全凯利 clamp 30%，注释声称半凯利系错误）。</div>
+<div class="decision"><b>D7 漏斗式评分：</b>先跑形态策略扫全市场（纯本地 K 线计算），再只对候选池（预计几十只）做五维评分。交易日 17:00 自动执行，支持手动触发。</div>
+
+<h2 id="arch">2. 总体架构与代码结构</h2>
+<div class="card">
+<pre><code>backend/data/khunter/
+├── strategy/               # 5 个形态策略
+│   ├── strategy.go         # Strategy 接口 + 注册表 + 统一信号结构 Signal
+│   ├── immortal_guidance.go    # 仙人指路
+│   ├── w_bottom.go             # W底
+│   ├── limit_up_pullback.go    # 涨停回马枪
+│   ├── bottom_inflection.go    # 底部趋势拐点
+│   └── uptrend_dip_buy.go      # 主升低吸
+├── scorer/                 # 五维评分
+│   ├── scorer.go           # 综合引擎：加权 + 一票否决 + 六档评级
+│   ├── technical.go        # 技术面 = Σ 命中策略权重
+│   ├── moneyflow.go        # 资金面
+│   ├── fundamental.go      # 基本面
+
+<h2 id="model">3. 数据模型（新表，统一 khunter_ 前缀）</h2>
+<div class="card">
+<table>
+  <tr><th>表</th><th>关键字段</th><th>说明</th></tr>
+  <tr><td><code>khunter_signals</code></td><td>id, code, strategy, signal_date, key_date, key_date_type, close, volume_ratio, reasons(JSON), pattern_details(JSON), created_at</td><td>策略信号，统一信号结构落库</td></tr>
+  <tr><td><code>khunter_scores</code></td><td>id, code, score_date, technical, moneyflow, fundamental, sector, event, total, level, veto_reason, degraded, details(JSON), created_at</td><td>五维评分；degraded 标记某维度数据缺失按中性分处理</td></tr>
+  <tr><td><code>khunter_hunting</code></td><td>id, code, name, enter_date, enter_score, support_price, status(追踪中/已移除), track_days, updated_at</td><td>狩猎场入选与追踪</td></tr>
+  <tr><td><code>khunter_money_flow_daily</code></td><td>code, date, main_net, super_lg_net, lg_net, md_net, sm_net, 各档占比, created_at；唯一索引 (code, date)</td><td>资金流历史落库（决策 D5）</td></tr>
+  <tr><td><code>khunter_risk_level</code></td><td>date, var_
+│   ├── sector.go           # 板块强度
+│   └── event.go            # 事件驱动
+├── risk/
+│   ├── var.go              # hybrid VaR = 0.4×历史分位 + 0.6×EWMA(λ=0.94)
+│   ├── level.go            # 四档风险 → 仓位上限 / 选股分加成
+│   └── kelly.go            # 半凯利仓位
+├── pipeline.go             # 每日流水线编排
+├── backtest_adapter.go     # 对接现有 data/backtest 引擎（唯一对外依赖）
+├── repo.go                 # GORM 落库
+└── service.go              # 对外门面，handler 只调它</code></pre>
+<ul>
+  <li><b>K 线方向约定</b>：统一使用 go-stock 现有<b>正序</b>存储（KHunter 为倒序，移植时所有索引逻辑需换算）。"前 N 日均量"= 不含当日前 N 日均值，对齐 KHunter 的 <code>shift(1)</code> 口径。</li>
+  <li><b>指标复用</b>：MA/EMA/MACD/KDJ/RSI/布林复用现有 <code>backend/data/indicator/</code> 全序列指标库，不重复实现。</li>
+  <li><b>数据获取</b>：K 线走 <code>kline_bars</code> 本地表（缺失时走 <code>FetchKLineWithFallback</code> 四源降级补齐）；资金流走东财 fflow（<code>GetStockHistoryMoneyData</code>）；基本面走 <code>f10_data_api.go</code>；板块归属走 <code>AllStockInfo</code> + 板块资金流表。</li>
+</ul>
+</div>1d, var_5d, level, position_limit, score_extra, created_at</td><td>每日大盘风险档位</td></tr>
+  <tr><td><code>khunter_events</code></td><td>id, code, event_type, event_date, score, expire_date, source, created_at</td><td>事件打标结果（规则版分类器输出）</td></tr>
+</table>
+<p class="muted">迁移方式遵循项目现有惯例：GORM AutoMigrate，在 khunter 包初始化时执行。</p>
+</div>
+
+<h2 id="strategies">4. 形态策略规格（5 个）</h2>
+<p class="muted">以下参数均取自 KHunter 代码实际生效值（非注释）。所有策略过滤 ST/退市股；数据长度不足直接出局。</p>
+
+<div class="card">
+<h3>4.1 仙人指路 ImmortalGuidance（数据 ≥30 根，技术权重 70）</h3>
+<ul>
+  <li><b>信号日（T-1 ~ T-3 内寻找）</b>：冲高幅度 <code>(high−昨收)/昨收 ≥ 8%</code>；上影线/high ≥ 4%（阳线：high−close，阴线：high−open，不要求收阳）；量比 ≥ 1.5（对前 5 日均量，不含当日）；MA5 &gt; MA10 &gt; MA20 多头排列</li>
+  <li><b>趋势过滤</b>：最近 20 日收盘价 OLS 线性回归，slope &gt; 0 且 R² ≥ 0.5</li>
+  <li><b>反包确认（今日）</b>：close ≥ MA5 且 close ≥ 上影线 50% 位置（阳线 (close+high)/2，阴线 (open+high)/2）；信号日至今日之间不得有提前反包（中间某日已反包则信号作废）</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>4.2 W 底 WBottom（数据 ≥60 根）</h3>
+<ol>
+  <li><b>预检</b>：近 5 日存在涨幅 &gt; 5% 的交易日；存在"放量确认日"（涨幅 &gt; 8% 且量 ≥ 前5日均量 × 1.2）</li>
+  <li><b>形态</b>：排除最新 5 日，在 40 日窗口找局部低点（5 日 LLV，容差 1e-6）；取最近两个低点 L1/L2，价差 ≤ 3%，间隔 &gt; 10 个交易日；颈线 H = 两底间最高价，要求 H ≥ L1 × 1.1</li>
+  <li><b>突破</b>：放量确认日 close ≥ H × 1.01，且其前一日 close &lt; H</li>
+  <li><b>趋势</b>：MA10 &gt; MA30</li>
+  <li><b>假底过滤</b>：L1 之前 30 日内最高价 &gt; L1 × 1.2（确有 ≥20% 深跌）；突破后至今所有 close ≥ H × 0.98</li>
+</ol>
+</div>
+
+<div class="card">
+<h3>4.3 涨停回马枪 LimitUpPullback</h3>
+<ul>
+  <li>近 6 日内有涨幅 ≥ 9.5% 的涨停日，当日量比（对前5日均量）≥ 2.2</li>
+  <li><b>回调期</b>（涨停日至今，1~9 天）：振幅 ≤ 15%；所有收盘 ∈ 涨停收盘 × [0.95, 1.05]；至少一日收盘低于涨停收盘；至少一日量 ≤ 涨停日量 × 0.5（缩量）</li>
+  <li><b>今日</b>：涨幅 &gt; 2%，量 ≥ 昨日 × 1.5，close &gt; MA5</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>4.4 底部趋势拐点 BottomInflection（数据 ≥120 根）</h3>
+<ul>
+  <li><b>锚点</b>（倒序第 3~5 根中的放量长阳）：涨幅 &gt; 8%；量比（对前10日均量）≥ 2.5；close 距 120 日最低价 ≤ 15%；锚点后至今所有 close ≥ 锚点开盘价</li>
+  <li><b>深跌确认</b>：120 日窗口内先出现最高价、后出现最低价，(最高−最低)/最高 &gt; 45%</li>
+  <li><b>MACD 底背离</b>：锚点前 20 日分前后两半（各 10 日），后半段 low 创新低 且 后半段 MACD 柱 &gt; 前半段（不创新低）。MACD 参数 12/26/9，EMA 用递推式 <code>ema = α·x + (1−α)·prev</code>（pandas adjust=False 口径）</li>
+</ul>
+</div>
+
+<div class="card">
+<h3>4.5 主升低吸 MainUptrendDipBuy（数据 ≥106 根）</h3>
+<ul>
+  <li><b>一拉</b>：最近 60 日窗口内按高度从高到低扫 swing high（严格大于左右各 2 根），取首个满足 (H−L)/L ∈ [30%, 100%] 的 H，L = H 之前 45 日最低价</li>
+  <li><b>二调</b>：H 之后最低点 P：回撤 (H−P)/H ≥ 18%，且 &lt; 一拉涨幅 − 8%，且 P &gt; L</li>
+  <li><b>R</b>：H 之后、今日之前最后一个 swing high，且 R &lt; H</li>
+  <li><b>今日突破</b>：阳线实体 (C−O)/O ≥ 5%；C &gt; R 且 (C−R)/R ≤ 2%（贴紧不追高）；量比 ≥ 1.8；C &gt; MA5</li>
+</ul>
+</div>
+
+<div class="warn-box"><b>不移植项</b>：龙头策略（依赖 tushare 涨停池：封板时间/炸板/连板，go-stock 无对等数据）；KHunter 策略中的死代码参数（仙人指路 body_length/volume_ratio_max、W底 KDJ/知行线展示指标）不移植。</div>
+
+<h2 id="scoring">5. 五维评分系统</h2>
+<div class="card">
+<p><b>综合分</b> = 技术×0.35 + 资金×0.35 + 基本面×0.10 + 板块×0.10 + 事件×0.10。任一维度触发一票否决 → 总分直接 = −100（淘汰）。</p>
+<table>
+  <tr><th>等级</th><th>分数区间</th></tr>
+  <tr><td>强烈推荐</td><td>≥ 80</td></tr>
+  <tr><td>推荐</td><td>60 ~ 79</td></tr>
+  <tr><td>中性</td><td>40 ~ 59</td></tr>
+  <tr><td>谨慎</td><td>20 ~ 39</td></tr>
+  <tr><td>回避</td><td>&lt; 20</td></tr>
+  <tr><td>淘汰</td><td>= −100（veto）</td></tr>
+</table>
+
+<h3>5.1 技术面（35%）</h3>
+<p>得分 = Σ 命中策略权重，权重表存 JSON 配置（<code>khunter_strategy_weights.json</code>）支持热加载：底部趋势拐点/趋势加速/阻力位突破/W底/多金叉/启明星/仙人指路/2560/主升低吸等 +50，超跌反弹/低位九转 +60，龙头 +90（预留，策略未移植时不出现），M头 −80、多死叉 −50。<b>否决</b>：M头 + 多死叉同时命中 → −100（一期未移植这两个负向策略，否决规则保留配置位）。</p>
+
+<h3>5.2 资金面（35%）</h3>
+<p>得分 = 主力净流入×0.55 + 大单占比×0.10 + 北向×0.10 + 方向×0.25（北向数据 go-stock 暂无对等源，一期该子项固定给中性分，权重按比例暂并入主力净流入，配置化预留）。</p>
+<ul>
+  <li>主力净流入（5 日累计）：&gt;1亿→100；&gt;5000万→80；&gt;100万→60；&gt;0→40；=0→30；&lt;0→−20</li>
+  <li>大单占比（近 5 日逐日累加）：&gt;5%→+40；&gt;1%→+20；&gt;0→+10；&lt;0→−30</li>
+  <li>方向：大单&gt;0 且小单&lt;0（吸筹）→100；大单&gt;0 且小单≥0→60；大单&lt;0 且小单&gt;0→−100（待否决）；其他→0</li>
+  <li><b>否决</b>：① 5日主力净额 &lt; −1亿 且 大单净流入占比（5日均值）&lt; −5%；② 出货信号：大单净流出占比 &gt; 1% 且小单净流入占比 &gt; 1%（5日均值）</li>
+</ul>
+
+<h3>5.3 基本面（10%）</h3>
+<p>得分 = 50 + 净利润同比（&gt;30%:+20 / 0~30%:+10 / &lt;0:−20 / 缺失:0）+ ROE（&gt;15%:+20 / 5~15%:+10 / 0~5%:0 / &lt;0:−20）+ 经营现金流/收入（&gt;1:+20 / 0~1:+10 / &lt;0:−20），截断 [−100, 100]。取数严格用 end_date ≤ 评分日的最新一期（防未来函数）。<b>否决</b>：净利润同比 &lt; −50%，或 ROE &lt; −5%。数据源：东财 F10。</p>
+
+<h3>5.4 板块强度（10%）</h3>
+<p>板块得分 = 50 + 当日涨幅进全市场前 20（+50）+ 板块当日资金净流入 &gt; 1亿（+50）/ ≤ −1亿（−50）；个股得分 = 其所属行业/概念板块得分的 MAX。数据源：<code>AllStockInfo</code> 归属 + <code>bk_fund_flow</code>/<code>concept_fund_flow</code> 落库表。</p>
+
+<h3>5.5 事件驱动（10%）</h3>
+<p>得分 = 50 + Σ 事件分，截断 [−100, 100]。一期实现<b>规则版分类器</b>，数据源为现有公告（StockNotice）/龙虎榜/大宗交易/减持接口：</p>
+<table>
+  <tr><th>事件</th><th>分值</th><th>有效期</th></tr>
+  <tr><td>业绩预增（增幅&gt;50%）</td><td>+20</td><td>20 天</td></tr>
+  <tr><td>业绩略增/预增≤50%</td><td>+10</td><td>20 天</td></tr>
+  <tr><td>股东增持</td><td>+20</td><td>50 天</td></tr>
+  <tr><td>股票回购</td><td>+10</td><td>50 天</td></tr>
+  <tr><td>龙虎榜机构净买入</td><td>+10</td><td>5 天</td></tr>
+  <tr><td>业绩预减/首亏</td><td>−20</td><td>20 天</td></tr>
+  <tr><td>业绩略减</td><td>−10</td><td>20 天</td></tr>
+  <tr><td>股东减持</td><td>−30</td><td>50 天</td></tr>
+  <tr><td>异常波动公告</td><td>−15</td><td>10 天</td></tr>
+  <tr><td>大宗交易折价&gt;5%</td><td>−10</td><td>5 天</td></tr>
+  <tr><td>龙虎榜净卖出</td><td>−10</td><td>5 天</td></tr>
+</table>
+<p><b>否决</b>：① ST/*ST；② 业绩暴雷（预减幅度 &lt; −80%，或首亏且净利 &lt; 0）；③ 大股东减持（控股股东/实际控制人/5%以上股东）。LLM 打标作为二期增强预留接口。</p>
+</div>
+
+<h2 id="risk">6. 风控与仓位</h2>
+<div class="grid2">
+<div class="card">
+<h3>VaR（risk/var.go）</h3>
+<ul>
+  <li>对<b>沪深300</b>日收益率序列（窗口 500 日，最少 100 日，|r| ≤ 20% 校验）</li>
+  <li>hybrid = 0.4 × 历史分位 + 0.6 × EWMA（λ=0.94，加权分位 + 线性插值），99% 置信度</li>
+  <li>5 日 VaR = 单日 × √5；ES = 所有 &lt; VaR 的收益率均值</li>
+  <li>数据不足时按"注意"档保守处理</li>
+</ul>
+</div>
+<div class="card">
+<h3>风险四档（risk/level.go）</h3>
+<table>
+  <tr><th>等级</th><th>VaR(1d)</th><th>仓位上限</th><th>选股分加成</th></tr>
+  <tr><td>正常</td><td>&gt; −3%</td><td>100%</td><td>+0</td></tr>
+  <tr><td>注意</td><td>−3% ~ −5%</td><td>70%</td><td>+5</td></tr>
+  <tr><td>危险</td><td>−5% ~ −8%</td><td>40%</td><td>+15</td></tr>
+  <tr><td>崩溃</td><td>≤ −8%</td><td>0%（清仓信号）</td><td>+999</td></tr>
+</table>
+</div>
+</div>
+<div class="card">
+<h3>半凯利仓位（risk/kelly.go）</h3>
+<p><code>f* = (p×b − q) / b</code>（p=胜率，q=1−p，b=盈亏比），取 <code>f*/2</code>，clamp 到 [0, 15%]；建仓金额 = 总资金 × f*/2，向下取整 100 股整数倍，&lt; 最低金额（100 元）→ 0。每策略独立配置 p/b（初始 p=0.40、b=1.5 → 仓位 ≈3.3%），回测跑出实测胜率/盈亏比后回填。单日买入数量上限、止损倍数随风险档位缩放。</p>
+</div>
+
+<h2 id="pipeline">7. 每日流水线与调度</h2>
+<div class="card">
+<p>交易日 17:00 自动执行（复用项目现有定时任务机制），支持前端"立即运行"手动触发：</p>
+<pre><code>1. K线增量更新（复用现有同步逻辑）
+2. 5 个形态策略并行扫描全市场（纯本地 kline_bars，goroutine 并发）
+3. 汇总候选池（去重，预计几十只），信号落 khunter_signals
+4. 候选池数据预取：资金流历史落库 → 基本面 F10 → 板块 → 事件打标
+   （信号量限流，控制东财接口节奏；单股失败按 degraded 处理）
+5. 候选股五维评分 → 落 khunter_scores
+6. 计算大盘风险档位 → 落 khunter_risk_level
+7. 狩猎场筛选：总分 ≥ (60 + 风险分加成) 且 现价 ≥ 支撑位 × 0.98 → 落 khunter_hunting
+8. 已在狩猎场的股票每日更新追踪（track_days +1，破位移除）</code></pre>
+<p>支撑位计算一期采用简单规则：近 20 根收盘价的最低值（KHunter 的支撑位计算器较复杂，二期可细化）。</p>
+</div>
+
+<h2 id="backtest">8. 回测适配</h2>
+<div class="card">
+<ul>
+  <li><code>backtest_adapter.go</code> 将 khunter 的 <code>Signal</code> 结构翻译为现有 <code>backend/data/backtest/</code> 引擎的输入格式，是该引擎的唯一对接点。</li>
+  <li>凯利仓位作为现有引擎的仓位策略选项注入（不修改引擎核心，若引擎接口不支持自定义仓位策略，则先以固定仓位跑信号级验证，凯利仅用于前端展示建议仓位）。</li>
+  <li>回测产出：每策略的胜率、盈亏比、收益率、最大回撤 → 回填凯利配置的 p/b。</li>
+  <li>KHunter 的加仓取大者、亏损冷却 21/250 交易日、PTrade 实盘规则<b>不移植</b>。</li>
+</ul>
+</div>
+
+<h2 id="frontend">9. 前端页面</h2>
+<div class="card">
+<p>新路由"狩猎场"，Vue3 + Naive UI + ECharts，4 个 tab：</p>
+<table>
+  <tr><th>Tab</th><th>内容</th></tr>
+  <tr><td>评分排行</td><td>当日候选股五维评分表（总分/等级/各维度分），行展开显示五维雷达图 + 命中策略 + 否决原因 + degraded 标记</td></tr>
+  <tr><td>策略信号</td><td>按策略分组展示信号，含入选理由、关键日期、K线穿透（复用现有K线组件）</td></tr>
+  <tr><td>回测结果</td><td>策略回测指标表 + 收益曲线</td></tr>
+  <tr><td>风险看板</td><td>当前风险档位卡片、VaR 历史曲线、各策略凯利建议仓位</td></tr>
+</table>
+<p>页头放流水线状态（最后运行时间/结果）与"立即运行"按钮。后端通过 <code>khunter_handler.go</code>（Wails 绑定）暴露：查询评分/信号/狩猎场/风险、手动触发流水线、触发回测。</p>
+</div>
+
+<h2 id="testing">10. 错误处理与测试</h2>
+<div class="card">
+<ul>
+  <li><b>降级</b>：K 线走现有四源降级；资金流/基本面/事件拉取失败时该维度按中性分处理并标记 <code>degraded=true</code>，流水线不中断。</li>
+  <li><b>单股隔离</b>：候选池中单股评分失败仅记录日志跳过，不影响其他股票。</li>
+  <li><b>策略测试</b>：每个策略表驱动测试 —— 构造 K 线正例（命中）≥1、反例（不命中）≥1、边界（数据长度不足/停牌无当日K线）。</li>
+  <li><b>评分测试</b>：权重计算、六档评级边界、一票否决优先级（veto 覆盖正常加权）。</li>
+  <li><b>风控测试</b>：VaR 三种方法数值对照、四档边界、半凯利 clamp 与取整。</li>
+  <li><b>回归基准</b>：可用 KHunter 对同一只股票同一日期的选股结果做人工抽查比对（两侧数据源不同，允许因复权/数据差异导致的个别不一致，重点核对逻辑口径）。</li>
+</ul>
+</div>
+
+<h2 id="traps">11. 移植陷阱清单（以 KHunter 代码实际行为为准）</h2>
+<div class="danger-box">
+<ol>
+  <li><b>K 线方向</b>：KHunter 全程倒序（index 0 = 最新），go-stock 正序。所有 <code>iloc[0]</code>/<code>iloc[-1]</code>、滚动窗口方向需逐处换算。</li>
+  <li><b>均量口径</b>：所有"前 N 日均量"均为 <code>shift(1)</code> 后 rolling —— <b>不含当日</b>。</li>
+  <li><b>EMA/MACD</b>：pandas <code>ewm(adjust=False)</code> 递推式，α=2/(span+1)，初值为序列首个值；与 go-stock 现有指标库实现对表后再用。</li>
+  <li><b>注释不可信</b>：W底放量倍数代码 1.2（注释 1.5）；资金面子权重代码 0.55/0.10/0.10/0.25（注释 35/20/20/25）；五维权重代码 35/35/10/10/10（docstring 25/30/15/15/15）；板块排名实际只看当天（注释"近5日"）；凯利实际是全凯利（注释"半凯利"）。本设计全部按代码行为。</li>
+  <li><b>浮点比较</b>：局部低点判定用容差 1e-6，Go 侧同样处理，避免 float64 直接 ==。</li>
+  <li><b>许可证</b>：KHunter 在 GitHub 上许可证为 NOASSERTION（README 自称 MIT）。移植算法思路与参数设计，不复制源码文本。</li>
+</ol>
+</div>
+
+</div>
+</body>
+</html>

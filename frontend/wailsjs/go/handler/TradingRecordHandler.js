@@ -18,6 +18,10 @@ export function AnalyzeHoldingsDeep(arg1, arg2) {
   return window['go']['handler']['TradingRecordHandler']['AnalyzeHoldingsDeep'](arg1, arg2);
 }
 
+export function BacktestKLine(arg1, arg2, arg3) {
+  return window['go']['handler']['TradingRecordHandler']['BacktestKLine'](arg1, arg2, arg3);
+}
+
 export function CheckFrequentTrading(arg1) {
   return window['go']['handler']['TradingRecordHandler']['CheckFrequentTrading'](arg1);
 }
@@ -58,24 +62,24 @@ export function GetKronosStatus() {
   return window['go']['handler']['TradingRecordHandler']['GetKronosStatus']();
 }
 
-export function GetStockTechnicalIndicators(arg1) {
-  return window['go']['handler']['TradingRecordHandler']['GetStockTechnicalIndicators'](arg1);
+export function GetSignalRegistry() {
+  return window['go']['handler']['TradingRecordHandler']['GetSignalRegistry']();
 }
 
 export function GetStockSignals(arg1) {
   return window['go']['handler']['TradingRecordHandler']['GetStockSignals'](arg1);
 }
 
-export function GetStocksSignals(arg1) {
-  return window['go']['handler']['TradingRecordHandler']['GetStocksSignals'](arg1);
-}
-
 export function GetStockSignalsAsOf(arg1, arg2) {
   return window['go']['handler']['TradingRecordHandler']['GetStockSignalsAsOf'](arg1, arg2);
 }
 
-export function GetSignalRegistry() {
-  return window['go']['handler']['TradingRecordHandler']['GetSignalRegistry']();
+export function GetStockTechnicalIndicators(arg1) {
+  return window['go']['handler']['TradingRecordHandler']['GetStockTechnicalIndicators'](arg1);
+}
+
+export function GetStocksSignals(arg1) {
+  return window['go']['handler']['TradingRecordHandler']['GetStocksSignals'](arg1);
 }
 
 export function GetTradingRecordById(arg1) {
@@ -92,10 +96,6 @@ export function GetTradingRecordStatistics() {
 
 export function PredictKLine(arg1, arg2) {
   return window['go']['handler']['TradingRecordHandler']['PredictKLine'](arg1, arg2);
-}
-
-export function BacktestKLine(arg1, arg2, arg3) {
-  return window['go']['handler']['TradingRecordHandler']['BacktestKLine'](arg1, arg2, arg3);
 }
 
 export function RollingBacktestKLine(arg1, arg2, arg3, arg4) {

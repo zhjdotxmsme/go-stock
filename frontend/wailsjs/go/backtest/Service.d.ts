@@ -15,6 +15,8 @@ export function GetSeedImportStatus():Promise<Record<string, any>>;
 
 export function GetSyncProgress():Promise<Array<backtest.syncTaskItem>>;
 
+export function ResumePendingSyncTasks():Promise<void>;
+
 export function RunBatchBacktest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean,arg6:number,arg7:number,arg8:number,arg9:number):Promise<backtest.BatchResult>;
 
 export function RunOptimization(arg1:backtest.OptimizationInput):Promise<Array<backtest.OptimizationResult>>;
