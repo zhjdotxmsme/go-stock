@@ -129,6 +129,12 @@ func callWithProviderTimeout[T any](ctx context.Context, dt DataType, fn func(ct
 	}
 	ch := make(chan result, 1) // buffered: abandoned calls complete without blocking
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				var zero T
+				ch <- result{zero, fmt.Errorf("provider panic: %v", r)}
+			}
+		}()
 		v, err := fn(pctx)
 		ch <- result{v, err}
 	}()
