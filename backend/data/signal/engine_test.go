@@ -89,8 +89,12 @@ func TestTrendAndCrossSignals(t *testing.T) {
 		t.Error("单边下跌不应命中多头排列")
 	}
 
-	// V 形（先跌后涨）：应出现 MACD 与 KDJ 金叉（扫描时点）
-	v := append(trendBars(0, 120, -0.8, 35), trendBars(35, 92, 1.5, 10)...)
+	// V 形（缓跌→加速跌→反转涨）：应出现 MACD 与 KDJ 金叉（扫描时点）。
+	// 注意：indicator 包 EMA 用窗口预热种子（前 period-1 位 NaN，同花顺口径），
+	// 且匀速下跌的 DIF≡DEA（浮点微观噪声会使"穿越"淹没在 NaN 边界），
+	// 所以底部前加一段加速下跌让 DIF 明确低于 DEA，金叉才是真实可检出的。
+	v := append(trendBars(0, 140, -1.0, 35), trendBars(35, 105, -1.8, 5)...)
+	v = append(v, trendBars(40, 96, 1.5, 20)...)
 	foundMACD, foundKDJ := false, false
 	for i := MinBars; i < len(v); i++ {
 		ks := keysOf(e.Evaluate("sz000001", v, i))

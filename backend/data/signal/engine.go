@@ -4,6 +4,7 @@ package signal
 
 import (
 	"go-stock/backend/data/datasource"
+	"go-stock/backend/data/indicator"
 )
 
 // MinBars 判定的最小K线数（MACD 预热需要，低于此值返回空）。
@@ -43,9 +44,10 @@ func (e *Engine) Evaluate(code string, bars []datasource.KLineBar, asOfIdx int) 
 	ctx.ma5 = smaSeries(ctx.close, 5)
 	ctx.ma10 = smaSeries(ctx.close, 10)
 	ctx.ma20 = smaSeries(ctx.close, 20)
-	ctx.ma60 = smaSeries(ctx.close, 60)
-	ctx.dif, ctx.dea = macdSeries(ctx.close)
-	ctx.k, ctx.d = kdjSeries(ctx.high, ctx.low, ctx.close, 9)
+	// MACD/KDJ 口径统一委托 indicator 包（macd_rsi/kdj_atr_boll 有手算参考测试），
+	// 不在本包重复实现，防止两套实现漂移
+	ctx.dif, ctx.dea, _ = indicator.MACD(ctx.close, 12, 26, 9)
+	ctx.k, ctx.d, _ = indicator.KDJ(ctx.high, ctx.low, ctx.close, 9, 3, 3)
 
 	// 资金流（仅注册了 NeedFunds 信号时才拉取）
 	if e.Funds != nil {

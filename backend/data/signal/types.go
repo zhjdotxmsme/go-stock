@@ -68,7 +68,6 @@ type evalCtx struct {
 	ma5   []float64
 	ma10  []float64
 	ma20  []float64
-	ma60  []float64
 	dif   []float64
 	dea   []float64
 	k     []float64
