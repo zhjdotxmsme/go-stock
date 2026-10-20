@@ -20,7 +20,7 @@ import (
 type DataPack struct {
 	StockCode           string
 	KLineDaily          *[]data.KLineData          // daily K, last 60 bars ("101")
-	TechnicalIndicators *data.IndicatorResult      // MACD/RSI/KDJ/BOLL/MA from stock-sdk MCP
+	TechnicalIndicators *data.IndicatorResult      // MACD/RSI/KDJ/BOLL/MA via Router + local indicator
 	FinancialReports    *[]string                  // crawled financial report pages
 	HistoryMoneyData    []models.StockMoneyDataHis // historical money flow
 	// EtfQuote 场内基金专属快照（溢价率/真净值/份额趋势）。仅 ETF 品种填充；

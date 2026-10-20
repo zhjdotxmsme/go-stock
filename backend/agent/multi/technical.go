@@ -40,7 +40,7 @@ func RunTechnicalAnalyst(ctx context.Context, ac *AgentContext) (*AgentReport, e
 		dataStr += "暂无K线数据\n"
 	}
 
-	// Technical indicators from stock-sdk MCP (shared via DataPack when set)
+	// Technical indicators from Router K-line + local indicator package (DataPack when set)
 	var indicators *data.IndicatorResult
 	if ac.DataPack != nil {
 		indicators = ac.DataPack.TechnicalIndicators

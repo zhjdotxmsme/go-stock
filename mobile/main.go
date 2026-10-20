@@ -30,6 +30,7 @@ import (
 	backtestService "go-stock/backend/data/backtest"
 	"go-stock/backend/data"
 	"go-stock/backend/data/datasource"
+	"go-stock/backend/data/datasource/freestockdb"
 	"go-stock/backend/data/datasource/fallback"
 	dailyPickBacktestService "go-stock/backend/service"
 	"go-stock/backend/db"
@@ -114,6 +115,14 @@ func initDataSources() {
 	cache.AutoMigrate()
 	router.SetCache(cache)
 
+	cfg := data.GetSettingConfigSafe()
+	freestockdb.Setup(router, freestockdb.Config{
+		Enabled:   cfg.FreeStockDBEnable,
+		ExePath:   cfg.FreeStockDBPath,
+		Addr:      cfg.FreeStockDBAddr,
+		AutoStart: cfg.FreeStockDBAutoStart,
+	})
+
 	fallback.RegisterQuoteChain(router)
 	fallback.RegisterKLineChain(router)
 	fallback.RegisterNewsChain(router)
@@ -123,17 +132,23 @@ func initDataSources() {
 	fallback.RegisterFreeDataSources(router)
 }
 
-// initMCP 复刻根 main.go registerStockSDKMCP：给 AI 智能体提供 stock-sdk 技术指标工具。
+// initMCP 与桌面 initFreeStockDBMCP 一致：清理 stock-sdk，保留 free-stockdb MCP 模板（默认关）。
 func initMCP() {
-	_ = db.Dao.Where("name = ?", "stock-sdk").FirstOrCreate(&models.MCPServer{
-		Name:        "stock-sdk",
-		Description: "Stock data SDK with 14 technical indicators",
+	var legacy models.MCPServer
+	if err := db.Dao.Where("name = ?", "stock-sdk").First(&legacy).Error; err == nil {
+		db.Dao.Where("mcp_server_id = ?", legacy.ID).Delete(&models.MCPServerTool{})
+		db.Dao.Delete(&legacy)
+	}
+	seed := models.MCPServer{
+		Name:        "free-stockdb",
+		Description: "free-stockdb 本地引擎 MCP（39 指标）。需配置 ai_mcp Python 入口并先启动 7899 服务。",
 		Type:        "stdio",
-		Command:     "npx",
-		Args:        `["-y","stock-sdk","mcp"]`,
-		Enable:      true,
+		Command:     "python",
+		Args:        `["-u","请填写 free-stockdb 安装目录/调用方式/ai_mcp/stock_mcp_server.py"]`,
+		Enable:      false,
 		Status:      "stopped",
-	})
+	}
+	_ = db.Dao.Where("name = ?", "free-stockdb").Assign(seed).FirstOrCreate(&seed)
 }
 
 func main() {

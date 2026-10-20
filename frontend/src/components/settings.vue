@@ -83,12 +83,39 @@ const formValue = ref({
     lazyStart: true,
     pickEnable: false,
   },
+  freeStockDB: {
+    enable: false,
+    path: '',
+    addr: '127.0.0.1:7899',
+    autoStart: false,
+  },
 })
 
 // ---- Kronos 服务管理 ----
 const kronosStatus = ref('disabled')  // disabled / offline / online
 const kronosStarting = ref(false)
 const kronosStatusTimer = ref(null)
+
+// ---- free-stockdb 本地行情引擎（Router K 线优先源，非 stock-sdk）----
+const freeStockDBStatus = ref('disabled') // disabled / offline / online
+const freeStockDBStatusTimer = ref(null)
+
+async function refreshFreeStockDBStatus() {
+  if (!formValue.value.freeStockDB?.enable) {
+    freeStockDBStatus.value = 'disabled'
+    return
+  }
+  const addr = (formValue.value.freeStockDB.addr || '127.0.0.1:7899').trim()
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 2500)
+    const r = await fetch(`http://${addr}/?cmd=get&t=${encodeURIComponent('股票代码')}`, { signal: ctrl.signal })
+    clearTimeout(t)
+    freeStockDBStatus.value = r.ok ? 'online' : 'offline'
+  } catch {
+    freeStockDBStatus.value = 'offline'
+  }
+}
 const kronosModelOptions = [
   { label: 'Kronos-small（24.7M，CPU 友好）', value: 'NeoQuasar/Kronos-small' },
   { label: 'Kronos-base（102M，预测更强）', value: 'NeoQuasar/Kronos-base' },
@@ -335,6 +362,16 @@ onMounted(() => {
     formValue.value.updateChannel = res.updateChannel || 'release';
     formValue.value.quickThinkModelId = res.quickThinkModelId || null;
     formValue.value.deepThinkModelId = res.deepThinkModelId || null;
+    formValue.value.freeStockDB = {
+      enable: res.freeStockDBEnable || false,
+      path: res.freeStockDBPath || '',
+      addr: res.freeStockDBAddr || '127.0.0.1:7899',
+      autoStart: res.freeStockDBAutoStart || false,
+    }
+    refreshFreeStockDBStatus()
+    if (freeStockDBStatusTimer.value) clearInterval(freeStockDBStatusTimer.value)
+    freeStockDBStatusTimer.value = setInterval(refreshFreeStockDBStatus, 15000)
+
     formValue.value.kronos = {
       enable: res.kronosEnable || false,
       pythonPath: res.kronosPythonPath || '',
@@ -361,6 +398,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   message.destroyAll()
   if (kronosStatusTimer.value) clearInterval(kronosStatusTimer.value)
+  if (freeStockDBStatusTimer.value) clearInterval(freeStockDBStatusTimer.value)
 })
 
 function saveConfig() {
@@ -421,6 +459,10 @@ function saveConfig() {
     kronosSampleCnt: Number(formValue.value.kronos.sampleCnt) || 4,
     kronosLazyStart: formValue.value.kronos.lazyStart,
     kronosPickEnable: formValue.value.kronos.pickEnable,
+    freeStockDBEnable: formValue.value.freeStockDB.enable,
+    freeStockDBPath: formValue.value.freeStockDB.path,
+    freeStockDBAddr: formValue.value.freeStockDB.addr,
+    freeStockDBAutoStart: formValue.value.freeStockDB.autoStart,
   })
 
   systemApi.updateConfig(config).then(({data: res}) => {
@@ -541,6 +583,12 @@ function importConfig() {
       formValue.value.updateChannel = config.updateChannel || 'release'
       formValue.value.quickThinkModelId = config.quickThinkModelId || null
       formValue.value.deepThinkModelId = config.deepThinkModelId || null
+      formValue.value.freeStockDB = {
+        enable: config.freeStockDBEnable || false,
+        path: config.freeStockDBPath || '',
+        addr: config.freeStockDBAddr || '127.0.0.1:7899',
+        autoStart: config.freeStockDBAutoStart || false,
+      }
     };
     reader.readAsText(file);
   };
@@ -1035,6 +1083,38 @@ function saveMultiAgentPrompt() {
                   </n-space>
                 </n-collapse-item>
               </n-collapse>
+            </n-gi>
+
+            <n-gi :span="24">
+              <n-divider/>
+              <n-space vertical>
+                <n-space align="center">
+                  <n-tag type="success">free-stockdb 本地行情（Router 回测/选股/K 线缓存）</n-tag>
+                  <n-tag :type="freeStockDBStatus === 'online' ? 'success' : freeStockDBStatus === 'disabled' ? 'default' : 'warning'" size="small" round>
+                    {{ freeStockDBStatus === 'online' ? '● 7899 在线' : freeStockDBStatus === 'disabled' ? '○ 未开启' : '● 7899 离线' }}
+                  </n-tag>
+                  <n-button size="small" quaternary @click="refreshFreeStockDBStatus">检测连接</n-button>
+                </n-space>
+                <n-grid :cols="24" :x-gap="24">
+                  <n-form-item-gi :span="4" label="启用本地引擎：" path="freeStockDB.enable">
+                    <n-switch v-model:value="formValue.freeStockDB.enable"/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="10" label="HTTP 地址：" path="freeStockDB.addr">
+                    <n-input v-model:value="formValue.freeStockDB.addr" placeholder="127.0.0.1:7899" clearable/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="10" label="引擎程序路径（可选，自动拉起）：" path="freeStockDB.path">
+                    <n-input v-model:value="formValue.freeStockDB.path" placeholder="官方包内的 stockdb.exe 绝对路径" clearable/>
+                  </n-form-item-gi>
+                  <n-form-item-gi :span="4" label="启动时自动拉起引擎：" path="freeStockDB.autoStart">
+                    <n-switch v-model:value="formValue.freeStockDB.autoStart"/>
+                  </n-form-item-gi>
+                </n-grid>
+                <n-text depth="3" style="font-size: 12px">
+                  与已移除的 npm stock-sdk 无关。需先安装
+                  <a href="https://github.com/hello245m/free-stockdb" target="_blank">free-stockdb</a>
+                  并完成数据同步、启动 7899 服务。保存后请<strong>重启 go-stock</strong> 使 Router 生效；AI 39 指标在「MCP 服务器」启用 free-stockdb 条目。
+                </n-text>
+              </n-space>
             </n-gi>
 
             <n-gi :span="24">

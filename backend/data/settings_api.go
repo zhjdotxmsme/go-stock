@@ -75,6 +75,11 @@ type Settings struct {
 	KronosLazyStart  bool    `json:"kronosLazyStart" gorm:"column:kronos_lazy_start"`
 	// KronosPickEnable 每日推荐启用 Kronos 预测因子（依赖 KronosEnable）
 	KronosPickEnable bool `json:"kronosPickEnable" gorm:"column:kronos_pick_enable"`
+	// free-stockdb 本地 A 股数据引擎（Router 优先源，7899 HTTP）
+	FreeStockDBEnable    bool   `json:"freeStockDBEnable" gorm:"column:free_stock_db_enable"`
+	FreeStockDBPath      string `json:"freeStockDBPath" gorm:"column:free_stock_db_path"`
+	FreeStockDBAddr      string `json:"freeStockDBAddr" gorm:"column:free_stock_db_addr"`
+	FreeStockDBAutoStart bool   `json:"freeStockDBAutoStart" gorm:"column:free_stock_db_auto_start"`
 }
 
 func (receiver Settings) TableName() string {
@@ -201,6 +206,10 @@ func UpdateConfig(s *SettingConfig) string {
 			"kronos_sample_cnt":          s.KronosSampleCnt,
 			"kronos_lazy_start":          s.KronosLazyStart,
 			"kronos_pick_enable":         s.KronosPickEnable,
+			"free_stock_db_enable":      s.FreeStockDBEnable,
+			"free_stock_db_path":        s.FreeStockDBPath,
+			"free_stock_db_addr":        s.FreeStockDBAddr,
+			"free_stock_db_auto_start":  s.FreeStockDBAutoStart,
 		})
 		if result.Error != nil {
 			logger.SugaredLogger.Errorf("更新配置失败: %v", result.Error)

@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/data/indicator"
-	"go-stock/backend/db"
 	"go-stock/backend/logger"
-	"go-stock/backend/models"
 	"math"
 	"sort"
 )
@@ -70,25 +68,10 @@ type IndicatorSummary struct {
 	Summary    string  `json:"summary"`
 }
 
-// GetTechnicalIndicators computes technical indicators from K-line data and returns them.
-// Uses the existing datasource to fetch K-line data, then computes indicators locally.
-// Also checks whether the stock-sdk MCP server is running (status == "available"/"running") as a
-// readiness signal for future integration with MCP-based indicator calls.
+// GetTechnicalIndicators 经 Router 拉 K 线，再用 backend/data/indicator 本地计算（不依赖 stock-sdk）。
+// Agent 侧 39 指标请启用 free-stockdb MCP（见 2026-10-20-freestockdb-revised 规划）。
 func GetTechnicalIndicators(ctx context.Context, code string, period string, count int) (*IndicatorResult, error) {
 	logger.SugaredLogger.Infof("indicators requested for %s period=%s count=%d", code, period, count)
-
-	// Check if stock-sdk MCP server is running
-	var mcp models.MCPServer
-	err := db.Dao.Where("name = ? AND enable = ?", "stock-sdk", true).First(&mcp).Error
-	if err == nil && mcp.ID > 0 {
-		if mcp.Status == "available" || mcp.Status == "running" {
-			logger.SugaredLogger.Infof("stock-sdk MCP server is %s, ready for indicator calls", mcp.Status)
-		} else {
-			logger.SugaredLogger.Debugf("stock-sdk MCP server status: %s (not running)", mcp.Status)
-		}
-	}
-
-	// Compute indicators from K-line data (fetched via the datasource router)
 	return computeIndicatorsFromKLine(ctx, code, period, count)
 }
 

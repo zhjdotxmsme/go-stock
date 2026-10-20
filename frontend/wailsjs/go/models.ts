@@ -2243,6 +2243,10 @@ export namespace data {
 	    kronosSampleCnt: number;
 	    kronosLazyStart: boolean;
 	    kronosPickEnable: boolean;
+	    freeStockDBEnable: boolean;
+	    freeStockDBPath: string;
+	    freeStockDBAddr: string;
+	    freeStockDBAutoStart: boolean;
 	    aiConfigs: AIConfig[];
 	
 	    static createFrom(source: any = {}) {
@@ -2310,6 +2314,10 @@ export namespace data {
 	        this.kronosSampleCnt = source["kronosSampleCnt"];
 	        this.kronosLazyStart = source["kronosLazyStart"];
 	        this.kronosPickEnable = source["kronosPickEnable"];
+	        this.freeStockDBEnable = source["freeStockDBEnable"];
+	        this.freeStockDBPath = source["freeStockDBPath"];
+	        this.freeStockDBAddr = source["freeStockDBAddr"];
+	        this.freeStockDBAutoStart = source["freeStockDBAutoStart"];
 	        this.aiConfigs = this.convertValues(source["aiConfigs"], AIConfig);
 	    }
 	

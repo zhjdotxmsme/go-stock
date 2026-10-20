@@ -9,6 +9,7 @@ import (
 	"go-stock/backend/data"
 	backtestService "go-stock/backend/data/backtest"
 	"go-stock/backend/data/datasource"
+	"go-stock/backend/data/datasource/freestockdb"
 	dailyPickBacktestService "go-stock/backend/service"
 	"go-stock/backend/data/datasource/fallback"
 	"go-stock/backend/db"
@@ -78,6 +79,14 @@ func initDataSources() {
 	cache.AutoMigrate()
 	router.SetCache(cache)
 
+	cfg := data.GetSettingConfigSafe()
+	freestockdb.Setup(router, freestockdb.Config{
+		Enabled:   cfg.FreeStockDBEnable,
+		ExePath:   cfg.FreeStockDBPath,
+		Addr:      cfg.FreeStockDBAddr,
+		AutoStart: cfg.FreeStockDBAutoStart,
+	})
+
 	fallback.RegisterQuoteChain(router)
 	fallback.RegisterKLineChain(router)
 	fallback.RegisterNewsChain(router)
@@ -89,17 +98,24 @@ func initDataSources() {
 	log.SugaredLogger.Info("data source router initialized with fallback chains")
 }
 
-func registerStockSDKMCP() {
-	db.Dao.Where("name = ?", "stock-sdk").FirstOrCreate(&models.MCPServer{
-		Name:        "stock-sdk",
-		Description: "Stock data SDK with 14 technical indicators",
+// initFreeStockDBMCP 移除已废弃的 stock-sdk，并写入 free-stockdb MCP 模板（默认关闭，路径由用户在设置中填写）。
+func initFreeStockDBMCP() {
+	var legacy models.MCPServer
+	if err := db.Dao.Where("name = ?", "stock-sdk").First(&legacy).Error; err == nil {
+		db.Dao.Where("mcp_server_id = ?", legacy.ID).Delete(&models.MCPServerTool{})
+		db.Dao.Delete(&legacy)
+		log.SugaredLogger.Info("removed legacy stock-sdk MCP server")
+	}
+	seed := models.MCPServer{
+		Name:        "free-stockdb",
+		Description: "free-stockdb 本地引擎 MCP（39 指标）。Router K 线走设置页；MCP 需在「AI → MCP 服务器」填写发行包内 ai_mcp 的 Python 入口并启用。",
 		Type:        "stdio",
-		Command:     "npx",
-		Args:        `["-y","stock-sdk","mcp"]`,
-		Enable:      true,
+		Command:     "python",
+		Args:        `["-u","请填写 free-stockdb 安装目录/调用方式/ai_mcp/stock_mcp_server.py"]`,
+		Enable:      false,
 		Status:      "stopped",
-	})
-	log.SugaredLogger.Info("stock-sdk MCP server registered")
+	}
+	db.Dao.Where("name = ?", "free-stockdb").Assign(seed).FirstOrCreate(&seed)
 }
 
 func main() {
@@ -118,7 +134,7 @@ func main() {
 	db.Init("")
 	data.InitAnalyzeSentiment()
 	initDataSources()
-	registerStockSDKMCP()
+	initFreeStockDBMCP()
 	go AutoMigrate()
 
 	//db.Dao.Model(&data.Group{}).Where("id = ?", 0).FirstOrCreate(&data.Group{
