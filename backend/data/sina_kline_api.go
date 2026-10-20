@@ -559,12 +559,21 @@ type KLineSourceResult struct {
 	Source string       `json:"source"`
 }
 
+func sanitizeKLineSourceResult(r *KLineSourceResult) *KLineSourceResult {
+	if r == nil || r.Data == nil || len(*r.Data) == 0 {
+		return r
+	}
+	clean := SanitizeKLineData(*r.Data)
+	r.Data = &clean
+	return r
+}
+
 func FetchKLineWithFallback(stockCode, stockName, klt string, limit int, end string) *KLineSourceResult {
 	macResult := fetchFromMACWithTimeout(stockCode, klt, limit, 5*time.Second)
 	if macResult != nil && macResult.Data != nil && len(*macResult.Data) > 0 {
 		macResult.Source = "tdx-mac"
 		fillVolumeRatio(macResult.Data)
-		return macResult
+		return sanitizeKLineSourceResult(macResult)
 	}
 	logger.SugaredLogger.Warnf("MAC K线数据为空或超时，尝试东方财富数据源: code=%s klt=%s", stockCode, klt)
 
@@ -572,7 +581,7 @@ func FetchKLineWithFallback(stockCode, stockName, klt string, limit int, end str
 	if eastMoneyResult != nil && eastMoneyResult.Data != nil && len(*eastMoneyResult.Data) > 0 {
 		eastMoneyResult.Source = "eastmoney"
 		fillVolumeRatio(eastMoneyResult.Data)
-		return eastMoneyResult
+		return sanitizeKLineSourceResult(eastMoneyResult)
 	}
 
 	// 港美股：MAC失败后仅走东方财富，新浪/腾讯/通达信不支持港美股
@@ -590,7 +599,7 @@ func FetchKLineWithFallback(stockCode, stockName, klt string, limit int, end str
 	if sinaResult != nil && sinaResult.Data != nil && len(*sinaResult.Data) > 0 {
 		sinaResult.Source = "sina"
 		fillVolumeRatio(sinaResult.Data)
-		return sinaResult
+		return sanitizeKLineSourceResult(sinaResult)
 	}
 	logger.SugaredLogger.Warnf("新浪K线数据也为空，尝试腾讯数据源: code=%s klt=%s", stockCode, klt)
 
@@ -598,7 +607,7 @@ func FetchKLineWithFallback(stockCode, stockName, klt string, limit int, end str
 	if tencentResult != nil && tencentResult.Data != nil && len(*tencentResult.Data) > 0 {
 		tencentResult.Source = "tencent"
 		fillVolumeRatio(tencentResult.Data)
-		return tencentResult
+		return sanitizeKLineSourceResult(tencentResult)
 	}
 	logger.SugaredLogger.Warnf("腾讯K线数据也为空，尝试通达信数据源: code=%s klt=%s", stockCode, klt)
 
@@ -606,7 +615,7 @@ func FetchKLineWithFallback(stockCode, stockName, klt string, limit int, end str
 	if tdxResult != nil && tdxResult.Data != nil && len(*tdxResult.Data) > 0 {
 		tdxResult.Source = "tdx"
 		fillVolumeRatio(tdxResult.Data)
-		return tdxResult
+		return sanitizeKLineSourceResult(tdxResult)
 	}
 	logger.SugaredLogger.Warnf("通达信K线数据也为空: code=%s klt=%s", stockCode, klt)
 

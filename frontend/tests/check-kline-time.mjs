@@ -6,7 +6,7 @@
 // 紧凑 8 位日期（YYYYMMDD）与 "YYYY-MM" 周期形。
 //
 // 运行：node --import ./tests/register-ts-ext.mjs tests/check-kline-time.mjs
-import { toChartTime, formatTickTime } from '../src/components/kline/time.ts'
+import { toChartTime, formatTickTime, plausibleKlineDay } from '../src/components/kline/time.ts'
 // TickMarkType 是运行时枚举（chart 的 tickMarkFormatter 回调拿到的就是它），
 // 直接从上游包导入，避免经由 time.ts 二次 re-export。
 import { TickMarkType } from 'lightweight-charts'
@@ -58,6 +58,13 @@ assert('undefined', toChartTime(undefined), null)
 assert('垃圾字符串', toChartTime('abcdef'), null)
 assert('非法月份', toChartTime('20251340'), null)
 assert('5 位数字不算年份', toChartTime('20250'), null)
+
+// ---- 指数脏数据（mootdx 等）不得进入图表时间轴 ----
+assert('2099 日期不可解析', toChartTime('2099-02-11'), null)
+assert('9999 年K 脏字段不可解析', toChartTime('9999'), null)
+assert('99991231 不可解析', toChartTime('99991231'), null)
+assert('2099 不可信', plausibleKlineDay('2099-02-11'), false)
+assert('2026 正常日可信', plausibleKlineDay('2026-10-17'), true)
 
 const failed = results.filter((x) => !x).length
 console.log(failed ? `\n${failed} 项失败` : '\n全部通过')

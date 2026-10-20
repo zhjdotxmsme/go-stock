@@ -13,7 +13,7 @@ import (
 func LoadDailyBars(ctx context.Context, code string, minBars int) ([]models.KLineBar, error) {
 	end := time.Now().Format("2006-01-02")
 	start := time.Now().AddDate(0, 0, -400).Format("2006-01-02")
-	bars, err := datasource.NewKLineStore().QueryKLines(ctx, code, "day", start, end, true)
+	bars, err := datasource.NewKLineStore().QueryKLinesPreferAdjusted(ctx, code, "day", start, end)
 	if err != nil {
 		return nil, err
 	}

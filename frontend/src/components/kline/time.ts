@@ -94,6 +94,48 @@ export function sortKey(dayStr) {
   return 0
 }
 
+const KLINE_MIN_YEAR = 1990
+
+/** 丢弃 mootdx 指数等来源的脏 day（2099、9999、99991231 等），避免 x 轴/十字线显示荒谬年份 */
+export function plausibleKlineDay(dayStr: unknown): boolean {
+  const s = String(dayStr ?? '').trim().replace(/\//g, '-')
+  if (!s) return false
+  const maxYear = new Date().getFullYear() + 1
+  if (/^\d{4}$/.test(s)) {
+    const y = Number(s)
+    return y >= KLINE_MIN_YEAR && y <= maxYear
+  }
+  const ym = s.match(/^(\d{4})-(\d{2})$/)
+  if (ym) {
+    const y = Number(ym[1])
+    const mo = Number(ym[2])
+    return y >= KLINE_MIN_YEAR && y <= maxYear && mo >= 1 && mo <= 12
+  }
+  const c8 = s.match(/^(\d{4})(\d{2})(\d{2})/)
+  if (c8 && c8[0].length === 8 && s.length === 8) {
+    const y = Number(c8[1])
+    const mo = Number(c8[2])
+    const d = Number(c8[3])
+    if (y < KLINE_MIN_YEAR || y > maxYear || mo < 1 || mo > 12 || d < 1 || d > 31) return false
+  }
+  const ymd = extractYmdDatePart(s)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    const sec = eastMoneyKlineFieldToUnixSeconds(s)
+    if (sec == null) return false
+    return plausibleKlineDay(
+      new Date(sec * 1000).toLocaleDateString('en-CA', { timeZone: CN_TZ }),
+    )
+  }
+  const [y, mo, d] = ymd.split('-').map(Number)
+  if (y < KLINE_MIN_YEAR || y > maxYear || mo < 1 || mo > 12 || d < 1 || d > 31) return false
+  const ms = Date.parse(`${ymd}T12:00:00+08:00`)
+  if (!Number.isFinite(ms)) return false
+  const tomorrow = new Date()
+  tomorrow.setHours(12, 0, 0, 0)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  return ms <= tomorrow.getTime()
+}
+
 /** YYYY-MM-DD → 上海时区正午的 Unix 秒；非法日期返回 null */
 function ymdSeconds(year: number, month: number, day: number): number | null {
   const ms = Date.parse(
@@ -104,7 +146,7 @@ function ymdSeconds(year: number, month: number, day: number): number | null {
 
 export function toChartTime(dayStr) {
   const s = String(dayStr || '').trim()
-  if (!s) return null
+  if (!s || !plausibleKlineDay(s)) return null
   // 只有年份（东财年K的 day 字段形如 "2025"）：原实现三个正则都不匹配，
   // 返回 null，该周期行会被 extractOHLCV 的 `if (t === null) continue` 整行丢弃，
   // 于是年K 图上一根柱子都没有、x 轴也取不到正确年份。锚到周期首日的 12:00：

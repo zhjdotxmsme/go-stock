@@ -24,6 +24,7 @@ func (KhunterSignal) TableName() string { return "khunter_signals" }
 type KhunterScore struct {
 	ID          uint      `gorm:"primarykey" json:"id"`
 	Code        string    `gorm:"size:20;index:idx_khsc_code_date,unique" json:"code"`
+	Name        string    `gorm:"size:50" json:"name"`
 	ScoreDate   string    `gorm:"size:10;index:idx_khsc_code_date,unique" json:"scoreDate"`
 	Technical   float64   `json:"technical"`
 	Moneyflow   float64   `json:"moneyflow"`

@@ -112,6 +112,16 @@ func (h *StockHandler) GetStockList(key string) []data.StockBasic {
 	return data.NewStockDataApi().GetStockList(key)
 }
 
+// ResolveStockNames 批量解析股票简称，键为规范化内部码（sh600519）。
+func (h *StockHandler) ResolveStockNames(codes []string) map[string]string {
+	return data.ResolveStockNames(codes)
+}
+
+// ResolveStockName 解析单只股票简称。
+func (h *StockHandler) ResolveStockName(code string) string {
+	return data.ResolveStockName(code)
+}
+
 // SetCostPriceAndVolume sets cost price and volume for a stock
 func (h *StockHandler) SetCostPriceAndVolume(stockCode string, price float64, volume int64) string {
 	return h.svc.SetCostPriceAndVolume(context.Background(), stockCode, price, volume)

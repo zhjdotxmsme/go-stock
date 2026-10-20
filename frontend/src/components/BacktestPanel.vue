@@ -16,6 +16,7 @@ import { SearchOutline, TrendingUpOutline, TrendingDownOutline, HelpCircleOutlin
 
 import EquityCurve from './charts/EquityCurve.vue'
 import MonthlyHeatmap from './charts/MonthlyHeatmap.vue'
+import { displayStockCode, resolveDisplayName, prepareStockDisplay, fillRowNames } from '../utils/stockDisplay'
 
 const message = useMessage()
 const activeTab = ref('single')
@@ -331,8 +332,8 @@ const strategyColumns = [
   { title: '#', key: 'rank', width: 40,
     render: (_, index) => index + 1
   },
-  { title: '股票代码', key: 'stockCode', width: 110 },
-  { title: '股票名称', key: 'stockName', width: 100 },
+  { title: '股票代码', key: 'stockCode', width: 110, render: (r) => displayStockCode(r.stockCode) },
+  { title: '股票名称', key: 'stockName', width: 100, render: (r) => resolveDisplayName(r.stockCode, r.stockName) || '-' },
   { title: '评分', key: 'score', width: 70, render: (r) => r.score?.toFixed(0) },
   { title: '策略', key: 'strategyName', width: 90,
     render: (r) => h(NTag, { size: 'small', type: 'info' }, { default: () => r.strategyName || '-' })
@@ -399,7 +400,8 @@ async function runStrategyPick() {
       strategyForm.stopProfit,
       strategyForm.adjusted,
     )
-    strategyResults.value = res || []
+    await prepareStockDisplay()
+    strategyResults.value = fillRowNames(res || [], 'stockCode', 'stockName')
     message.success(`回测完成，共 ${res?.length || 0} 支股票`)
   } catch (e) {
     strategyError.value = String(e)
@@ -417,8 +419,8 @@ const historyPage = ref(1)
 const historyPageSize = ref(15)
 
 const historyColumns = [
-  { title: '股票代码', key: 'StockCode', width: 110 },
-  { title: '股票名称', key: 'StockName', width: 110 },
+  { title: '股票代码', key: 'StockCode', width: 110, render: (r) => displayStockCode(r.StockCode) },
+  { title: '股票名称', key: 'StockName', width: 110, render: (r) => resolveDisplayName(r.StockCode, r.StockName) || '-' },
   { title: '信号日期', key: 'SignalDate', width: 100 },
   { title: '入场价格', key: 'EntryPrice', width: 95, render: (r) => r.EntryPrice?.toFixed(2) },
   { title: '出场价格', key: 'ExitPrice', width: 95, render: (r) => r.ExitPrice?.toFixed(2) },

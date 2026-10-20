@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+
+	"gorm.io/gorm"
 )
 
 const (
@@ -212,22 +215,33 @@ func CreateSyncTask(ctx context.Context, stockCode, period, startDate, endDate s
 		First(&existing).Error
 
 	if err == nil {
-		existing.StartDate = startDate
-		existing.EndDate = endDate
-		existing.ExpectedCount = estimateExpectedCount(period, startDate, endDate)
+		if existing.Status == SyncStatusRunning && time.Since(existing.UpdatedAt) < DefaultStaleRunningAge {
+			return nil
+		}
+		if existing.Status == SyncStatusDone &&
+			existing.EndDate >= endDate && existing.StartDate <= startDate {
+			return nil
+		}
+		if startDate < existing.StartDate || existing.StartDate == "" {
+			existing.StartDate = startDate
+		}
+		if endDate > existing.EndDate {
+			existing.EndDate = endDate
+		}
+		existing.ExpectedCount = estimateExpectedCount(period, existing.StartDate, existing.EndDate)
 		existing.Status = SyncStatusPending
 		existing.ErrorMsg = ""
 		existing.UpdatedAt = time.Now()
-		
+
 		if err := db.Dao.WithContext(ctx).Save(&existing).Error; err != nil {
 			return fmt.Errorf("failed to update existing sync task: %w", err)
 		}
-		
-		logger.SugaredLogger.Infof("Updated existing sync task for %s %s", stockCode, period)
+
+		logger.SugaredLogger.Debugf("Updated sync task for %s %s [%s-%s]", stockCode, period, existing.StartDate, existing.EndDate)
 		return nil
 	}
 
-	if err.Error() != "record not found" {
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return fmt.Errorf("failed to check existing sync task: %w", err)
 	}
 

@@ -158,6 +158,14 @@ export function SetTradingPrice(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['handler']['StockHandler']['SetTradingPrice'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function ResolveStockName(arg1) {
+  return window['go']['handler']['StockHandler']['ResolveStockName'](arg1);
+}
+
+export function ResolveStockNames(arg1) {
+  return window['go']['handler']['StockHandler']['ResolveStockNames'](arg1);
+}
+
 export function UnFollow(arg1) {
   return window['go']['handler']['StockHandler']['UnFollow'](arg1);
 }

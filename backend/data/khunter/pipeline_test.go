@@ -1,8 +1,10 @@
 package khunter
 
 import (
+	"context"
 	"testing"
 
+	"go-stock/backend/data/datasource"
 	"go-stock/backend/data/khunter/risk"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
@@ -55,10 +57,14 @@ func TestResolveTradeDate(t *testing.T) {
 	if err := db.Dao.AutoMigrate(&models.KLineBar{}); err != nil {
 		t.Fatalf("migrate kline: %v", err)
 	}
-	db.Dao.Create(&models.KLineBar{StockCode: "600519", Period: "day", TradeDate: "2026-09-23"})
-	db.Dao.Create(&models.KLineBar{StockCode: "600519", Period: "day", TradeDate: "2026-09-25"})
-	db.Dao.Create(&models.KLineBar{StockCode: "600519", Period: "week", TradeDate: "2026-09-26"})
-	if got := resolveTradeDate(""); got != "2026-09-25" {
-		t.Fatalf("expect 最新日K交易日 2026-09-25（忽略周线）, got %v", got)
+	// 多数股票在 2026-09-23，离群一只在 2026-09-25 → 应选覆盖最广的 2026-09-23
+	for _, code := range []string{"sh600001", "sh600002", "sh600003"} {
+		db.Dao.Create(&models.KLineBar{StockCode: code, Period: "day", TradeDate: "2026-09-23", Adjusted: true, Close: 1})
+	}
+	db.Dao.Create(&models.KLineBar{StockCode: "sh600519", Period: "day", TradeDate: "2026-09-25", Adjusted: true, Close: 1})
+	db.Dao.Create(&models.KLineBar{StockCode: "sh600519", Period: "week", TradeDate: "2026-09-26", Adjusted: true, Close: 1})
+	store := datasource.NewKLineStore()
+	if got := store.LatestMarketTradeDate(context.Background(), 45, 1); got != "2026-09-23" {
+		t.Fatalf("expect 覆盖最广交易日 2026-09-23（非离群 MAX）, got %v", got)
 	}
 }

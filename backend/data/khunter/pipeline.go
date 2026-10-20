@@ -14,6 +14,8 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"go-stock/backend/stockcode"
+	"go-stock/backend/util/timeutil"
 )
 
 // SupportPrice 支撑位 = 近 20 根（不足则全部）收盘价的最低值
@@ -40,13 +42,15 @@ func HuntingThreshold(lv risk.Level) float64 { return 60 + lv.ScoreExtra }
 
 // PipelineResult 流水线执行结果
 type PipelineResult struct {
-	Signals    int
-	Candidates int
-	Scored     int
-	Hunted     int
-	Removed    int
-	RiskLevel  string
-	TradeDate  string
+	Signals     int
+	Candidates  int
+	Scored      int
+	Hunted      int
+	Removed     int
+	RiskLevel   string
+	TradeDate   string
+	StockTotal  int `json:"stockTotal"`
+	FreshStocks int `json:"freshStocks"`
 }
 
 // resolveTradeDate 解析流水线交易日：显式传入则照用；为空时取本地日 K 最新交易日
@@ -55,15 +59,24 @@ func resolveTradeDate(tradeDate string) string {
 	if tradeDate != "" {
 		return tradeDate
 	}
-	var latest string
 	if db.Dao != nil {
-		_ = db.Dao.Model(&models.KLineBar{}).Where("period = ?", "day").
-			Select("MAX(trade_date)").Scan(&latest).Error
+		if d := datasource.NewKLineStore().LatestMarketTradeDate(context.Background(), 45, 500); d != "" {
+			return d
+		}
 	}
-	if latest == "" {
-		return time.Now().Format("2006-01-02")
+	return timeutil.TodayStr()
+}
+
+func hasBarOnDate(bars []models.KLineBar, tradeDate string) bool {
+	for i := len(bars) - 1; i >= 0; i-- {
+		if bars[i].TradeDate == tradeDate {
+			return true
+		}
+		if bars[i].TradeDate < tradeDate {
+			return false
+		}
 	}
-	return latest
+	return false
 }
 
 // RunPipeline 每日流水线（spec 第 7 节 8 步）。tradeDate 为空取最近交易日。
@@ -77,17 +90,29 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 	repo := NewRepo()
 	res := &PipelineResult{TradeDate: tradeDate}
 
-	// 1. 全市场股票清单
+	// 1. 全市场股票清单（A 股）
+	var infos []models.AllStockInfo
+	if err := db.Dao.Model(&models.AllStockInfo{}).
+		Where("secucode LIKE ? OR secucode LIKE ?", "%.SH", "%.SZ").
+		Find(&infos).Error; err != nil {
+		return nil, fmt.Errorf("读取股票清单: %w", err)
+	}
 	type stockBasic struct {
 		Code string
 		Name string
 	}
-	var stocks []stockBasic
-	if err := db.Dao.Model(&models.AllStockInfo{}).
-		Select("sec_uri_tycode as code, sec_uri_tynameabbr as name").
-		Scan(&stocks).Error; err != nil {
-		return nil, fmt.Errorf("读取股票清单: %w", err)
+	stocks := make([]stockBasic, 0, len(infos))
+	for _, info := range infos {
+		code := stockcode.Normalize(info.SECURITYCODE)
+		if code == "" {
+			code = stockcode.Normalize(info.SECUCODE)
+		}
+		if code == "" {
+			continue
+		}
+		stocks = append(stocks, stockBasic{Code: code, Name: info.SECURITYNAMEABBR})
 	}
+	res.StockTotal = len(stocks)
 
 	// 2. 5 策略并行扫描（纯本地 K 线，8 并发；停牌过滤：bars 末日 < tradeDate 跳过）
 	strategies := strategy.Registry()
@@ -110,8 +135,8 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 			if err != nil || len(bars) == 0 {
 				return
 			}
-			if bars[len(bars)-1].TradeDate < tradeDate {
-				return // 停牌/无当日数据
+			if !hasBarOnDate(bars, tradeDate) {
+				return // 停牌/本地 K 未同步到 tradeDate
 			}
 			mu.Lock()
 			lastBars[code] = bars
@@ -138,8 +163,12 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 		}(st.Code, st.Name)
 	}
 	wg.Wait()
-	logger.SugaredLogger.Infof("khunter pipeline scan done: %d/%d 只本地K线新鲜(>=%s)，信号 %d 条",
+	res.FreshStocks = len(lastBars)
+	logger.SugaredLogger.Infof("khunter pipeline scan done: %d/%d 只本地K线在 %s 有 bar，信号 %d 条",
 		len(lastBars), len(stocks), tradeDate, len(signals))
+	if len(lastBars) < 100 {
+		logger.SugaredLogger.Warnf("khunter 本地日K覆盖不足：请在「数据管理」执行历史同步，或等待 15:30 K线同步任务")
+	}
 	if err := repo.SaveSignals(signals); err != nil {
 		return res, err
 	}
@@ -183,7 +212,7 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 		r := scorer.Score(in)
 		details, _ := json.Marshal(map[string]any{"hits": len(in.Hits)})
 		scores = append(scores, models.KhunterScore{
-			Code: code, ScoreDate: tradeDate,
+			Code: code, Name: names[code], ScoreDate: tradeDate,
 			Technical: r.Technical, Moneyflow: r.Moneyflow, Fundamental: r.Fundamental,
 			Sector: r.Sector, Event: r.Event, Total: r.Total, Level: r.Level,
 			VetoReason: r.VetoReason, Degraded: r.Degraded, Details: string(details),
@@ -255,7 +284,7 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 				bars = b
 			}
 		}
-		if len(bars) == 0 || bars[len(bars)-1].TradeDate < tradeDate {
+		if len(bars) == 0 || !hasBarOnDate(bars, tradeDate) {
 			continue // 停牌/无当日行情，无法判定破位也不计天数
 		}
 		if bars[len(bars)-1].Close < h.SupportPrice {

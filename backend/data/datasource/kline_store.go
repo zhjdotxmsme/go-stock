@@ -36,13 +36,71 @@ func NewKLineStore() *KLineStore {
 // Uses StockCodeCandidates to handle historical data with mixed code formats.
 func (s *KLineStore) QueryKLines(ctx context.Context, stockCode, period, startDate, endDate string, adjusted bool) ([]models.KLineBar, error) {
 	candidates := stockcode.StockCodeCandidates(stockCode)
+	periods := KLinePeriodCandidates(period)
 	var bars []models.KLineBar
 	err := db.Dao.WithContext(ctx).
-		Where("stock_code IN ? AND period = ? AND adjusted = ? AND trade_date BETWEEN ? AND ?",
-			candidates, period, adjusted, startDate, endDate).
+		Where("stock_code IN ? AND period IN ? AND adjusted = ? AND trade_date BETWEEN ? AND ?",
+			candidates, periods, adjusted, startDate, endDate).
 		Order("trade_date ASC").
 		Find(&bars).Error
-	return bars, err
+	if err != nil {
+		return nil, err
+	}
+	return sanitizeBars(bars), nil
+}
+
+// QueryKLinesPreferAdjusted 先查前复权日K，无数据时回退不复权（兼容历史导入）。
+func (s *KLineStore) QueryKLinesPreferAdjusted(ctx context.Context, stockCode, period, startDate, endDate string) ([]models.KLineBar, error) {
+	bars, err := s.QueryKLines(ctx, stockCode, period, startDate, endDate, true)
+	if err != nil {
+		return nil, err
+	}
+	if len(bars) > 0 {
+		return bars, nil
+	}
+	return s.QueryKLines(ctx, stockCode, period, startDate, endDate, false)
+}
+
+// LatestMarketTradeDate 返回近 lookbackDays 内「覆盖 distinct 股票数最多」的交易日。
+// 避免全局 MAX(trade_date) 被个别离群同步拉高，导致狩猎场等逻辑误判「无当日数据」。
+func (s *KLineStore) LatestMarketTradeDate(ctx context.Context, lookbackDays, minDistinct int) string {
+	if lookbackDays <= 0 {
+		lookbackDays = 45
+	}
+	if minDistinct <= 0 {
+		minDistinct = 500
+	}
+	end := timeutil.DateStr(time.Now().AddDate(0, 0, 1))
+	start := timeutil.DaysAgoStr(lookbackDays)
+	type row struct {
+		TradeDate string
+		C         int64
+	}
+	var best row
+	err := db.Dao.WithContext(ctx).Raw(`
+SELECT trade_date, COUNT(DISTINCT stock_code) AS c
+FROM kline_bars
+WHERE period IN ('day','101') AND adjusted = 1
+  AND trade_date BETWEEN ? AND ?
+GROUP BY trade_date
+ORDER BY c DESC, trade_date DESC
+LIMIT 1`, start, end).Scan(&best).Error
+	if err != nil || best.TradeDate == "" || best.C < int64(minDistinct) {
+		return fallbackLastWeekday()
+	}
+	return best.TradeDate
+}
+
+func fallbackLastWeekday() string {
+	t := time.Now()
+	for i := 0; i < 10; i++ {
+		d := timeutil.DateStr(t.AddDate(0, 0, -i))
+		wd := t.AddDate(0, 0, -i).Weekday()
+		if wd != time.Saturday && wd != time.Sunday {
+			return d
+		}
+	}
+	return timeutil.TodayStr()
 }
 
 // UpsertKLines inserts or updates bars in batches with deduplication.

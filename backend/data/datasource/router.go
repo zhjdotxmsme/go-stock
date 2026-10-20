@@ -248,7 +248,7 @@ func (r *Router) getKLineInner(ctx context.Context, code, period string, count i
 			}
 			// Persist to SQLite via KLineStore (async, non-blocking)
 			if globalKLineStore != nil && data != nil && len(data.Bars) > 0 {
-				bars := BarsFromKLineData(code, period, p.Name(), true, data)
+				bars := BarsFromKLineData(code, CanonicalKLinePeriod(period), p.Name(), true, data)
 				if len(bars) > 0 {
 					go func() {
 						if db.Dao == nil {

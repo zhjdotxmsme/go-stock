@@ -233,7 +233,30 @@ export async function openURL(url: string): Promise<any> {
  * Go: RestartAsAdmin()
  */
 export async function restartAsAdmin(): Promise<any> {
-  return callApi(SystemHandler.RestartAsAdmin)
+  return callApi(App.RestartAsAdmin)
+}
+
+/**
+ * 保存 AI 分析结果
+ * Go: AnalysisHandler.SaveAIResponseResult(stockCode, stockName, result, chatId, question, aiConfigId)
+ */
+export async function saveAIResponseResult(
+  stockCode: string,
+  stockName: string,
+  result: string,
+  chatId: string,
+  question: string,
+  aiConfigId: number,
+): Promise<any> {
+  return callApi(
+    AnalysisHandler.SaveAIResponseResult,
+    stockCode,
+    stockName,
+    result,
+    chatId,
+    question,
+    aiConfigId,
+  )
 }
 
 // ========== 配置管理 ==========

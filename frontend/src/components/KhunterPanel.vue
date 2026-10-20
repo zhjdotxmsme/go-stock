@@ -103,6 +103,7 @@ import { format } from 'date-fns'
 import RadarChart from './charts/RadarChart.vue'
 import { runPipeline, getScores, getSignals, getHunting, getRiskLevel, getKellySuggestions, runBacktest } from '../api/khunter'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
+import { displayStockCode, resolveDisplayName, prepareStockDisplay, fillRowNames } from '../utils/stockDisplay'
 
 const message = useMessage()
 const today = format(new Date(), 'yyyy-MM-dd')
@@ -142,7 +143,8 @@ function scoreDateStr(): string {
 async function loadScores() {
   scoresLoading.value = true
   try {
-    scores.value = await getScores(scoreDateStr())
+    await prepareStockDisplay()
+    scores.value = fillRowNames(await getScores(scoreDateStr()), 'code', 'name')
   } catch (e) { message.error('加载评分失败: ' + e)
   } finally { scoresLoading.value = false }
 }
@@ -187,8 +189,8 @@ function renderScoreExpand(row: any) {
 
 const scoreColumns: any[] = [
   { type: 'expand', renderExpand: renderScoreExpand },
-  { title: '代码', key: 'code', width: 100 },
-  { title: '名称', key: 'name', width: 110, render: (r: any) => r.name || '-' },
+  { title: '代码', key: 'code', width: 100, render: (r: any) => displayStockCode(r.code) },
+  { title: '名称', key: 'name', width: 110, render: (r: any) => resolveDisplayName(r.code, r.name) || '-' },
   { title: '总分', key: 'total', width: 90, align: 'center', sorter: (a: any, b: any) => a.total - b.total, defaultSortOrder: 'descend',
     render: (r: any) => h(NText, { strong: true }, { default: () => (r.total ?? 0).toFixed(1) }) },
   { title: '等级', key: 'level', width: 110, align: 'center', render: renderLevel },
@@ -223,7 +225,8 @@ function signalDateStr(): string {
 async function loadSignals() {
   signalsLoading.value = true
   try {
-    signals.value = await getSignals(signalDateStr())
+    await prepareStockDisplay()
+    signals.value = fillRowNames(await getSignals(signalDateStr()), 'code', 'name')
   } catch (e) { message.error('加载信号失败: ' + e)
   } finally { signalsLoading.value = false }
 }
@@ -237,8 +240,8 @@ function parseReasons(raw: string): string {
 }
 
 const signalColumns: any[] = [
-  { title: '代码', key: 'code', width: 100 },
-  { title: '名称', key: 'name', width: 110 },
+  { title: '代码', key: 'code', width: 100, render: (r: any) => displayStockCode(r.code) },
+  { title: '名称', key: 'name', width: 110, render: (r: any) => resolveDisplayName(r.code, r.name) || '-' },
   { title: '策略', key: 'strategy', width: 120,
     render: (r: any) => h(NTag, { size: 'small', bordered: false }, { default: () => r.strategy }) },
   { title: '信号日', key: 'signalDate', width: 105 },
@@ -370,8 +373,13 @@ EventsOn('khunter:progress', (msg: any) => {
     return
   }
   const r = msg.result || {}
-  lastRunText.value = `最近运行：信号 ${r.Signals ?? 0} / 候选 ${r.Candidates ?? 0} / 评分 ${r.Scored ?? 0} / 入池 ${r.Hunted ?? 0} / 移除 ${r.Removed ?? 0}`
   const td = r.TradeDate ?? r.tradeDate
+  const fresh = r.FreshStocks ?? r.freshStocks ?? 0
+  const total = r.StockTotal ?? r.stockTotal ?? 0
+  lastRunText.value = `最近运行(${td || '-'}): 新鲜K线 ${fresh}/${total} · 信号 ${r.Signals ?? 0} · 入池 ${r.Hunted ?? 0}`
+  if (fresh < 100) {
+    message.warning('本地日K覆盖不足，请到「数据管理」启动历史同步后再跑狩猎场')
+  }
   if (td) {
     const ts = new Date(td + 'T00:00:00').getTime()
     scoreDateTs.value = ts

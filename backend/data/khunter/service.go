@@ -2,10 +2,14 @@ package khunter
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sort"
 
+	"go-stock/backend/data"
 	"go-stock/backend/data/khunter/risk"
 	"go-stock/backend/models"
+	"go-stock/backend/stockcode"
 )
 
 // Service khunter 对外门面，handler 只调它
@@ -23,15 +27,109 @@ func (s *Service) RunPipeline(tradeDate string) (*PipelineResult, error) {
 }
 
 func (s *Service) GetScores(date string) ([]models.KhunterScore, error) {
-	return s.repo.GetScoresByDate(date)
+	rows, err := s.repo.GetScoresByDate(date)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 && date != "" {
+		if latest, err := s.repo.GetLatestScoreDate(); err == nil && latest != "" && latest != date {
+			rows, err = s.repo.GetScoresByDate(latest)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	enrichKhunterScoreNames(rows)
+	return rows, nil
 }
 
 func (s *Service) GetSignals(date string) ([]models.KhunterSignal, error) {
-	return s.repo.GetSignalsByDate(date)
+	rows, err := s.repo.GetSignalsByDate(date)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 && date != "" {
+		if latest, err := s.repo.GetLatestSignalDate(); err == nil && latest != "" && latest != date {
+			rows, err = s.repo.GetSignalsByDate(latest)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	enrichKhunterSignalNames(rows)
+	return rows, nil
 }
 
 func (s *Service) GetHunting(status string) ([]models.KhunterHunting, error) {
-	return s.repo.GetHuntingList(status)
+	rows, err := s.repo.GetHuntingList(status)
+	if err != nil {
+		return nil, err
+	}
+	enrichKhunterHuntingNames(rows)
+	return rows, nil
+}
+
+func enrichKhunterScoreNames(rows []models.KhunterScore) {
+	missing := make([]string, 0)
+	for _, r := range rows {
+		if r.Name == "" && r.Code != "" {
+			missing = append(missing, r.Code)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+	names := data.ResolveStockNames(missing)
+	for i := range rows {
+		if rows[i].Name != "" {
+			continue
+		}
+		if n := names[stockcode.Normalize(rows[i].Code)]; n != "" {
+			rows[i].Name = n
+		}
+	}
+}
+
+func enrichKhunterSignalNames(rows []models.KhunterSignal) {
+	missing := make([]string, 0)
+	for _, r := range rows {
+		if r.Name == "" && r.Code != "" {
+			missing = append(missing, r.Code)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+	names := data.ResolveStockNames(missing)
+	for i := range rows {
+		if rows[i].Name != "" {
+			continue
+		}
+		if n := names[stockcode.Normalize(rows[i].Code)]; n != "" {
+			rows[i].Name = n
+		}
+	}
+}
+
+func enrichKhunterHuntingNames(rows []models.KhunterHunting) {
+	missing := make([]string, 0)
+	for _, r := range rows {
+		if r.Name == "" && r.Code != "" {
+			missing = append(missing, r.Code)
+		}
+	}
+	if len(missing) == 0 {
+		return
+	}
+	names := data.ResolveStockNames(missing)
+	for i := range rows {
+		if rows[i].Name != "" {
+			continue
+		}
+		if n := names[stockcode.Normalize(rows[i].Code)]; n != "" {
+			rows[i].Name = n
+		}
+	}
 }
 
 func (s *Service) GetRiskLevel() (*models.KhunterRiskLevel, error) {
@@ -50,13 +148,26 @@ type KellySuggestion struct {
 // kellyConfigPath 相对进程工作目录定位配置文件。
 // 已知限制：进程需从仓库根目录（或 config/ 所在目录的父目录）启动，
 // 否则 LoadKellyConfig 返回 nil，本方法返回空列表。
-const kellyConfigPath = "config/khunter_kelly.json"
+const kellyConfigRel = "config/khunter_kelly.json"
+
+func resolveKellyConfigPath() string {
+	if _, err := os.Stat(kellyConfigRel); err == nil {
+		return kellyConfigRel
+	}
+	if exe, err := os.Executable(); err == nil {
+		p := filepath.Join(filepath.Dir(exe), kellyConfigRel)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return kellyConfigRel
+}
 
 // GetKellySuggestions 读取各策略 [胜率, 盈亏比] 配置并计算半凯利仓位；
 // 配置缺失/解析失败返回空切片（前端显示"未配置凯利参数"）。
 // TODO(follow-up): 胜率与盈亏比应回测链路自动回填，当前为静态配置。
 func (s *Service) GetKellySuggestions() []KellySuggestion {
-	cfg := risk.LoadKellyConfig(kellyConfigPath)
+	cfg := risk.LoadKellyConfig(resolveKellyConfigPath())
 	out := make([]KellySuggestion, 0, len(cfg))
 	for name, wb := range cfg {
 		out = append(out, KellySuggestion{

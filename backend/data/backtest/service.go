@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"go-stock/backend/data/datasource"
 	"go-stock/backend/data/history"
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
@@ -135,6 +136,10 @@ func (s *Service) StartHistoricalSync(years int) error {
 	startDate := now.AddDate(-years, 0, 0).Format("2006-01-02")
 	endDate := now.Format("2006-01-02")
 
+	if n, err := history.ReclaimStaleRunningSyncTasks(ctx, history.DefaultStaleRunningAge); err == nil && n > 0 {
+		logger.SugaredLogger.Infof("historical sync: reclaimed %d stale running tasks", n)
+	}
+
 	var infos []models.AllStockInfo
 	if err := db.Dao.WithContext(ctx).
 		Where("secucode LIKE ? OR secucode LIKE ?", "%.SH", "%.SZ").
@@ -155,8 +160,18 @@ func (s *Service) StartHistoricalSync(years int) error {
 	}
 
 	created := 0
+	skipped := 0
 	for _, info := range infos {
 		if _, ok := running[info.SECUCODE]; ok {
+			continue
+		}
+		var prior models.KLineSyncLog
+		if err := db.Dao.WithContext(ctx).
+			Where("stock_code = ? AND period = ? AND adjusted = ?", info.SECUCODE, "day", true).
+			First(&prior).Error; err == nil &&
+			prior.Status == history.SyncStatusDone &&
+			prior.EndDate >= endDate && prior.StartDate <= startDate {
+			skipped++
 			continue
 		}
 		if err := history.CreateSyncTask(ctx, info.SECUCODE, "day", startDate, endDate, true); err != nil {
@@ -166,16 +181,17 @@ func (s *Service) StartHistoricalSync(years int) error {
 		created++
 	}
 
-	logger.SugaredLogger.Infof("created %d sync tasks for historical data sync (%d years)", created, years)
+	logger.SugaredLogger.Infof("historical sync: queued %d, skipped %d already up-to-date (%d years)", created, skipped, years)
 
 	startSyncWorkers()
 	return nil
 }
 
-// ResumePendingSyncTasks 应用启动时恢复未完成的 K 线同步。
-// 消费者是进程内 goroutine（syncWorkersRunning 为内存态），进程重启后
-// DB 中遗留的 pending 任务无人消费，需在此重新拉起 workers。
+// ResumePendingSyncTasks 应用启动时恢复 K 线同步：回收僵死 running、延长过期 end_date、
+// 后台扫描 done 但本地仍有缺口的任务；仅 pending 时也会拉起 workers。
 func (s *Service) ResumePendingSyncTasks() {
+	history.PrepareSyncQueueOnStartup(startSyncWorkers)
+
 	var cnt int64
 	if err := db.Dao.Model(&models.KLineSyncLog{}).
 		Where("status = ?", history.SyncStatusPending).Count(&cnt).Error; err != nil {
@@ -190,7 +206,7 @@ func (s *Service) ResumePendingSyncTasks() {
 }
 
 // syncWorkerCount is the number of goroutines consuming pending sync tasks.
-const syncWorkerCount = 3
+const syncWorkerCount = 6
 
 var (
 	syncWorkersMu      sync.Mutex
@@ -489,7 +505,8 @@ func (s *Service) GetKLineCacheStats() (map[string]any, error) {
 
 	db.Dao.WithContext(ctx).Model(&models.KLineBar{}).Select("COUNT(*)").Scan(&totalBars)
 	db.Dao.WithContext(ctx).Model(&models.KLineBar{}).Select("COUNT(DISTINCT stock_code)").Scan(&uniqueStocks)
-	db.Dao.WithContext(ctx).Model(&models.KLineBar{}).Select("MIN(trade_date), MAX(trade_date)").Row().Scan(&minDate, &maxDate)
+	db.Dao.WithContext(ctx).Model(&models.KLineBar{}).Select("MIN(trade_date)").Row().Scan(&minDate)
+	maxDate = datasource.NewKLineStore().LatestMarketTradeDate(ctx, 45, 500)
 
 	var latest models.KLineSyncLog
 	if err := db.Dao.WithContext(ctx).Order("updated_at DESC").First(&latest).Error; err == nil {

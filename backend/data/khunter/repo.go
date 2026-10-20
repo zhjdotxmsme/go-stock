@@ -54,6 +54,18 @@ func (r *Repo) GetScoresByDate(date string) ([]models.KhunterScore, error) {
 	return rows, err
 }
 
+func (r *Repo) GetLatestScoreDate() (string, error) {
+	var d string
+	err := db.Dao.Model(&models.KhunterScore{}).Select("MAX(score_date)").Scan(&d).Error
+	return d, err
+}
+
+func (r *Repo) GetLatestSignalDate() (string, error) {
+	var d string
+	err := db.Dao.Model(&models.KhunterSignal{}).Select("MAX(signal_date)").Scan(&d).Error
+	return d, err
+}
+
 func (r *Repo) UpsertMoneyFlow(rows []models.KhunterMoneyFlowDaily) error {
 	if len(rows) == 0 {
 		return nil

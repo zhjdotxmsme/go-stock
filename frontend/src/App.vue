@@ -10,6 +10,7 @@ import { useAppStore } from './stores'
 import { useNavigation } from './composables/useNavigation'
 import { useMarketStatus } from './composables/useMarketStatus'
 import { useWailsEvents } from './composables/useWailsEvents'
+import { ensureStockNameRegistry } from './composables/useStockNameRegistry'
 
 const appStore = useAppStore()
 
@@ -58,6 +59,8 @@ window.onerror = function (msg, source, lineno, colno, error) {
 // ========== 生命周期 ==========
 
 onBeforeMount(() => {
+  ensureStockNameRegistry().catch((err) => console.warn('stock name registry:', err))
+
   // 获取版本信息 → 设置官方声明
   GetVersionInfo()
     .then((result) => {
