@@ -10,6 +10,10 @@ export function GetKellySuggestions() {
   return window['go']['handler']['KhunterHandler']['GetKellySuggestions']();
 }
 
+export function GetMeta() {
+  return window['go']['handler']['KhunterHandler']['GetMeta']();
+}
+
 export function GetRiskLevel() {
   return window['go']['handler']['KhunterHandler']['GetRiskLevel']();
 }

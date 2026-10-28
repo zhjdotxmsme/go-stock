@@ -18,6 +18,13 @@ export async function runPipeline(tradeDate: string): Promise<any> {
 /**
  * 五维评分排行
  */
+/** 最新有数据的评分日 / 信号日（用于默认日期） */
+export async function getKhunterMeta(): Promise<{ latestScoreDate?: string; latestSignalDate?: string }> {
+  const r = await callApi(KhunterHandler.GetMeta)
+  if (!r?.success) throw new Error(r?.message || '调用失败')
+  return r.data ?? {}
+}
+
 export async function getScores(date: string): Promise<any[]> {
   const r = await callApi(KhunterHandler.GetScores, date)
   if (!r?.success) throw new Error(r?.message || '调用失败')
@@ -71,6 +78,7 @@ export async function runBacktest(codes: string[], startDate: string, endDate: s
 
 export default {
   runPipeline,
+  getKhunterMeta,
   getScores,
   getSignals,
   getHunting,

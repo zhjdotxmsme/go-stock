@@ -101,7 +101,7 @@ import { PlayOutline } from '@vicons/ionicons5'
 import { format } from 'date-fns'
 
 import RadarChart from './charts/RadarChart.vue'
-import { runPipeline, getScores, getSignals, getHunting, getRiskLevel, getKellySuggestions, runBacktest } from '../api/khunter'
+import { runPipeline, getKhunterMeta, getScores, getSignals, getHunting, getRiskLevel, getKellySuggestions, runBacktest } from '../api/khunter'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 import { displayStockCode, resolveDisplayName, prepareStockDisplay, fillRowNames } from '../utils/stockDisplay'
 
@@ -117,8 +117,9 @@ async function run() {
   if (running.value) return
   running.value = true
   lastRunText.value = '流水线运行中...'
+  const reqDate = scoreDateStr()
   try {
-    await runPipeline('')
+    await runPipeline(reqDate)
   } catch (e) {
     running.value = false
     lastRunText.value = ''
@@ -140,11 +141,24 @@ function scoreDateStr(): string {
   return scoreDateTs.value ? format(new Date(scoreDateTs.value), 'yyyy-MM-dd') : today
 }
 
+function setScoreDateFromISO(iso: string) {
+  if (!iso || iso.length < 10) return
+  scoreDateTs.value = new Date(iso.slice(0, 10) + 'T12:00:00').getTime()
+}
+
 async function loadScores() {
   scoresLoading.value = true
   try {
     await prepareStockDisplay()
-    scores.value = fillRowNames(await getScores(scoreDateStr()), 'code', 'name')
+    const d = scoreDateStr()
+    scores.value = fillRowNames(await getScores(d), 'code', 'name')
+    if (!scores.value.length) {
+      const meta = await getKhunterMeta().catch(() => ({}))
+      const hint = meta.latestScoreDate && meta.latestScoreDate !== d
+        ? `；库内最新评分日为 ${meta.latestScoreDate}，可切换日期查看`
+        : ''
+      message.info(`${d} 暂无评分（当日可能 0 条策略信号）${hint}`)
+    }
   } catch (e) { message.error('加载评分失败: ' + e)
   } finally { scoresLoading.value = false }
 }
@@ -226,7 +240,11 @@ async function loadSignals() {
   signalsLoading.value = true
   try {
     await prepareStockDisplay()
-    signals.value = fillRowNames(await getSignals(signalDateStr()), 'code', 'name')
+    const d = signalDateStr()
+    signals.value = fillRowNames(await getSignals(d), 'code', 'name')
+    if (!signals.value.length) {
+      message.info(`${d} 暂无策略信号，可先「立即运行」或换一个有数据的交易日`)
+    }
   } catch (e) { message.error('加载信号失败: ' + e)
   } finally { signalsLoading.value = false }
 }
@@ -376,16 +394,16 @@ EventsOn('khunter:progress', (msg: any) => {
   const td = r.TradeDate ?? r.tradeDate
   const fresh = r.FreshStocks ?? r.freshStocks ?? 0
   const total = r.StockTotal ?? r.stockTotal ?? 0
-  lastRunText.value = `最近运行(${td || '-'}): 新鲜K线 ${fresh}/${total} · 信号 ${r.Signals ?? 0} · 入池 ${r.Hunted ?? 0}`
+  const sigN = r.Signals ?? 0
+  lastRunText.value = `最近运行(${td || '-'}): 新鲜K线 ${fresh}/${total} · 信号 ${sigN} · 入池 ${r.Hunted ?? 0}`
   if (fresh < 100) {
     message.warning('本地日K覆盖不足，请到「数据管理」启动历史同步后再跑狩猎场')
   }
-  if (td) {
-    const ts = new Date(td + 'T00:00:00').getTime()
-    scoreDateTs.value = ts
-    signalDateTs.value = ts
+  if (sigN === 0) {
+    message.warning(`${td || '当日'} 策略扫描完成但信号为 0，评分表不会生成；可切换到有历史信号的交易日查看`)
+  } else {
+    message.success('狩猎场流水线运行完成')
   }
-  message.success('狩猎场流水线运行完成')
   loadScores(); loadSignals(); loadRisk()
 })
 
@@ -412,7 +430,12 @@ onUnmounted(() => {
   EventsOff('khunter:backtest_done')
 })
 
-onMounted(() => {
+onMounted(async () => {
+  try {
+    const meta = await getKhunterMeta()
+    if (meta.latestScoreDate) setScoreDateFromISO(meta.latestScoreDate)
+    else if (meta.latestSignalDate) setScoreDateFromISO(meta.latestSignalDate)
+  } catch { /* ignore */ }
   loadScores(); loadSignals(); loadRisk(); loadKelly()
 })
 </script>

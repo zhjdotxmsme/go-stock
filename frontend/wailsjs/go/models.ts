@@ -3240,6 +3240,20 @@ export namespace khunter {
 	        this.fraction = source["fraction"];
 	    }
 	}
+	export class KhunterMeta {
+	    latestScoreDate: string;
+	    latestSignalDate: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new KhunterMeta(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.latestScoreDate = source["latestScoreDate"];
+	        this.latestSignalDate = source["latestSignalDate"];
+	    }
+	}
 
 }
 
@@ -4711,6 +4725,7 @@ export namespace models {
 	export class KhunterScore {
 	    id: number;
 	    code: string;
+	    name: string;
 	    scoreDate: string;
 	    technical: number;
 	    moneyflow: number;
@@ -4733,6 +4748,7 @@ export namespace models {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
 	        this.code = source["code"];
+	        this.name = source["name"];
 	        this.scoreDate = source["scoreDate"];
 	        this.technical = source["technical"];
 	        this.moneyflow = source["moneyflow"];

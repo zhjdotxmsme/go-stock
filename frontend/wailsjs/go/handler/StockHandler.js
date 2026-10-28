@@ -142,6 +142,14 @@ export function RemoveStockGroup(arg1, arg2, arg3) {
   return window['go']['handler']['StockHandler']['RemoveStockGroup'](arg1, arg2, arg3);
 }
 
+export function ResolveStockName(arg1) {
+  return window['go']['handler']['StockHandler']['ResolveStockName'](arg1);
+}
+
+export function ResolveStockNames(arg1) {
+  return window['go']['handler']['StockHandler']['ResolveStockNames'](arg1);
+}
+
 export function SetAlarmChangePercent(arg1, arg2, arg3) {
   return window['go']['handler']['StockHandler']['SetAlarmChangePercent'](arg1, arg2, arg3);
 }
@@ -156,14 +164,6 @@ export function SetStockSort(arg1, arg2) {
 
 export function SetTradingPrice(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['handler']['StockHandler']['SetTradingPrice'](arg1, arg2, arg3, arg4, arg5);
-}
-
-export function ResolveStockName(arg1) {
-  return window['go']['handler']['StockHandler']['ResolveStockName'](arg1);
-}
-
-export function ResolveStockNames(arg1) {
-  return window['go']['handler']['StockHandler']['ResolveStockNames'](arg1);
 }
 
 export function UnFollow(arg1) {

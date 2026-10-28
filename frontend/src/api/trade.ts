@@ -110,6 +110,14 @@ export async function getStockSignalsAsOf(stockCode: string, tradeDate: string) 
 }
 
 /**
+ * 批量最新信号判定（选股工作台整页本地验证）
+ * Go: GetStocksSignals(codes []string) map[string][]signal.SignalMatch
+ */
+export async function getStocksSignals(codes: string[]) {
+  return callApi(TradingRecordHandler.GetStocksSignals, codes)
+}
+
+/**
  * 信号注册表元数据（展示文案统一来源）
  * Go: GetSignalRegistry() []signal.SignalDef
  */
@@ -262,6 +270,7 @@ export default {
   getHoldingsSignals,
   getStockSignals,
   getStockSignalsAsOf,
+  getStocksSignals,
   getSignalRegistry,
   getStockTechnicalIndicators,
   summarizeHoldings,

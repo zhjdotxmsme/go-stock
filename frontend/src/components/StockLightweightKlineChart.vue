@@ -14,6 +14,7 @@ import {
   formatTickTime, mergeKlineRows, mergeRefreshWithLatest,
   extractYmdDatePart, barSecondsForMinuteKlt,
   formatYmdCompactShanghai, formatYmdHmsCompactShanghai,
+  toChartTime,
 } from './kline/time'
 
 import {
@@ -806,12 +807,19 @@ async function toggleKronosBacktest() {
   kronosError.value = ''
   try {
     const res = await tradeApi.backtestKLine(props.code, '', 5)
-    if (res?.error) throw new Error(res.error?.message || '回测失败')
-    const bt = res?.data
+    if (!res?.success || !res?.data) throw new Error(kronosErrMessage(res?.error))
+    const bt = res.data
     if (!bt?.prediction?.bars?.length) throw new Error('未返回回测数据（K线不足或服务不可用）')
     // 预测收盘折线：锚点=切点真实收盘，之后逐根预测收盘（日期即真实K线日期）
-    const rows = [{ time: bt.asOfDate, value: bt.prediction.summary?.lastClose ?? bt.prediction.bars[0].open }]
-    for (const b of bt.prediction.bars) rows.push({ time: b.date, value: b.close })
+    const rows = []
+    const t0 = toChartTime(bt.asOfDate)
+    if (t0 != null) {
+      rows.push({ time: t0, value: bt.prediction.summary?.lastClose ?? bt.prediction.bars[0].open })
+    }
+    for (const b of bt.prediction.bars) {
+      const t = toChartTime(b.date)
+      if (t != null) rows.push({ time: t, value: b.close })
+    }
     if (!backtestSeries) throw new Error('图表未就绪')
     backtestSeries.setData(rows)
     kronosBtInfo.value = bt
@@ -831,6 +839,16 @@ async function toggleKronosBacktest() {
   }
 }
 
+function kronosErrMessage(err) {
+  const msg = String(err?.message || err || '')
+  if (msg.includes('KRONOS_DISABLED')) return '未开启 Kronos（请在设置 → Kronos 中启用）'
+  if (msg.includes('KRONOS_OFFLINE')) return 'Kronos 服务离线（请在设置中手动启动或检查 Python 路径）'
+  if (msg.includes('KRONOS_TIMEOUT')) return 'Kronos 推理超时（首次加载模型较慢，请稍后在设置页先点「启动服务」再试）'
+  if (msg.includes('KRONOS_MODEL_MISSING')) return 'Kronos 模型未就绪（检查 Python 依赖与 HuggingFace 模型下载）'
+  if (msg.includes('KRONOS_INSUFFICIENT')) return '历史 K 线不足，无法预测'
+  return msg || '预测失败'
+}
+
 /** 预测虚K线铺到主图：时间取真实K线之后（日线按交易日推进） */
 function renderKronosForecast(pred) {
   if (!forecastSeries || !pred?.bars?.length) return
@@ -848,13 +866,19 @@ function renderKronosForecast(pred) {
     else if (dow === 0) ts += 86400000
     cursor = ts
     const d = new Date(ts)
-    const time = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const time = toChartTime(ymd)
+    if (time == null) continue
     rows.push({ time, open: b.open, high: b.high, low: b.low, close: b.close })
+  }
+  if (!rows.length) {
+    kronosError.value = '预测结果无法叠加到图表（日期无效）'
+    return
   }
   try {
     forecastSeries.setData(rows)
-  } catch {
-    /* 时间冲突等异常时静默跳过，不影响主图 */
+  } catch (e) {
+    kronosError.value = kronosErrMessage(e)
   }
 }
 
@@ -873,8 +897,8 @@ async function toggleKronosForecast() {
   kronosError.value = ''
   try {
     const res = await tradeApi.predictKLine(props.code, 5)
-    if (res?.error) throw new Error(res.error?.message || '预测失败')
-    const pred = res?.data
+    if (!res?.success || !res?.data) throw new Error(kronosErrMessage(res?.error))
+    const pred = res.data
     if (!pred?.bars?.length) throw new Error('未返回预测数据（K线不足或服务不可用）')
     lastKronosPred.value = pred
     kronosSummary.value = pred.summary || null

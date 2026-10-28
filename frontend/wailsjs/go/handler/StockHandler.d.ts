@@ -47,10 +47,6 @@ export function GetStockKLineWithFallback(arg1:string,arg2:string,arg3:string,ar
 
 export function GetStockList(arg1:string):Promise<Array<data.StockBasic>>;
 
-export function ResolveStockName(arg1:string):Promise<string>;
-
-export function ResolveStockNames(arg1:Array<string>):Promise<Record<string, string>>;
-
 export function GetStockMinutePriceLineData(arg1:string,arg2:string):Promise<Record<string, any>>;
 
 export function GetStockRealTimePrice(arg1:string):Promise<Record<string, any>>;
@@ -76,6 +72,10 @@ export function InitializeGroupSort():Promise<boolean>;
 export function RemoveGroup(arg1:number):Promise<string>;
 
 export function RemoveStockGroup(arg1:string,arg2:string,arg3:number):Promise<string>;
+
+export function ResolveStockName(arg1:string):Promise<string>;
+
+export function ResolveStockNames(arg1:Array<string>):Promise<Record<string, string>>;
 
 export function SetAlarmChangePercent(arg1:number,arg2:number,arg3:string):Promise<string>;
 

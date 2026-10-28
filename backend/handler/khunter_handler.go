@@ -37,6 +37,10 @@ func (h *KhunterHandler) RunPipelineAsync(tradeDate string) map[string]any {
 	return map[string]any{"started": true}
 }
 
+func (h *KhunterHandler) GetMeta() khunter.KhunterMeta {
+	return h.svc.GetMeta()
+}
+
 func (h *KhunterHandler) GetScores(date string) ([]models.KhunterScore, error) {
 	return h.svc.GetScores(date)
 }

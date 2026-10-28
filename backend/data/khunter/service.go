@@ -26,18 +26,22 @@ func (s *Service) RunPipeline(tradeDate string) (*PipelineResult, error) {
 	return RunPipeline(context.Background(), tradeDate)
 }
 
+// KhunterMeta 狩猎场数据日期提示（前端默认选中有数据的交易日）
+type KhunterMeta struct {
+	LatestScoreDate  string `json:"latestScoreDate"`
+	LatestSignalDate string `json:"latestSignalDate"`
+}
+
+func (s *Service) GetMeta() KhunterMeta {
+	scoreDate, _ := s.repo.GetLatestScoreDate()
+	sigDate, _ := s.repo.GetLatestSignalDate()
+	return KhunterMeta{LatestScoreDate: scoreDate, LatestSignalDate: sigDate}
+}
+
 func (s *Service) GetScores(date string) ([]models.KhunterScore, error) {
 	rows, err := s.repo.GetScoresByDate(date)
 	if err != nil {
 		return nil, err
-	}
-	if len(rows) == 0 && date != "" {
-		if latest, err := s.repo.GetLatestScoreDate(); err == nil && latest != "" && latest != date {
-			rows, err = s.repo.GetScoresByDate(latest)
-			if err != nil {
-				return nil, err
-			}
-		}
 	}
 	enrichKhunterScoreNames(rows)
 	return rows, nil
@@ -47,14 +51,6 @@ func (s *Service) GetSignals(date string) ([]models.KhunterSignal, error) {
 	rows, err := s.repo.GetSignalsByDate(date)
 	if err != nil {
 		return nil, err
-	}
-	if len(rows) == 0 && date != "" {
-		if latest, err := s.repo.GetLatestSignalDate(); err == nil && latest != "" && latest != date {
-			rows, err = s.repo.GetSignalsByDate(latest)
-			if err != nil {
-				return nil, err
-			}
-		}
 	}
 	enrichKhunterSignalNames(rows)
 	return rows, nil

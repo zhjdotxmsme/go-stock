@@ -7,6 +7,8 @@ export function GetHunting(arg1:string):Promise<Array<models.KhunterHunting>>;
 
 export function GetKellySuggestions():Promise<Array<khunter.KellySuggestion>>;
 
+export function GetMeta():Promise<khunter.KhunterMeta>;
+
 export function GetRiskLevel():Promise<models.KhunterRiskLevel>;
 
 export function GetScores(arg1:string):Promise<Array<models.KhunterScore>>;
