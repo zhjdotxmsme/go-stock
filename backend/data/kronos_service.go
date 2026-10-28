@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -51,6 +52,9 @@ type KronosPrediction struct {
 	Bars     []*KronosBar    `json:"bars"`
 	Summary  *KronosForecast `json:"summary"`
 }
+
+// kronosSinglePredictTimeout 单次 /predict：含首次 HuggingFace 模型加载，CPU 上常超过 30s。
+const kronosSinglePredictTimeout = 300 * time.Second
 
 // 预测错误码（前端按码提示）
 var (
@@ -127,6 +131,45 @@ type kronosProcess struct {
 	cmd       *exec.Cmd
 	starting  bool
 	startedAt time.Time
+	childDone chan struct{}
+	lastErr   string
+}
+
+func kronosInstallDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(exe)
+}
+
+func kronosPythonLogPath() string {
+	return filepath.Join(kronosInstallDir(), "logs", "kronos-python.log")
+}
+
+func tailKronosPythonLog(maxBytes int64) string {
+	path := kronosPythonLogPath()
+	st, err := os.Stat(path)
+	if err != nil || st.Size() == 0 {
+		return ""
+	}
+	size := st.Size()
+	if size > maxBytes {
+		size = maxBytes
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	if _, err := f.Seek(-size, io.SeekEnd); err != nil {
+		return ""
+	}
+	buf := make([]byte, size)
+	if _, err := io.ReadFull(f, buf); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(buf))
 }
 
 var kronosProc = &kronosProcess{}
@@ -156,13 +199,16 @@ func normalizePythonExe(p string) (string, error) {
 		return "", errors.New("未找到 Python：请在 PATH 安装 Python 3.10+，或在设置页填写 python.exe 完整路径")
 	}
 	if st, err := os.Stat(p); err == nil && st.IsDir() {
-		p = filepath.Join(p, "python.exe")
-	} else if err != nil && !strings.EqualFold(filepath.Ext(p), ".exe") && strings.ContainsAny(p, `\/`) {
-		// 看起来像路径但不存在且没带扩展名：尝试补 .exe
-		if _, err2 := os.Stat(p + ".exe"); err2 == nil {
-			p += ".exe"
+			p = filepath.Join(p, "python.exe")
+		} else if err != nil && strings.ContainsAny(p, `\/`) {
+			// 目录路径写错/缺 python.exe：依次尝试子路径与 .exe 后缀
+			for _, c := range []string{filepath.Join(p, "python.exe"), p + ".exe"} {
+				if fileExists(c) {
+					p = c
+					break
+				}
+			}
 		}
-	}
 	if _, err := os.Stat(p); err != nil {
 		if strings.ContainsAny(p, `\/`) {
 			return "", fmt.Errorf("Python 路径不存在: %s", p)
@@ -174,22 +220,51 @@ func normalizePythonExe(p string) (string, error) {
 	return p, nil
 }
 
+// resolveKronosPython 优先使用服务目录内 .venv，避免全局 Python 依赖冲突（如 starlette 1.x）。
+func resolveKronosPython(cfgPath string) (string, error) {
+	p, err := normalizePythonExe(cfgPath)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(cfgPath) != "" {
+		return p, nil
+	}
+	dir, err := resolveKronosServiceDir()
+	if err != nil {
+		return p, nil
+	}
+	venvPy := filepath.Join(dir, ".venv", "Scripts", "python.exe")
+	if fileExists(venvPy) {
+		return venvPy, nil
+	}
+	venvPyUnix := filepath.Join(dir, ".venv", "bin", "python")
+	if fileExists(venvPyUnix) {
+		return venvPyUnix, nil
+	}
+	return p, nil
+}
+
 // resolveKronosServiceDir 解析 Python 服务目录：
-// 1) 工作目录/python/kronos_service（开发模式）
-// 2) exe 同级/python/kronos_service（绿色部署）
+// 1) exe 同级/python/kronos_service（绿色部署）
+// 2) 工作目录/python/kronos_service（开发模式）
 // 3) 都不存在时从内嵌资源释放到 exe 同级
 func resolveKronosServiceDir() (string, error) {
-	if wd, err := os.Getwd(); err == nil {
-		dir := filepath.Join(wd, "python", "kronos_service")
-		if fileExists(filepath.Join(dir, "app.py")) {
-			return dir, nil
-		}
-	}
+	// 绿色部署优先 exe 同级，避免 cwd 落在源码树而用到不完整的 python 副本
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("无法定位程序目录: %w", err)
 	}
 	dir := filepath.Join(filepath.Dir(exe), "python", "kronos_service")
+	if fileExists(filepath.Join(dir, "app.py")) {
+		return dir, nil
+	}
+	if wd, err := os.Getwd(); err == nil {
+		dir = filepath.Join(wd, "python", "kronos_service")
+		if fileExists(filepath.Join(dir, "app.py")) {
+			return dir, nil
+		}
+	}
+	dir = filepath.Join(filepath.Dir(exe), "python", "kronos_service")
 	if fileExists(filepath.Join(dir, "app.py")) {
 		return dir, nil
 	}
@@ -227,8 +302,8 @@ func extractKronosAssets(dstDir string) error {
 		if err != nil {
 			return err
 		}
-		// 已存在则跳过（允许用户自行修改释放后的脚本）
-		if fileExists(target) {
+		// 核心脚本随版本更新；model/ 等允许用户保留本地修改
+		if fileExists(target) && rel != "app.py" && rel != "requirements.txt" {
 			return nil
 		}
 		return os.WriteFile(target, content, 0o644)
@@ -240,6 +315,80 @@ func kronosBaseURL(port int) string {
 		port = 8765
 	}
 	return fmt.Sprintf("http://127.0.0.1:%d", port)
+}
+
+func (p *kronosProcess) isModelReady(ctx context.Context, port int) bool {
+	url := kronosBaseURL(port) + "/ready"
+	client := &http.Client{Timeout: 3 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false
+	}
+	var out struct {
+		ModelLoaded bool `json:"modelLoaded"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return false
+	}
+	return out.ModelLoaded
+}
+
+func kronosWarmup(cfg KronosConfigSnapshot) {
+	port := cfg.Port
+	if port <= 0 {
+		port = 8765
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"model":  orDefaultStr(cfg.Model, "NeoQuasar/Kronos-small"),
+		"device": orDefaultStr(cfg.Device, "auto"),
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, kronosBaseURL(port)+"/warmup", bytes.NewReader(payload))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: 8 * time.Minute}).Do(req)
+	if err != nil {
+		logger.SugaredLogger.Warnf("Kronos warmup 请求失败: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		logger.SugaredLogger.Warnf("Kronos warmup HTTP %d", resp.StatusCode)
+		return
+	}
+	logger.SugaredLogger.Info("Kronos 模型预热完成")
+}
+
+func (p *kronosProcess) waitUntilModelReady(cfg KronosConfigSnapshot, timeout time.Duration) error {
+	port := cfg.Port
+	if port <= 0 {
+		port = 8765
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if p.childProcessExited() {
+			return p.formatStartFailure("Kronos Python 进程已退出")
+		}
+		c2, cancel2 := context.WithTimeout(context.Background(), 3*time.Second)
+		ok := p.isModelReady(c2, port)
+		cancel2()
+		if ok {
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return p.formatStartFailure("Kronos 模型加载超时")
 }
 
 func (p *kronosProcess) isAlive(ctx context.Context, port int) bool {
@@ -273,58 +422,147 @@ func (p *kronosProcess) EnsureRunning(cfg KronosConfigSnapshot) error {
 	if err := p.Start(cfg); err != nil {
 		return err
 	}
-	// 首次加载模型/启动 Python 可能较慢，最长等 120s
-	deadline := time.Now().Add(120 * time.Second)
-	for time.Now().Before(deadline) {
-		c2, cancel2 := context.WithTimeout(context.Background(), 3*time.Second)
-		ok := p.isAlive(c2, cfg.Port)
-		cancel2()
-		if ok {
-			return nil
-		}
-		time.Sleep(2 * time.Second)
-	}
-	return ErrKronosTimeout
+	return p.waitUntilHealthy(cfg, 120*time.Second)
 }
 
-// Start 拉起 Python 服务子进程（幂等：已在线或启动中直接返回）
-func (p *kronosProcess) Start(cfg KronosConfigSnapshot) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.cmd != nil && p.starting {
-		return nil
-	}
-	python, err := normalizePythonExe(cfg.PythonPath)
-	if err != nil {
-		logger.SugaredLogger.Errorf("Kronos Python 解释器不可用: %v", err)
-		return err
-	}
+func (p *kronosProcess) waitUntilHealthy(cfg KronosConfigSnapshot, timeout time.Duration) error {
 	port := cfg.Port
 	if port <= 0 {
 		port = 8765
 	}
-	// 服务目录：工作目录 → exe 同级 → 从内嵌资源释放到 exe 同级
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if p.childProcessExited() {
+			return p.formatStartFailure("Kronos Python 进程已退出")
+		}
+		c2, cancel2 := context.WithTimeout(context.Background(), 3*time.Second)
+		ok := p.isAlive(c2, port)
+		cancel2()
+		if ok {
+			return nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return p.formatStartFailure(ErrKronosTimeout.Error())
+}
+
+func (p *kronosProcess) childProcessExited() bool {
+	p.mu.Lock()
+	done := p.childDone
+	p.mu.Unlock()
+	if done == nil {
+		return false
+	}
+	select {
+	case <-done:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *kronosProcess) formatStartFailure(prefix string) error {
+	hint := tailKronosPythonLog(4096)
+	p.mu.Lock()
+	last := p.lastErr
+	p.mu.Unlock()
+	msg := prefix
+	if last != "" {
+		msg += ": " + last
+	}
+	if hint != "" {
+		msg += "（详见 logs/kronos-python.log 末尾: " + hint + "）"
+	} else {
+		msg += "（详见 logs/kronos-python.log）"
+	}
+	if strings.Contains(prefix, "KRONOS") {
+		return fmt.Errorf("%s: %s", prefix, msg)
+	}
+	return errors.New(msg)
+}
+
+// Start 拉起 Python 服务子进程（已 /health 在线则跳过；僵尸 cmd 会清理后重启）
+func (p *kronosProcess) Start(cfg KronosConfigSnapshot) error {
+	port := cfg.Port
+	if port <= 0 {
+		port = 8765
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	alive := p.isAlive(ctx, port)
+	cancel()
+	if alive {
+		return nil
+	}
+
+	p.mu.Lock()
+	if p.cmd != nil && p.starting {
+		p.mu.Unlock()
+		return nil
+	}
+	if p.cmd != nil && p.cmd.Process != nil {
+		_ = p.cmd.Process.Kill()
+		p.cmd = nil
+		p.childDone = nil
+	}
 	dir, err := resolveKronosServiceDir()
 	if err != nil {
+		p.mu.Unlock()
 		logger.SugaredLogger.Errorf("Kronos 服务目录不可用: %v", err)
 		return err
 	}
+	python, err := resolveKronosPython(cfg.PythonPath)
+	if err != nil {
+		p.mu.Unlock()
+		logger.SugaredLogger.Errorf("Kronos Python 解释器不可用: %v", err)
+		return err
+	}
+	_ = os.MkdirAll(filepath.Join(kronosInstallDir(), "logs"), 0o755)
+	logPath := kronosPythonLogPath()
+	logF, logErr := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if logErr != nil {
+		p.mu.Unlock()
+		return fmt.Errorf("无法写入 Kronos 日志 %s: %w", logPath, logErr)
+	}
+	_, _ = logF.WriteString(fmt.Sprintf("\n--- Kronos start %s python=%s dir=%s port=%d ---\n",
+		time.Now().Format(time.RFC3339), python, dir, port))
+
 	cmd := exec.Command(python, "app.py", "--port", fmt.Sprintf("%d", port))
 	cmd.Dir = dir
+	cmd.Stdout = logF
+	cmd.Stderr = logF
 	if err := cmd.Start(); err != nil {
+		_ = logF.Close()
+		p.mu.Unlock()
 		logger.SugaredLogger.Errorf("启动 Kronos 服务失败: %v", err)
 		return fmt.Errorf("启动 Kronos 服务失败: %w（Python=%s, 目录=%s）", err, python, dir)
 	}
 	p.cmd = cmd
 	p.starting = true
 	p.startedAt = time.Now()
-	go func(c *exec.Cmd) {
-		_ = c.Wait() // 回收子进程，防止僵尸
+	p.lastErr = ""
+	done := make(chan struct{})
+	p.childDone = done
+	go func(c *exec.Cmd, lf *os.File) {
+		waitErr := c.Wait()
+		if lf != nil {
+			_ = lf.Close()
+		}
 		p.mu.Lock()
 		p.starting = false
+		if p.cmd == c {
+			p.cmd = nil
+		}
+		if waitErr != nil {
+			p.lastErr = waitErr.Error()
+			logger.SugaredLogger.Errorf("Kronos Python 退出: %v", waitErr)
+		} else {
+			p.lastErr = "进程已正常退出"
+		}
 		p.mu.Unlock()
-	}(cmd)
-	logger.SugaredLogger.Infof("Kronos 服务已拉起 (port=%d)", port)
+		close(done)
+	}(cmd, logF)
+	p.mu.Unlock()
+	logger.SugaredLogger.Infof("Kronos 子进程已启动，等待 /health (port=%d, log=%s)", port, logPath)
 	return nil
 }
 
@@ -335,6 +573,7 @@ func (p *kronosProcess) Stop() {
 	if p.cmd != nil && p.cmd.Process != nil {
 		_ = p.cmd.Process.Kill()
 		p.cmd = nil
+		p.childDone = nil
 		p.starting = false
 		logger.SugaredLogger.Info("Kronos 服务已停止")
 	}
@@ -398,7 +637,7 @@ func kronosPredictEx(ctx context.Context, apiCode string, predLen int, asOfDate 
 			"close": b.Close, "volume": float64(b.Volume), "amount": b.Amount,
 		})
 	}
-	return kronosPostPredict(ctx, cfg, candles, predLen, asOfDate, 30*time.Second)
+	return kronosPostPredict(ctx, cfg, candles, predLen, asOfDate, kronosSinglePredictTimeout)
 }
 
 // kronosPostPredict 向 Python 服务发 /predict 并解析（kronosPredictEx 与回测共用）。
@@ -708,17 +947,14 @@ func KronosServiceStart() error {
 	if err := kronosProc.Start(cfg); err != nil {
 		return err
 	}
-	deadline := time.Now().Add(120 * time.Second)
-	for time.Now().Before(deadline) {
-		c2, cancel2 := context.WithTimeout(context.Background(), 3*time.Second)
-		ok := kronosProc.isAlive(c2, cfg.Port)
-		cancel2()
-		if ok {
-			return nil
-		}
-		time.Sleep(2 * time.Second)
+	if err := kronosProc.waitUntilHealthy(cfg, 120*time.Second); err != nil {
+		return err
 	}
-	return ErrKronosTimeout
+	// Python 子进程会后台 preload；仍未就绪时再主动 warmup
+	if !kronosProc.isModelReady(context.Background(), cfg.Port) {
+		kronosWarmup(cfg)
+	}
+	return kronosProc.waitUntilModelReady(cfg, 8*time.Minute)
 }
 
 // KronosServiceStop 停止托管服务

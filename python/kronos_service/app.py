@@ -2,8 +2,8 @@
 # 基于清华开源 Kronos 模型：https://github.com/shiyu-coder/Kronos
 # 由 go-stock 进程托管拉起，仅监听 127.0.0.1。独立手动运行：python app.py --port 8765
 import argparse
+import sys
 import threading
-from contextlib import asynccontextmanager
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -173,18 +173,40 @@ def _run_predict(req: PredictRequest) -> PredictResponse:
     )
 
 
-@asynccontextmanager
-async def _lifespan(app: FastAPI):
-    yield
-    # 进程退出由宿主(go-stock)管理，这里无需额外清理
-
-
-app = FastAPI(title="go-stock Kronos Service", lifespan=_lifespan)
+try:
+    app = FastAPI(title="go-stock Kronos Service")
+except TypeError as e:
+    print(
+        "KRONOS_ENV_ERROR: FastAPI 与 Starlette 版本不兼容（常见：误装 starlette 1.x）。"
+        "请在 python/kronos_service 下执行: python -m venv .venv && "
+        ".venv\\Scripts\\pip install -r requirements.txt",
+        file=sys.stderr,
+    )
+    raise SystemExit(1) from e
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "modelLoaded": _predictor is not None}
+
+
+@app.get("/ready")
+def ready():
+    return {"status": "ok", "modelLoaded": _predictor is not None}
+
+
+class WarmupRequest(BaseModel):
+    model: str = "NeoQuasar/Kronos-small"
+    device: str = "auto"
+
+
+@app.post("/warmup")
+def warmup(req: WarmupRequest):
+    try:
+        _get_predictor(req.model, req.device)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"MODEL_LOAD_FAILED: {e}") from e
+    return {"ok": True, "modelLoaded": True}
 
 
 @app.post("/predict", response_model=PredictResponse)
@@ -219,11 +241,24 @@ def predict_batch(req: BatchPredictRequest):
     return BatchPredictResponse(results=results, errors=errors)
 
 
+def _background_preload(model: str = "NeoQuasar/Kronos-small", device: str = "auto"):
+    try:
+        _get_predictor(model, device)
+    except Exception as e:
+        print(f"Kronos preload failed (first /predict will retry): {e}", file=sys.stderr)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--preload", action="store_true", default=True)
+    parser.add_argument("--no-preload", action="store_false", dest="preload")
     args = parser.parse_args()
+    if args.preload:
+        threading.Thread(
+            target=_background_preload, args=("NeoQuasar/Kronos-small", "auto"), daemon=True
+        ).start()
     import uvicorn
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
