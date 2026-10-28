@@ -12,6 +12,8 @@ package timeutil
 import (
 	"strings"
 	"time"
+
+	"go-stock/backend/logger"
 )
 
 const (
@@ -48,7 +50,11 @@ func ParseDate(s string) (time.Time, error) {
 	if t, err := time.ParseInLocation(DateLayout, s, time.Local); err == nil {
 		return t, nil
 	}
-	return time.ParseInLocation(CompactDateLayout, s, time.Local)
+	t, err := time.ParseInLocation(CompactDateLayout, s, time.Local)
+	if err != nil {
+		logger.SugaredLogger.Warnf("timeutil.ParseDate failed: input=%q err=%v", s, err)
+	}
+	return t, err
 }
 
 // ParseDateTime 解析业务时间字符串（本地时区），按序尝试
@@ -70,6 +76,7 @@ func ParseDateTime(s string) (time.Time, error) {
 		}
 		lastErr = err
 	}
+	logger.SugaredLogger.Warnf("timeutil.ParseDateTime failed: input=%q err=%v", s, lastErr)
 	return time.Time{}, lastErr
 }
 

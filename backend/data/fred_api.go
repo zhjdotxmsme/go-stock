@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"go-stock/backend/util/timeutil"
 	"log"
 )
 
@@ -133,7 +134,7 @@ func (f *FredApi) fetchViaOfficialAPI(seriesID string) ([]FredObservation, error
 		if o.Value == "." || o.Value == "" {
 			continue
 		}
-		date, err := time.Parse("2006-01-02", o.Date)
+		date, err := timeutil.ParseDate(o.Date)
 		if err != nil {
 			log.Printf("fred: skip invalid date %s: %v", o.Date, err)
 			continue
@@ -220,7 +221,7 @@ func (f *FredApi) parseCSVResponse(body io.Reader) ([]FredObservation, error) {
 			continue
 		}
 
-		date, err := time.Parse("2006-01-02", dateStr)
+		date, err := timeutil.ParseDate(dateStr)
 		if err != nil {
 			log.Printf("fred: skip invalid date %s: %v", dateStr, err)
 			continue

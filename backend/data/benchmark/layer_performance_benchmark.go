@@ -344,7 +344,7 @@ func (b *LayerPerformanceBenchmark) CompareResults() map[string]any {
 
 // BenchmarkIntegration benchmarks the integration layer
 func (b *LayerPerformanceBenchmark) BenchmarkIntegration(ctx context.Context, iterations int) map[string]BenchmarkResult {
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 	stockApiIntegration := integration.NewStockApiIntegration(originalApi)
 
 	stockCodes := []string{"sh600000", "sh600519", "sz000001"}

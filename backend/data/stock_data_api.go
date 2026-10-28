@@ -14,6 +14,7 @@ import (
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 	"go-stock/backend/stockcode"
+	"go-stock/backend/util/timeutil"
 	"io"
 	"io/ioutil"
 	url2 "net/url"
@@ -647,27 +648,12 @@ func (receiver StockDataApi) SetStockSort(newSort int64, stockCode string) {
 
 }
 func (receiver StockDataApi) SetStockAICron(cron string, stockCode string) {
-	if strutil.HasPrefixAny(stockCode, []string{"gb_"}) {
-		stockCode = strings.ToUpper(stockCode)
-		stockCode = strings.Replace(stockCode, "gb_", "us", 1)
-		stockCode = strings.Replace(stockCode, "GB_", "us", 1)
-	}
+	stockCode = stockcode.Normalize(stockCode)
 	db.Dao.Model(&FollowedStock{}).Where("stock_code = ?", strings.ToLower(stockCode)).Update("cron", cron)
 
 }
 func (receiver StockDataApi) SetTradingPrice(entryPrice, takeProfitPrice, stopLossPrice, costPrice float64, stockCode string) string {
-	stockCode = strings.ToUpper(stockCode)
-	if strings.HasSuffix(stockCode, ".SZ") {
-		stockCode = "sz" + strings.TrimSuffix(stockCode, ".SZ")
-	} else if strings.HasSuffix(stockCode, ".SH") {
-		stockCode = "sh" + strings.TrimSuffix(stockCode, ".SH")
-	} else if strings.HasSuffix(stockCode, ".HK") {
-		stockCode = "hk" + strings.TrimSuffix(stockCode, ".HK")
-	} else if strings.HasSuffix(stockCode, ".BJ") {
-		stockCode = "bj" + strings.TrimSuffix(stockCode, ".BJ")
-	} else if strings.HasPrefix(stockCode, "GB_") {
-		stockCode = strings.Replace(stockCode, "GB_", "us", 1)
-	}
+	stockCode = stockcode.Normalize(stockCode)
 	lowerStockCode := strings.ToLower(stockCode)
 
 	var stock FollowedStock
@@ -2766,12 +2752,12 @@ func (receiver StockDataApi) GetTradingRecordList(query TradingRecordListQuery) 
 		q = q.Where("direction = ?", dir)
 	}
 	if sd := strings.TrimSpace(query.StartDate); sd != "" {
-		if start, err := time.ParseInLocation("2006-01-02", sd, time.Local); err == nil {
+		if start, err := timeutil.ParseDate(sd); err == nil {
 			q = q.Where("trading_time >= ?", start)
 		}
 	}
 	if ed := strings.TrimSpace(query.EndDate); ed != "" {
-		if end, err := time.ParseInLocation("2006-01-02", ed, time.Local); err == nil {
+		if end, err := timeutil.ParseDate(ed); err == nil {
 			q = q.Where("trading_time < ?", end.Add(24*time.Hour))
 		}
 	}

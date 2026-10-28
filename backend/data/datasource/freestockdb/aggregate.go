@@ -3,10 +3,12 @@ package freestockdb
 import (
 	"sort"
 	"time"
+
+	"go-stock/backend/util/timeutil"
 )
 
 func parseDate8(v int64) (time.Time, error) {
-	return time.Parse("20060102", itoa8(v))
+	return timeutil.ParseDate(itoa8(v))
 }
 
 func itoa8(v int64) string {

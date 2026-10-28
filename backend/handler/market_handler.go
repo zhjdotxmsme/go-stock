@@ -124,6 +124,7 @@ func (h *MarketHandler) IsTradingDay(date string) bool {
 	}
 	t, err := time.ParseInLocation("2006-01-02", date, loc)
 	if err != nil {
+		logger.SugaredLogger.Warnf("IsTradingDay 收到非法日期入参: date=%q err=%v", date, err)
 		return false
 	}
 	return isTradingDay(t)

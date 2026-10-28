@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/duke-git/lancet/v2/convertor"
 	"go-stock/backend/logger"
+	"go-stock/backend/util/timeutil"
 	"regexp"
 	"strings"
 	"time"
@@ -321,7 +322,7 @@ func (f *FundKLineApi) aggregateToWeek(dailyKlines []KLineData) []KLineData {
 	var currentWeek string
 
 	for _, kd := range dailyKlines {
-		t, err := time.Parse("2006-01-02", kd.Day)
+		t, err := timeutil.ParseDate(kd.Day)
 		if err != nil {
 			continue
 		}
@@ -367,7 +368,7 @@ func (f *FundKLineApi) aggregateToMonth(dailyKlines []KLineData) []KLineData {
 	var currentMonth string
 
 	for _, kd := range dailyKlines {
-		t, err := time.Parse("2006-01-02", kd.Day)
+		t, err := timeutil.ParseDate(kd.Day)
 		if err != nil {
 			continue
 		}

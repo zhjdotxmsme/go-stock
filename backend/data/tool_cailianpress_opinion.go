@@ -8,6 +8,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"go-stock/backend/util"
+	"go-stock/backend/util/timeutil"
 )
 
 func init() {
@@ -103,7 +104,7 @@ func handleGetNewsListData(o *OpenAi, funcArguments string, ctx *ToolContext) er
 		page = 1
 	}
 
-	parseTime, err := time.Parse(time.DateTime, startTime)
+	parseTime, err := timeutil.ParseDateTime(startTime)
 	if err != nil {
 		parseTime = time.Now().Add(-time.Hour * 24)
 	}

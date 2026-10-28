@@ -3,6 +3,8 @@ package stockcode
 import (
 	"strings"
 	"unicode"
+
+	"go-stock/backend/logger"
 )
 
 // Normalize converts any supported stock code input to the internal canonical format.
@@ -40,11 +42,15 @@ func Normalize(code string) string {
 	if prefix == "" {
 		prefix = guessAPrefix(pure)
 		if prefix == "" {
-			return code // Unknown format, return as-is
+			// Unknown format, return as-is
+			logger.SugaredLogger.Warnf("stockcode.Normalize: unrecognized code passthrough: %q", code)
+			return code
 		}
 	}
 
-	return prefix + pure
+	result := prefix + pure
+	logger.SugaredLogger.Debugf("stockcode.Normalize: converted %q -> %q", code, result)
+	return result
 }
 
 // ParseStockCode decomposes any stock code into (market_prefix, pure_code).

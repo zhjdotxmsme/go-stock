@@ -11,7 +11,7 @@ import (
 
 func TestStockApiIntegration_GetStockCodeRealTimeDataWithFallback(t *testing.T) {
 	// Create original API instance
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 
 	// Create integration with layered architecture
 	integration := NewStockApiIntegration(originalApi)
@@ -76,7 +76,7 @@ func TestStockApiIntegration_GetStockCodeRealTimeDataWithFallback(t *testing.T) 
 }
 
 func TestStockApiIntegration_GetStockSentiment(t *testing.T) {
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 	integration := NewStockApiIntegration(originalApi)
 
 	ctx := context.Background()
@@ -108,7 +108,7 @@ func TestStockApiIntegration_GetStockSentiment(t *testing.T) {
 }
 
 func TestStockApiIntegration_GetStockCapitalFlow(t *testing.T) {
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 	integration := NewStockApiIntegration(originalApi)
 
 	ctx := context.Background()
@@ -134,7 +134,7 @@ func TestStockApiIntegration_GetStockCapitalFlow(t *testing.T) {
 }
 
 func TestStockApiIntegration_GetStockAnnouncements(t *testing.T) {
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 	integration := NewStockApiIntegration(originalApi)
 
 	ctx := context.Background()
@@ -166,7 +166,7 @@ func TestStockApiIntegration_GetStockAnnouncements(t *testing.T) {
 }
 
 func TestStockApiIntegration_GetLayerStatus(t *testing.T) {
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 	integration := NewStockApiIntegration(originalApi)
 
 	ctx := context.Background()
@@ -198,7 +198,7 @@ func TestStockApiIntegration_GetLayerStatus(t *testing.T) {
 }
 
 func TestStockApiIntegration_MixedDataFetching(t *testing.T) {
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 	integration := NewStockApiIntegration(originalApi)
 
 	ctx := context.Background()
@@ -242,7 +242,7 @@ func TestStockApiIntegration_MixedDataFetching(t *testing.T) {
 }
 
 func TestStockApiIntegration_Performance(t *testing.T) {
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 	integration := NewStockApiIntegration(originalApi)
 
 	ctx := context.Background()

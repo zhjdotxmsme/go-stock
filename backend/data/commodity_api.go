@@ -11,6 +11,7 @@ import (
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"go-stock/backend/util/timeutil"
 	"math"
 	"regexp"
 )
@@ -214,7 +215,10 @@ func (c *CommodityApi) getFuturesQuoteFromSina(asset *models.CommodityAsset) (*d
 	}
 
 	// parts[17] = date string "2006-01-02"
-	quoteDate, _ := time.Parse("2006-01-02", strings.TrimSpace(parts[17]))
+	quoteDate, _ := timeutil.ParseDate(strings.TrimSpace(parts[17]))
+	if quoteDate.IsZero() {
+		logger.SugaredLogger.Warnf("commodity sina futures %s: invalid quote date %q", asset.Code, strings.TrimSpace(parts[17]))
+	}
 
 	quote := &datasource.QuoteData{
 		Code:      asset.Code,
@@ -584,7 +588,7 @@ func (c *CommodityApi) getFuturesKLineFromSina(asset *models.CommodityAsset, per
 		if len(row) < 6 {
 			continue
 		}
-		t, _ := time.Parse("2006-01-02", row[0])
+		t, _ := timeutil.ParseDate(row[0])
 		o, _ := strconv.ParseFloat(row[1], 64)
 		h, _ := strconv.ParseFloat(row[2], 64)
 		l, _ := strconv.ParseFloat(row[3], 64)
@@ -669,7 +673,7 @@ func (c *CommodityApi) getETFKLine(asset *models.CommodityAsset, period string, 
 func parseEastMoneyDay(day string) time.Time {
 	day = strings.TrimSpace(day)
 	if len(day) >= 10 {
-		t, err := time.Parse("2006-01-02", day[:10])
+		t, err := timeutil.ParseDate(day[:10])
 		if err == nil {
 			return t
 		}

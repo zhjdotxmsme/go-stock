@@ -193,11 +193,11 @@ func (s *KLineStore) FindMissingDateRanges(ctx context.Context, stockCode, perio
 		existing[b.TradeDate] = struct{}{}
 	}
 
-	startT, err := time.Parse("2006-01-02", startDate)
+	startT, err := timeutil.ParseDate(startDate)
 	if err != nil {
 		return nil, fmt.Errorf("parse start date: %w", err)
 	}
-	endT, err := time.Parse("2006-01-02", endDate)
+	endT, err := timeutil.ParseDate(endDate)
 	if err != nil {
 		return nil, fmt.Errorf("parse end date: %w", err)
 	}

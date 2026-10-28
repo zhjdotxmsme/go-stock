@@ -13,6 +13,7 @@ import (
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
+	"go-stock/backend/util/timeutil"
 )
 
 // ----- T+1 约束测试 -----
@@ -247,7 +248,7 @@ type aprice struct {
 func makeABars(prices []aprice) []datasource.KLineBar {
 	bars := make([]datasource.KLineBar, len(prices))
 	for i, p := range prices {
-		t, _ := time.Parse("2006-01-02", p.date)
+		t, _ := timeutil.ParseDate(p.date)
 		bars[i] = datasource.KLineBar{
 			Time:      t,
 			Open:      p.o,

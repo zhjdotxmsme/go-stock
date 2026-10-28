@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
+	"go-stock/backend/util/timeutil"
 	"strconv"
 	"strings"
 	"time"
@@ -800,7 +801,7 @@ func handleIsTradingDay(o *OpenAi, funcArguments string, ctx *ToolContext) error
 		}
 	}
 	isWeekend := false
-	t, _ := time.Parse("2006-01-02", date)
+	t, _ := timeutil.ParseDate(date)
 	if t.Weekday() == time.Saturday || t.Weekday() == time.Sunday {
 		isWeekend = true
 	}
@@ -820,7 +821,7 @@ func handleGetNextTradingDay(o *OpenAi, funcArguments string, ctx *ToolContext) 
 	if startDate == "" {
 		startDate = time.Now().Format("2006-01-02")
 	}
-	t, _ := time.Parse("2006-01-02", startDate)
+	t, _ := timeutil.ParseDate(startDate)
 	count := 0
 	for count < int(days) {
 		t = t.AddDate(0, 0, 1)

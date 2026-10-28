@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-stock/backend/logger"
+	"go-stock/backend/stockcode"
+	"go-stock/backend/util/timeutil"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -58,37 +60,18 @@ func sinaScaleFromKlt(klt string) string {
 }
 
 func sinaSymbolFromStockCode(stockCode string) string {
-	code := strings.ToUpper(strings.TrimSpace(stockCode))
-	if strings.Contains(code, ".") {
-		parts := strings.Split(code, ".")
-		if len(parts) == 2 {
-			market := parts[1]
-			pureCode := parts[0]
-			switch market {
-			case "SH", "SS":
-				return "sh" + pureCode
-			case "SZ":
-				return "sz" + pureCode
-			case "BJ":
-				return "bj" + pureCode
-			}
-		}
+	normalized := stockcode.Normalize(strings.TrimSpace(stockCode))
+	prefix, pure := stockcode.ParseStockCode(normalized)
+	switch prefix {
+	case "sh", "sz", "bj", "hk":
+		return prefix + pure
+	case "us":
+		// 保持新浪美股旧路径兼容：新浪美股使用小写纯代码
+		return strings.ToLower(pure)
+	default:
+		logger.SugaredLogger.Warnf("sinaSymbolFromStockCode: unrecognized stock code %q", stockCode)
+		return strings.ToLower(stockCode)
 	}
-	if strings.HasPrefix(code, "SH") || strings.HasPrefix(code, "SZ") || strings.HasPrefix(code, "BJ") {
-		return strings.ToLower(code[:2]) + code[2:]
-	}
-	if len(code) >= 1 {
-		first := code[0:1]
-		switch first {
-		case "6":
-			return "sh" + code
-		case "0", "3":
-			return "sz" + code
-		case "8", "9":
-			return "bj" + code
-		}
-	}
-	return strings.ToLower(code)
 }
 
 func (s *SinaKLineApi) GetKLineData(stockCode, klt string, limit int) *[]KLineData {
@@ -383,40 +366,6 @@ func tencentPeriodFromKlt(klt string) string {
 	}
 }
 
-func tencentSymbolFromStockCode(stockCode string) string {
-	code := strings.ToUpper(strings.TrimSpace(stockCode))
-	if strings.Contains(code, ".") {
-		parts := strings.Split(code, ".")
-		if len(parts) == 2 {
-			market := parts[1]
-			pureCode := parts[0]
-			switch market {
-			case "SH", "SS":
-				return "sh" + pureCode
-			case "SZ":
-				return "sz" + pureCode
-			case "BJ":
-				return "bj" + pureCode
-			}
-		}
-	}
-	if strings.HasPrefix(code, "SH") || strings.HasPrefix(code, "SZ") || strings.HasPrefix(code, "BJ") {
-		return strings.ToLower(code[:2]) + code[2:]
-	}
-	if len(code) >= 1 {
-		first := code[0:1]
-		switch first {
-		case "6":
-			return "sh" + code
-		case "0", "3":
-			return "sz" + code
-		case "8", "9":
-			return "bj" + code
-		}
-	}
-	return strings.ToLower(code)
-}
-
 func (t *TencentKLineApi) GetKLineData(stockCode, klt string, limit int) *[]KLineData {
 	result := &[]KLineData{}
 	period := tencentPeriodFromKlt(klt)
@@ -430,7 +379,7 @@ func (t *TencentKLineApi) GetKLineData(stockCode, klt string, limit int) *[]KLin
 	if limit > 800 {
 		limit = 800
 	}
-	symbol := tencentSymbolFromStockCode(stockCode)
+	symbol := sinaSymbolFromStockCode(stockCode)
 	if symbol == "" {
 		logger.SugaredLogger.Errorf("TencentKLine: invalid stock code: %s", stockCode)
 		return result
@@ -790,7 +739,7 @@ func extractMonthKey(dayStr string) string {
 		return s[:4] + "-" + s[4:6]
 	}
 	if len(s) >= 10 && (strings.Contains(s, "/") || strings.Contains(s, "-")) {
-		t, err := time.Parse("2006-01-02", strings.ReplaceAll(s, "/", "-"))
+		t, err := timeutil.ParseDate(s)
 		if err == nil {
 			return t.Format("2006-01")
 		}

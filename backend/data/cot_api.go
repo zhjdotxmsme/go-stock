@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go-stock/backend/util/timeutil"
 )
 
 // CotApi fetches Commitment of Traders (COT) data from CFTC.gov
@@ -125,7 +127,7 @@ func (c *CotApi) parseCotCSV(body io.Reader) ([]CotRecord, error) {
 		}
 
 		dateStr := strings.TrimSpace(record[1])
-		date, err := time.Parse("2006-01-02", dateStr)
+		date, err := timeutil.ParseDate(dateStr)
 		if err != nil {
 			continue
 		}

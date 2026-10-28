@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go-stock/backend/data"
+	"go-stock/backend/util/timeutil"
 )
 
 const (
@@ -93,7 +94,7 @@ func CheckDataPack(pack *DataPack, now time.Time) *DataCheckReport {
 			continue
 		}
 		parseable++
-		if d, err := time.ParseInLocation("2006-01-02", k.Day[:10], time.Local); err == nil && d.After(latest) {
+		if d, err := timeutil.ParseDate(k.Day[:10]); err == nil && d.After(latest) {
 			latest = d
 		}
 	}

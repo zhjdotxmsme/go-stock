@@ -12,6 +12,7 @@ import (
 	"go-stock/backend/data"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"go-stock/backend/util/timeutil"
 )
 
 // 事件规则：类型 → (分值, 有效天数)
@@ -81,7 +82,7 @@ func ClassifyAnnouncement(title, noticeDate, code string) *models.KhunterEvent {
 	if len(noticeDate) < 10 {
 		return nil
 	}
-	d, err := time.Parse("2006-01-02", noticeDate[:10])
+	d, err := timeutil.ParseDate(noticeDate[:10])
 	if err != nil {
 		return nil
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go-stock/backend/data"
 	"go-stock/backend/logger"
+	"go-stock/backend/util/timeutil"
 	"sort"
 	"strings"
 	"time"
@@ -356,7 +357,7 @@ func GetHolidayTools() []tool.BaseTool {
 				date = time.Now().Format("2006-01-02")
 			}
 
-			parsedDate, err := time.Parse("2006-01-02", date)
+			parsedDate, err := timeutil.ParseDate(date)
 			if err != nil {
 				return "", fmt.Errorf("日期格式错误: %v", err)
 			}
@@ -445,7 +446,7 @@ func GetHolidayTools() []tool.BaseTool {
 			if startDate == "" {
 				currentDate = time.Now()
 			} else {
-				currentDate, err = time.Parse("2006-01-02", startDate)
+				currentDate, err = timeutil.ParseDate(startDate)
 				if err != nil {
 					return "", fmt.Errorf("日期格式错误: %v", err)
 				}

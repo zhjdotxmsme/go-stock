@@ -14,7 +14,7 @@ import (
 
 // TestOriginalAPICompatibility ensures original API functionality still works
 func TestOriginalAPICompatibility(t *testing.T) {
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 
 	t.Log("Testing original API compatibility...")
 
@@ -61,7 +61,7 @@ func TestLayeredArchitectureDoesNotBreakOriginalDataSources(t *testing.T) {
 
 // TestBackwardCompatibilityWithExistingCode
 func TestBackwardCompatibilityWithExistingCode(t *testing.T) {
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 
 	t.Log("Testing backward compatibility with existing code...")
 
@@ -90,7 +90,7 @@ func TestBackwardCompatibilityWithExistingCode(t *testing.T) {
 func TestDataConsistencyBetweenLayersAndOriginal(t *testing.T) {
 	t.Log("Testing data consistency between layers and original API...")
 
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 	ctx := context.Background()
 
 	// Get data from original API
@@ -139,7 +139,7 @@ func TestDataConsistencyBetweenLayersAndOriginal(t *testing.T) {
 func TestLayeredArchitecturePerformanceDoesNotDegrade(t *testing.T) {
 	t.Log("Testing that layered architecture performance doesn't degrade significantly...")
 
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 	ctx := context.Background()
 
 	// Measure original API performance
@@ -178,7 +178,7 @@ func TestLayeredArchitecturePerformanceDoesNotDegrade(t *testing.T) {
 func TestCacheDoesNotCauseDataStaleness(t *testing.T) {
 	t.Log("Testing that cache does not cause data staleness...")
 
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 
 	// First request (cache miss)
 	firstResult, err := originalApi.GetStockCodeRealTimeData("sh600000")
@@ -412,7 +412,7 @@ func TestLayeredArchitectureConcurrencySafety(t *testing.T) {
 func TestRegressionOfCriticalFunctionality(t *testing.T) {
 	t.Log("Testing critical functionality regression...")
 
-	originalApi := &data.StockDataApi{}
+	originalApi := data.NewStockDataApi()
 	newsApi := data.NewMarketNewsApi()
 
 	criticalFunctions := []struct {

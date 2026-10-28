@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go-stock/backend/logger"
+	"go-stock/backend/util/timeutil"
 )
 
 // EnhancedCapitalFlowAnalyzer provides comprehensive capital flow analysis
@@ -243,7 +244,7 @@ func (a *EnhancedCapitalFlowAnalyzer) fetchCapitalFlowData(ctx context.Context, 
 
 	// Simulate historical data
 	historicalData := make(map[string]*DailyCapitalFlow)
-	baseDate, _ := time.Parse("2006-01-02", date)
+	baseDate, _ := timeutil.ParseDate(date)
 
 	for i := 0; i < a.config.HistoryLength; i++ {
 		historicalDate := baseDate.AddDate(0, 0, -i)

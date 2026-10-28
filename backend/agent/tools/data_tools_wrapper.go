@@ -14,6 +14,7 @@ import (
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 	"go-stock/backend/util"
+	"go-stock/backend/util/timeutil"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
@@ -688,8 +689,9 @@ func GetAllDataTools() []tool.BaseTool {
 				page = 1
 			}
 
-			parseTime, err := time.Parse(time.DateTime, startTime)
+			parseTime, err := timeutil.ParseDateTime(startTime)
 			if err != nil {
+				logger.SugaredLogger.Warnf("startTime 无法解析，回退为24小时前: startTime=%q err=%v", startTime, err)
 				parseTime = time.Now().Add(-time.Hour * 24)
 			}
 			list, total := data.NewMarketNewsApi().GetNewsListData(keyWord, parseTime, page, pageSize)

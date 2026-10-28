@@ -7,6 +7,7 @@ import (
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 	"go-stock/backend/util"
+	"go-stock/backend/util/timeutil"
 	"net/url"
 	"strconv"
 	"strings"
@@ -352,7 +353,7 @@ func (m MarketNewsApi) GetSinaNews(crawlTimeOut uint) *[]models.Telegraph {
 			telegraph.Content = data["rich_text"].(string)
 			telegraph.Title = strutil.SubInBetween(data["rich_text"].(string), "【", "】")
 			telegraph.Time = strings.Split(data["create_time"].(string), " ")[1]
-			dataTime, _ := time.ParseInLocation("2006-01-02 15:04:05", data["create_time"].(string), time.Local)
+			dataTime, _ := timeutil.ParseDateTime(data["create_time"].(string))
 			if &dataTime != nil {
 				telegraph.DataTime = &dataTime
 			}

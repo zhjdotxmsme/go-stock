@@ -13,6 +13,7 @@ import (
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"go-stock/backend/util/timeutil"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -220,7 +221,7 @@ func (e *EastMoneyFuturesApi) GetKLine(asset *models.CommodityAsset, period stri
 		if len(parts) < 6 {
 			continue
 		}
-		t, _ := time.Parse("2006-01-02", strings.TrimSpace(parts[0]))
+		t, _ := timeutil.ParseDate(strings.TrimSpace(parts[0]))
 		o, _ := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
 		c, _ := strconv.ParseFloat(strings.TrimSpace(parts[2]), 64)
 		h, _ := strconv.ParseFloat(strings.TrimSpace(parts[3]), 64)

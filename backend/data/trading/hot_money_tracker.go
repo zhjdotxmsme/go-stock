@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go-stock/backend/logger"
+	"go-stock/backend/util/timeutil"
 )
 
 // HotMoneyTracker analyzes hot money seat patterns and trends
@@ -173,7 +174,7 @@ func (h *HotMoneyTracker) identifyTopSeats(hotMoneyData map[string][]*HotMoneySe
 
 	// Aggregate data across all dates
 	for date, seats := range hotMoneyData {
-		parsedDate, _ := time.Parse("2006-01-02", date)
+		parsedDate, _ := timeutil.ParseDate(date)
 
 		for _, seat := range seats {
 			if existing, exists := seatAggregates[seat.SeatName]; exists {
