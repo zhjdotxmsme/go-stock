@@ -1,15 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"go-stock/backend/agent/tools"
 	"go-stock/backend/data"
+	"go-stock/backend/data/datasource"
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"go-stock/backend/stockcode"
 
 	"github.com/duke-git/lancet/v2/convertor"
 	"github.com/duke-git/lancet/v2/mathutil"
@@ -19,6 +23,103 @@ import (
 )
 
 // 本文件为价格监控与预警相关逻辑，从 app.go 纯搬运拆分（含新闻推送、自选/AI 推荐股/基金监控、报警去重等）。
+
+// MonitorKLineIncrementalSync K 线自动增量同步（P3）：
+//   - 启动补偿一轮（兜底停机期间错过的交易日）；
+//   - 交易时段每 N 分钟（设置 klineAutoSyncIntervalMinutes，默认 5）对关注列表做
+//     store-first 尾部增量，已新鲜的股票零网络请求；
+//   - 每个交易日 15:10 盘后结算一次，保证收盘日线完整。
+// 受设置 klineAutoSyncEnable 开关控制。
+func MonitorKLineIncrementalSync(a *App) {
+	cfg := data.GetSettingConfigSafe()
+	if cfg.Settings == nil || !cfg.KLineAutoSyncEnable {
+		logger.SugaredLogger.Info("K线自动增量同步未开启（设置 klineAutoSyncEnable）")
+		return
+	}
+	interval := cfg.KLineAutoSyncIntervalMinutes
+	if interval <= 0 {
+		interval = 5
+	}
+	logger.SugaredLogger.Infof("K线自动增量同步已开启：间隔 %d 分钟", interval)
+
+	runPass := func(reason string) {
+		codes := followedStockCodes()
+		if len(codes) == 0 {
+			return
+		}
+		start := time.Now()
+		ok, fail := syncKLineIncrementalBatch(a.ctx, codes)
+		logger.SugaredLogger.Infof("K线自动增量同步(%s)：关注 %d 只，成功 %d，失败 %d，耗时 %s",
+			reason, len(codes), ok, fail, time.Since(start).Round(time.Second))
+	}
+
+	// 盘后结算：交易日 15:10，覆盖盘中最后一次增量后的收盘数据
+	if id, err := a.cron.AddFunc("0 10 15 * * 1-5", func() { runPass("盘后结算") }); err == nil {
+		a.setCronEntry("MonitorKLineIncrementalSyncSettle", id)
+	} else {
+		logger.SugaredLogger.Errorf("AddFunc KLineAutoSync settle error:%s", err.Error())
+	}
+
+	// 启动补偿：ResumePendingSyncTasks 只恢复同步队列任务，关注列表可能没有排队任务
+	go runPass("启动补偿")
+
+	ticker := time.NewTicker(time.Duration(interval) * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-ticker.C:
+			if a.marketHandler.IsTradingTime() {
+				runPass("盘中增量")
+			}
+		}
+	}
+}
+
+// followedStockCodes 关注列表股票代码（已 Normalize）。
+func followedStockCodes() []string {
+	var stocks []data.FollowedStock
+	if err := db.Dao.Model(&data.FollowedStock{}).Find(&stocks).Error; err != nil {
+		logger.SugaredLogger.Warnf("K线增量同步：查询关注列表失败: %v", err)
+		return nil
+	}
+	codes := make([]string, 0, len(stocks))
+	for _, s := range stocks {
+		if code := stockcode.Normalize(s.StockCode); code != "" {
+			codes = append(codes, code)
+		}
+	}
+	return codes
+}
+
+// syncKLineIncrementalBatch 并发（4 workers）对一批代码做尾部增量，返回 (成功, 失败)。
+func syncKLineIncrementalBatch(ctx context.Context, codes []string) (int, int) {
+	sem := make(chan struct{}, 4)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var failed []string
+	for _, code := range codes {
+		wg.Add(1)
+		go func(code string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			c, cancel := context.WithTimeout(ctx, 15*time.Second)
+			defer cancel()
+			if _, err := datasource.GetRouter().GetKLineIncremental(c, code, "day", 250); err != nil {
+				mu.Lock()
+				failed = append(failed, code)
+				mu.Unlock()
+			}
+		}(code)
+	}
+	wg.Wait()
+	if len(failed) > 0 {
+		logger.SugaredLogger.Warnf("K线增量同步失败列表: %v", failed)
+	}
+	return len(codes) - len(failed), len(failed)
+}
 
 func (a *App) NewsPush(news *[]models.Telegraph) {
 

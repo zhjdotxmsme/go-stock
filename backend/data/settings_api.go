@@ -80,6 +80,10 @@ type Settings struct {
 	FreeStockDBPath      string `json:"freeStockDBPath" gorm:"column:free_stock_db_path"`
 	FreeStockDBAddr      string `json:"freeStockDBAddr" gorm:"column:free_stock_db_addr"`
 	FreeStockDBAutoStart bool   `json:"freeStockDBAutoStart" gorm:"column:free_stock_db_auto_start"`
+	// K 线自动增量同步：交易时段对关注列表定时尾部补拉 + 盘后结算，
+	// 配合图表 store-first 读取实现"自动拉取 + 增量更新"。
+	KLineAutoSyncEnable          bool `json:"klineAutoSyncEnable" gorm:"column:kline_auto_sync_enable"`
+	KLineAutoSyncIntervalMinutes int  `json:"klineAutoSyncIntervalMinutes" gorm:"column:kline_auto_sync_interval_minutes"` // 0 = 默认 5 分钟
 }
 
 func (receiver Settings) TableName() string {
@@ -210,6 +214,8 @@ func UpdateConfig(s *SettingConfig) string {
 			"free_stock_db_path":        s.FreeStockDBPath,
 			"free_stock_db_addr":        s.FreeStockDBAddr,
 			"free_stock_db_auto_start":  s.FreeStockDBAutoStart,
+			"kline_auto_sync_enable":    s.KLineAutoSyncEnable,
+			"kline_auto_sync_interval_minutes": s.KLineAutoSyncIntervalMinutes,
 		})
 		if result.Error != nil {
 			logger.SugaredLogger.Errorf("更新配置失败: %v", result.Error)

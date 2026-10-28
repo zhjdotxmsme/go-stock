@@ -10,6 +10,7 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"go-stock/backend/util/timeutil"
 
 	"gorm.io/gorm"
 )
@@ -94,11 +95,11 @@ func findMissingRangesLocal(ctx context.Context, store *datasource.KLineStore, s
 		existing[b.TradeDate] = struct{}{}
 	}
 
-	startT, err := time.Parse("2006-01-02", startDate)
+	startT, err := timeutil.ParseDate(startDate)
 	if err != nil {
 		return nil, fmt.Errorf("parse start date: %w", err)
 	}
-	endT, err := time.Parse("2006-01-02", endDate)
+	endT, err := timeutil.ParseDate(endDate)
 	if err != nil {
 		return nil, fmt.Errorf("parse end date: %w", err)
 	}
@@ -270,11 +271,11 @@ func CreateSyncTask(ctx context.Context, stockCode, period, startDate, endDate s
 func syncDateRange(ctx context.Context, router *datasource.Router, store *datasource.KLineStore, stockCode, period, startDate, endDate string, adjusted bool) error {
 	// Estimate bars from the range span instead of always pulling 2000:
 	// trading days ≈ calendar days × 5/7, clamped to a sane minimum.
-	startT, err := time.Parse("2006-01-02", startDate)
+	startT, err := timeutil.ParseDate(startDate)
 	if err != nil {
 		return fmt.Errorf("invalid start date %q: %w", startDate, err)
 	}
-	endT, err := time.Parse("2006-01-02", endDate)
+	endT, err := timeutil.ParseDate(endDate)
 	if err != nil {
 		return fmt.Errorf("invalid end date %q: %w", endDate, err)
 	}
@@ -294,7 +295,8 @@ func syncDateRange(ctx context.Context, router *datasource.Router, store *dataso
 		count = 2000
 	}
 
-	data, err := router.GetKLine(ctx, stockCode, period, count)
+	// 落库时机由本函数控制（先做除权检测），不走 GetKLine 的异步持久化
+	data, err := router.FetchKLineNoPersist(ctx, stockCode, period, count)
 	if err != nil {
 		return fmt.Errorf("failed to fetch K-line data from router: %w", err)
 	}
@@ -316,6 +318,24 @@ func syncDateRange(ctx context.Context, router *datasource.Router, store *dataso
 	if len(filtered) == 0 {
 		logger.SugaredLogger.Warnf("No bars in date range [%s - %s] for %s", startDate, endDate, stockCode)
 		return nil
+	}
+
+	// 除权防线：前复权序列与库内重叠日收盘系统性错位（除权导致 qfq 整体平移）时，
+	// 缺口检测认为日期已存在不会重拉，必须全量重拉覆盖，否则增量追加会写坏历史。
+	if adjusted {
+		storedSnapshot, qerr := store.QueryKLines(ctx, stockCode, period, filtered[0].TradeDate, filtered[len(filtered)-1].TradeDate, true)
+		if qerr != nil {
+			logger.SugaredLogger.Warnf("除权检测读库失败 %s: %v", stockCode, qerr)
+		} else if datasource.DetectAdjustedSeriesShift(storedSnapshot, filtered, 8) {
+			logger.SugaredLogger.Warnf("检测到前复权序列平移（除权）%s [%s - %s]，全量重拉覆盖", stockCode, startDate, endDate)
+			if _, rerr := router.RefreshKLineFull(ctx, stockCode, period, len(filtered)); rerr == nil {
+				logger.SugaredLogger.Infof("除权全量覆盖完成 %s [%s - %s]", stockCode, startDate, endDate)
+				updateCheckpoint(stockCode, period, adjusted, filtered[len(filtered)-1].TradeDate, len(filtered))
+				return nil
+			} else {
+				logger.SugaredLogger.Errorf("除权全量重拉失败 %s: %v，回退常规增量追加", stockCode, rerr)
+			}
+		}
 	}
 
 	if err := store.UpsertKLines(ctx, filtered); err != nil {
@@ -345,6 +365,11 @@ func updateCheckpoint(stockCode, period string, adjusted bool, lastDate string, 
 		"synced_count": log.SyncedCount + count,
 		"updated_at":   time.Now(),
 	}
+	// 断点前移：YYYY-MM-DD 字典序即时间序，取 max 防止并发区间乱序回退。
+	// 即使任务最终 failed，已落库区间的进度也保留，重启后从断点续传。
+	if lastDate > log.LastSyncDate {
+		updates["last_sync_date"] = lastDate
+	}
 
 	if err := db.Dao.Model(&log).Updates(updates).Error; err != nil {
 		logger.SugaredLogger.Errorf("Failed to update checkpoint for %s: %v", stockCode, err)
@@ -368,6 +393,7 @@ func updateSyncTask(task *SyncTask) error {
 				ExpectedCount: estimateExpectedCount(task.Period, task.StartDate, task.EndDate),
 				Status:        task.Status,
 				ErrorMsg:      task.ErrorMsg,
+				LastSyncDate:  task.LastSyncDate,
 				UpdatedAt:     time.Now(),
 			}
 			return db.Dao.Create(&log).Error
@@ -376,15 +402,16 @@ func updateSyncTask(task *SyncTask) error {
 	}
 
 	return db.Dao.Model(&log).Updates(map[string]interface{}{
-		"status":     task.Status,
-		"error_msg":  task.ErrorMsg,
-		"updated_at": time.Now(),
+		"status":         task.Status,
+		"error_msg":      task.ErrorMsg,
+		"last_sync_date": task.LastSyncDate,
+		"updated_at":     time.Now(),
 	}).Error
 }
 
 // syncLogToTask converts a KLineSyncLog to a SyncTask.
-// LastSyncDate is left empty: the log has no dedicated checkpoint column, and
-// resume is handled by gap detection inside SyncKLineForStock.
+// LastSyncDate resumes from the persisted checkpoint so restarts only fetch
+// bars after the last successfully synced trade date.
 func syncLogToTask(log *models.KLineSyncLog) *SyncTask {
 	return &SyncTask{
 		ID:           log.ID,
@@ -395,7 +422,7 @@ func syncLogToTask(log *models.KLineSyncLog) *SyncTask {
 		Adjusted:     log.Adjusted,
 		Status:       log.Status,
 		ErrorMsg:     log.ErrorMsg,
-		LastSyncDate: "",
+		LastSyncDate: log.LastSyncDate,
 		CreatedAt:    log.UpdatedAt,
 		UpdatedAt:    log.UpdatedAt,
 	}
@@ -404,8 +431,8 @@ func syncLogToTask(log *models.KLineSyncLog) *SyncTask {
 // estimateExpectedCount estimates the number of K-line bars in [startDate, endDate].
 // day: weekdays (~5/7 of days); week: weekly bars; month: monthly bars.
 func estimateExpectedCount(period, startDate, endDate string) int {
-	start, err1 := time.Parse("2006-01-02", startDate)
-	end, err2 := time.Parse("2006-01-02", endDate)
+	start, err1 := timeutil.ParseDate(startDate)
+	end, err2 := timeutil.ParseDate(endDate)
 	if err1 != nil || err2 != nil || end.Before(start) {
 		return 0
 	}
@@ -439,15 +466,15 @@ func validateSyncParams(stockCode, period, startDate, endDate string) error {
 		return fmt.Errorf("end date cannot be empty")
 	}
 	
-	if _, err := time.Parse("2006-01-02", startDate); err != nil {
+	if _, err := timeutil.ParseDate(startDate); err != nil {
 		return fmt.Errorf("invalid start date format: %s (expected YYYY-MM-DD)", startDate)
 	}
-	if _, err := time.Parse("2006-01-02", endDate); err != nil {
+	if _, err := timeutil.ParseDate(endDate); err != nil {
 		return fmt.Errorf("invalid end date format: %s (expected YYYY-MM-DD)", endDate)
 	}
 	
-	start, _ := time.Parse("2006-01-02", startDate)
-	end, _ := time.Parse("2006-01-02", endDate)
+	start, _ := timeutil.ParseDate(startDate)
+	end, _ := timeutil.ParseDate(endDate)
 	if start.After(end) {
 		return fmt.Errorf("start date cannot be after end date")
 	}

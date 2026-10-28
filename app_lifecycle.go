@@ -156,6 +156,8 @@ func (a *App) registerStartupCronTasks() {
 		go runtime.EventsEmit(a.ctx, "telegraph", refreshTelegraphList())
 	}
 	go MonitorStockPrices(a)
+	// K 线自动增量同步（交易时段定时补拉 + 盘后结算，设置开关控制）
+	go MonitorKLineIncrementalSync(a)
 	if config.EnableFund {
 		go MonitorFundPrices(a)
 		go data.NewFundApi().AllFund()

@@ -39,6 +39,7 @@ type KLineSyncLog struct {
 	ExpectedCount int
 	Status        string    `gorm:"size:20"` // pending / running / done / failed
 	ErrorMsg      string    `gorm:"type:text"`
+	LastSyncDate  string    `gorm:"size:10"` // 已成功同步到的最后交易日（YYYY-MM-DD），重启后从断点增量续传
 	UpdatedAt     time.Time
 }
 

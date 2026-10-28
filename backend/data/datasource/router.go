@@ -211,7 +211,7 @@ func (r *Router) GetKLine(ctx context.Context, code string, period string, count
 	key := CacheKey(DataTypeKLine, code, period, fmt.Sprintf("%d", count))
 
 	v, err, _ := r.flights.Do(key, func() (interface{}, error) {
-		return r.getKLineInner(ctx, code, period, count, key)
+		return r.getKLineInner(ctx, code, period, count, key, true)
 	})
 	if err != nil {
 		return nil, err
@@ -219,7 +219,7 @@ func (r *Router) GetKLine(ctx context.Context, code string, period string, count
 	return v.(*KLineData), nil
 }
 
-func (r *Router) getKLineInner(ctx context.Context, code, period string, count int, key string) (interface{}, error) {
+func (r *Router) getKLineInner(ctx context.Context, code, period string, count int, key string, persist bool) (interface{}, error) {
 	r.mu.RLock()
 	providers := r.klineProviders
 	r.mu.RUnlock()
@@ -246,8 +246,9 @@ func (r *Router) getKLineInner(ctx context.Context, code, period string, count i
 			if r.cache != nil {
 				_ = r.cache.Set(ctx, key, string(DataTypeKLine), data, 300*time.Second)
 			}
-			// Persist to SQLite via KLineStore (async, non-blocking)
-			if globalKLineStore != nil && data != nil && len(data.Bars) > 0 {
+			// Persist to SQLite via KLineStore (async, non-blocking).
+			// persist=false 时由调用方（增量路径）在除权检测后自行同步落库。
+			if persist && globalKLineStore != nil && data != nil && len(data.Bars) > 0 {
 				bars := BarsFromKLineData(code, CanonicalKLinePeriod(period), p.Name(), true, data)
 				if len(bars) > 0 {
 					go func() {

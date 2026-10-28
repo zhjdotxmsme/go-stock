@@ -265,7 +265,8 @@ func (h *StockHandler) getKLineViaRouter(stockCode, klt string, limit int) *data
 	stockCode = backtest.SanitizeStockCodeInput(stockCode)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	k, err := datasource.GetRouter().GetKLine(ctx, stockCode, "day", limit)
+	// store-first + 尾部增量 + 除权防线；首次访问全量拉取并落库，此后本地命中
+	k, err := datasource.GetRouter().GetKLineIncremental(ctx, stockCode, "day", limit)
 	if err != nil || k == nil || len(k.Bars) == 0 {
 		return nil
 	}

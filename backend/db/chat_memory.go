@@ -67,4 +67,8 @@ func AutoMigrate() {
 	// 全新安装会缺表导致会话保存静默失败（前端 .catch 吞掉）。
 	Dao.AutoMigrate(&models.AiAssistantSession{})
 	Dao.AutoMigrate(&models.HoldingsDailySummary{})
+	// K 线表历史上靠种子脚本手工建表；这里补 AutoMigrate 以自动加新列
+	//（如 kline_sync_log.last_sync_date），对已有大表只做 schema 比对，代价可忽略。
+	Dao.AutoMigrate(&models.KLineBar{})
+	Dao.AutoMigrate(&models.KLineSyncLog{})
 }

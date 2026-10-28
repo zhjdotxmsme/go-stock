@@ -46,6 +46,8 @@ const formValue = ref({
   },
   updateBasicInfoOnStart: false,
   refreshInterval: 1,
+  klineAutoSyncEnable: false,
+  klineAutoSyncIntervalMinutes: 0,
   openAI: {
     enable: false,
     aiConfigs: [], // AI配置列表
@@ -134,13 +136,27 @@ async function refreshKronosStatus() {
 }
 
 async function startKronos() {
+  if (!formValue.value.kronos.enable) {
+    message.warning('请先开启 K 线预测并保存设置')
+    return
+  }
   kronosStarting.value = true
   try {
-    const { error } = await tradeApi.startKronosService()
-    if (error) throw new Error(error.message || '启动失败')
-    message.success('Kronos 服务已启动')
+    await saveConfig()
+    const { success, error } = await tradeApi.startKronosService()
+    if (!success || error) throw error || new Error('启动失败')
+    message.success('Kronos 服务已启动（含模型预热，首次约 1–3 分钟）')
+    for (let i = 0; i < 20; i++) {
+      await refreshKronosStatus()
+      if (kronosStatus.value === 'online') break
+      await new Promise(r => setTimeout(r, 1500))
+    }
+    if (kronosStatus.value !== 'online') {
+      message.warning('服务仍未在线，请查看安装目录 logs/kronos-python.log')
+    }
   } catch (e) {
-    message.error('Kronos 服务启动失败：' + (e?.message || e))
+    const msg = e?.message || String(e)
+    message.error('Kronos 服务启动失败：' + msg + '（详见 logs/kronos-python.log）')
   } finally {
     kronosStarting.value = false
     refreshKronosStatus()
@@ -403,6 +419,10 @@ onBeforeUnmount(() => {
 
 function saveConfig() {
   console.log('开始保存设置', formValue.value);
+  return persistSettingConfig()
+}
+
+function persistSettingConfig() {
   // 构建配置时，包含aiConfigs列表
   let config = new data.SettingConfig({
     ID: formValue.value.ID,
@@ -465,13 +485,15 @@ function saveConfig() {
     freeStockDBAutoStart: formValue.value.freeStockDB.autoStart,
   })
 
-  systemApi.updateConfig(config).then(({data: res}) => {
+  return systemApi.updateConfig(config).then(({data: res}) => {
     if (res === '保存成功！') {
       message.success(res)
     } else {
       message.error(res)
+      throw new Error(res)
     }
     EventsEmit("updateSettings", config);
+    return res
   })
 }
 
@@ -727,6 +749,15 @@ function saveMultiAgentPrompt() {
               <n-input-number v-model:value="formValue.refreshInterval" placeholder="请输入数据刷新间隔(秒)">
                 <template #suffix>秒</template>
               </n-input-number>
+            </n-form-item-gi>
+            <n-form-item-gi :span="5" label="K 线自动增量同步：" path="klineAutoSyncEnable">
+              <n-switch v-model:value="formValue.klineAutoSyncEnable"/>
+            </n-form-item-gi>
+            <n-form-item-gi :span="5" label="同步间隔（分钟）：" path="klineAutoSyncIntervalMinutes">
+              <n-input-number v-model:value="formValue.klineAutoSyncIntervalMinutes" :min="1" placeholder="0 = 默认 5 分钟"/>
+            </n-form-item-gi>
+            <n-form-item-gi :span="24">
+              <n-text depth="3" style="font-size: 12px">交易时段对关注列表定时尾部增量拉取，盘后 15:10 结算；关闭后不影响手动刷新。</n-text>
             </n-form-item-gi>
             <n-form-item-gi :span="6" label="暗黑主题：" path="darkTheme">
               <n-switch v-model:value="formValue.darkTheme"/>
@@ -1128,12 +1159,16 @@ function saveMultiAgentPrompt() {
                   <n-button v-if="formValue.kronos.enable && kronosStatus !== 'online'" size="small" type="primary" :loading="kronosStarting" @click="startKronos">启动服务</n-button>
                   <n-button v-if="formValue.kronos.enable && kronosStatus === 'online'" size="small" @click="stopKronos">停止服务</n-button>
                 </n-space>
+                <n-text depth="3" style="font-size: 12px">
+                  启动失败时查看安装目录 <code>logs/kronos-python.log</code>。若报 FastAPI/Starlette 不兼容，在
+                  <code>python/kronos_service</code> 下执行 <code>pip install -r requirements.txt</code>（勿使用 starlette 1.x）。
+                </n-text>
                 <n-grid :cols="24" :x-gap="24">
                   <n-form-item-gi :span="3" label="开启K线预测：" path="kronos.enable">
                     <n-switch v-model:value="formValue.kronos.enable"/>
                   </n-form-item-gi>
                   <n-form-item-gi :span="5" label="Python 解释器路径（留空用系统 python）：" path="kronos.pythonPath">
-                    <n-input v-model:value="formValue.kronos.pythonPath" placeholder="如 C:\\Python310\\python.exe" clearable/>
+                    <n-input v-model:value="formValue.kronos.pythonPath" placeholder="目录或 python.exe；推荐 kronos_service\\.venv" clearable/>
                   </n-form-item-gi>
                   <n-form-item-gi :span="4" label="服务端口：" path="kronos.port">
                     <n-input-number v-model:value="formValue.kronos.port" :min="1024" :max="65535"/>

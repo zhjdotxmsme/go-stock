@@ -281,13 +281,14 @@ func claimNextPendingSyncTask(ctx context.Context) *history.SyncTask {
 			})
 		if res.Error == nil && res.RowsAffected == 1 {
 			return &history.SyncTask{
-				ID:        log.ID,
-				StockCode: log.StockCode,
-				Period:    log.Period,
-				StartDate: log.StartDate,
-				EndDate:   log.EndDate,
-				Adjusted:  log.Adjusted,
-				Status:    history.SyncStatusRunning,
+				ID:           log.ID,
+				StockCode:    log.StockCode,
+				Period:       log.Period,
+				StartDate:    log.StartDate,
+				EndDate:      log.EndDate,
+				Adjusted:     log.Adjusted,
+				Status:       history.SyncStatusRunning,
+				LastSyncDate: log.LastSyncDate,
 			}
 		}
 	}
