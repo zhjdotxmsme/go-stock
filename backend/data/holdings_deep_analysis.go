@@ -405,7 +405,8 @@ func GetHoldingsDeepData(ctx context.Context, positions []HoldingsPosition) ([]*
 
 			// Kronos 未来K线预测（可选增强：未开启或失败时静默降级）
 			if GetKronosConfig().Enable {
-				pctx, pcancel := context.WithTimeout(ctx, 45*time.Second)
+				// 与单次预测同一预算：冷模型首次加载可能长达数分钟，45s 会误杀
+				pctx, pcancel := context.WithTimeout(ctx, kronosSinglePredictTimeout)
 				pred, perr := kronosPredict(pctx, apiCode, 0)
 				pcancel()
 				if perr == nil && pred != nil {

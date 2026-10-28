@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 
 # 全局模型句柄（懒加载，首次 /predict 时初始化）
 _model_lock = threading.Lock()
+# 推理串行化：FastAPI 同步端点运行在线程池，KronosPredictor 非线程安全；
+# 图表 AI预测、持仓深度分析、每日推荐因子可能并发 /predict，必须串行进入模型。
+_predict_lock = threading.Lock()
 _predictor = None
 _predictor_key = None  # "model_name|device" 变化时重建
 
@@ -116,15 +119,16 @@ def _run_predict(req: PredictRequest) -> PredictResponse:
     y_timestamp = _next_trade_dates(last_date, req.predLen)
 
     try:
-        pred = predictor.predict(
-            df=df,
-            x_timestamp=pd.Series(df.index),
-            y_timestamp=pd.Series(y_timestamp),
-            pred_len=req.predLen,
-            T=req.T,
-            top_p=req.topP,
-            sample_count=req.sampleCount,
-        )
+        with _predict_lock:
+            pred = predictor.predict(
+                df=df,
+                x_timestamp=pd.Series(df.index),
+                y_timestamp=pd.Series(y_timestamp),
+                pred_len=req.predLen,
+                T=req.T,
+                top_p=req.topP,
+                sample_count=req.sampleCount,
+            )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PREDICT_FAILED: {e}") from e
 

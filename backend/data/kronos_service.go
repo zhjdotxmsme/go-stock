@@ -461,6 +461,8 @@ func (p *kronosProcess) childProcessExited() bool {
 	}
 }
 
+// formatStartFailure 组装启动失败错误（含 Python 日志尾部便于排查）。
+// prefix 为错误码（如 KRONOS_TIMEOUT）时只保留一次，避免重复拼接。
 func (p *kronosProcess) formatStartFailure(prefix string) error {
 	hint := tailKronosPythonLog(4096)
 	p.mu.Lock()
@@ -475,9 +477,7 @@ func (p *kronosProcess) formatStartFailure(prefix string) error {
 	} else {
 		msg += "（详见 logs/kronos-python.log）"
 	}
-	if strings.Contains(prefix, "KRONOS") {
-		return fmt.Errorf("%s: %s", prefix, msg)
-	}
+	// msg 已以 prefix 开头，直接返回，不再二次拼接前缀
 	return errors.New(msg)
 }
 
@@ -754,7 +754,9 @@ func KronosBacktest(ctx context.Context, stockCode string, asOfDate string, pred
 			"close": b.Close, "volume": float64(b.Volume), "amount": b.Amount,
 		})
 	}
-	pred, err := kronosPostPredict(ctx, cfg, candles, predLen, "", 60*time.Second)
+	// 与单次预测同一超时预算：冷模型首次加载（HF 下载+初始化）远超 60s，
+	// 此前 60s 导致启动后第一次回测必超时。
+	pred, err := kronosPostPredict(ctx, cfg, candles, predLen, "", kronosSinglePredictTimeout)
 	if err != nil {
 		return nil, err
 	}
