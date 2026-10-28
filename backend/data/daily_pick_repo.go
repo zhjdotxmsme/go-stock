@@ -119,7 +119,8 @@ func (r *DailyPickRepository) RecentPicksMissingWindows(ctx context.Context, day
 	cutoff := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
 	var picks []models.DailyPick
 	err := r.db.WithContext(ctx).
-		Where("reviewed = ? AND trade_date >= ? AND (return3d = 0 OR return5d = 0)", true, cutoff).
+		// GORM 默认命名 Return3D/Return5D → return3_d/return5_d，原生 SQL 必须用实际列名
+		Where("reviewed = ? AND trade_date >= ? AND (return3_d = 0 OR return5_d = 0)", true, cutoff).
 		Order("trade_date DESC").
 		Find(&picks).Error
 	return picks, err
