@@ -5,6 +5,7 @@ import * as stockApi from "../api/stock";
 import * as tradeApi from "../api/trade";
 import {NButton, NTag, NTooltip, NIcon, useMessage} from "naive-ui";
 import {data, models} from "../../wailsjs/go/models";
+import {SendTestNotification} from "../../wailsjs/go/handler/NotificationHandler";
 import {EventsEmit} from "../../wailsjs/runtime";
 import {HelpCircleFilledIcon, HelpIcon} from "tdesign-icons-vue-next";
 
@@ -521,12 +522,7 @@ function sendTestNotice() {
 }
 
 function sendTestNotification(channel) {
-  const fn = window['go']?.['main']?.['App']?.['SendTestNotification']
-  if (typeof fn !== 'function') {
-    message.warning('测试通知接口尚未绑定，请重新生成 Wails 绑定后重试')
-    return
-  }
-  fn(channel).then(res => {
+  SendTestNotification(channel).then(res => {
     message.info(res)
   }).catch(err => {
     message.error('发送测试通知失败: ' + err)
