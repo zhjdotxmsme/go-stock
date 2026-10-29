@@ -6,7 +6,10 @@ import (
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"os"
+	"path/filepath"
 	"time"
+
+	"go-stock/backend/apppath"
 )
 
 var Logger *zap.Logger
@@ -113,7 +116,7 @@ func getInfoWriterSyncer() zapcore.WriteSyncer {
 
 	//引入第三方库 Lumberjack 加入日志切割功能
 	infoLumberIO := &lumberjack.Logger{
-		Filename:   "./logs/info.log",
+		Filename:   filepath.Join(apppath.LogsDir(), "info.log"),
 		MaxSize:    10, // megabytes
 		MaxBackups: 100,
 		MaxAge:     28,    // days
@@ -125,7 +128,7 @@ func getInfoWriterSyncer() zapcore.WriteSyncer {
 func getErrorWriterSyncer() zapcore.WriteSyncer {
 	//引入第三方库 Lumberjack 加入日志切割功能
 	lumberWriteSyncer := &lumberjack.Logger{
-		Filename:   "./logs/error.log",
+		Filename:   filepath.Join(apppath.LogsDir(), "error.log"),
 		MaxSize:    10, // megabytes
 		MaxBackups: 100,
 		MaxAge:     28,    // days

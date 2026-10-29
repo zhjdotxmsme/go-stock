@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	assistantweb "go-stock/ai-assistant-web"
+	"go-stock/backend/apppath"
 	"go-stock/backend/data"
 	backtestService "go-stock/backend/data/backtest"
 	"go-stock/backend/data/datasource"
@@ -17,6 +18,7 @@ import (
 	"go-stock/backend/machineid"
 	"go-stock/backend/models"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -127,7 +129,7 @@ func main() {
 		}
 	}()
 
-	checkDir("data")
+	checkDir(apppath.DataDir())
 	machineid.Init(BuildKey)
 	data.SponsorDecryptKeyHex = BuildKey
 	data.SetAppIcon(icon)
@@ -245,7 +247,7 @@ func main() {
 		BackgroundColour:         backgroundColour,
 		Assets:                   assets,
 		Menu:                     AppMenu,
-		Logger:                   logger.NewFileLogger("./logs/wails.log"),
+		Logger:                   logger.NewFileLogger(filepath.Join(apppath.LogsDir(), "wails.log")),
 		LogLevel:                 logger.DEBUG,
 		LogLevelProduction:       logger.INFO,
 		OnStartup:                app.startup,

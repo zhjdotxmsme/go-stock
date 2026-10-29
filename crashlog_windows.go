@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"go-stock/backend/apppath"
 	"go-stock/backend/logger"
 )
 
@@ -15,10 +16,8 @@ import (
 // windowsgui 子系统没有控制台，Go 未捕获 panic（exit code 2）写 fd 2 的
 // 堆栈会随空句柄丢失，表现为「闪退且无任何日志」。重定向后 panic 栈落盘可查。
 func init() {
-	if err := os.MkdirAll("logs", 0o755); err != nil {
-		return
-	}
-	f, err := os.OpenFile(filepath.Join("logs", "panic.log"),
+	logsDir := apppath.LogsDir()
+	f, err := os.OpenFile(filepath.Join(logsDir, "panic.log"),
 		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return
