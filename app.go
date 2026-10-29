@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go-stock/backend/data"
 	"go-stock/backend/data/backtest"
+	"go-stock/backend/db"
 	"go-stock/backend/handler"
 	"sync"
 	"time"
@@ -157,6 +158,8 @@ func (a *App) shutdown(ctx context.Context) {
 		}
 	}
 	//logger.SugaredLogger.Infof("application shutdown Version:%s", Version)
+	// WAL checkpoint 收尾：避免残留大体积脏 WAL，拖慢下次启动
+	db.Close(15 * time.Second)
 }
 func onExit(a *App) {
 	// 清理操作

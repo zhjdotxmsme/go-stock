@@ -55,3 +55,35 @@ func Init(sqlitePath string) {
 	Dao = openDb
 	AutoMigrate()
 }
+
+// Close 优雅关闭数据库：先 TRUNCATE checkpoint 合并 WAL 并截断，再关闭连接池。
+// timeout 限制总时长（checkpoint 可能需要把 GB 级 WAL 写回主库），超时后放弃等待，
+// 由调用方随后的 os.Exit / 进程退出兜底（SQLite checkpoint 本身崩溃安全）。
+//
+// 背景：直接 os.Exit(0) 跳过收尾会留下数 GB 的脏 WAL，新进程启动时要全量扫描
+// 恢复（纯 Go 驱动），卡在 db.Init 数十秒无窗口。
+func Close(timeout time.Duration) {
+	if Dao == nil {
+		return
+	}
+	sqlDB, err := Dao.DB()
+	if err != nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// 走原生 *sql.DB 执行，绕过 GORM 预编译语句缓存
+		if _, err := sqlDB.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+			log.Printf("db close: wal_checkpoint: %v", err)
+		}
+		if err := sqlDB.Close(); err != nil {
+			log.Printf("db close: %v", err)
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		log.Printf("db close: timeout after %v, skip graceful close", timeout)
+	}
+}
