@@ -7,12 +7,42 @@ import (
 	"go-stock/backend/models"
 	"go-stock/backend/util"
 	"math"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/duke-git/lancet/v2/convertor"
 	"github.com/duke-git/lancet/v2/mathutil"
 	"github.com/duke-git/lancet/v2/random"
 )
+
+func TestGenerateRequestId(t *testing.T) {
+	id := generateRequestId()
+	if len(id) != 45 {
+		t.Fatalf("requestId 长度应为 45（32随机+13毫秒时间戳），实际 %d: %s", len(id), id)
+	}
+	for i, c := range id {
+		if i < 32 {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+				t.Fatalf("requestId 前 32 位应全为字母数字，第 %d 位为 %q", i, c)
+			}
+		} else if c < '0' || c > '9' {
+			t.Fatalf("requestId 后 13 位应为毫秒时间戳数字，第 %d 位为 %q", i, c)
+		}
+	}
+	// 尾部时间戳与当前时间偏差应在 5 秒内
+	ts, err := strconv.ParseInt(id[32:], 10, 64)
+	if err != nil {
+		t.Fatalf("requestId 尾部时间戳解析失败: %v", err)
+	}
+	if diff := time.Now().UnixMilli() - ts; diff < -5000 || diff > 5000 {
+		t.Fatalf("requestId 时间戳与当前时间偏差 %dms，超出 ±5s", diff)
+	}
+	// 两次生成应不同（随机性）
+	if generateRequestId() == id {
+		t.Fatal("两次生成的 requestId 不应相同")
+	}
+}
 
 func TestSearchStock(t *testing.T) {
 	db.Init("../../data/stock.db")
