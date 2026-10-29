@@ -22,7 +22,7 @@ const (
 // ScoreMoneyFlow 资金面评分。flows 正序，至少 5 天，否则 degraded 中性 30。
 func ScoreMoneyFlow(flows []models.KhunterMoneyFlowDaily) DimScore {
 	if len(flows) < 5 {
-		return DimScore{Score: 30, Degraded: true, Reason: "资金流数据不足5天"}
+		return DimScore{Score: 30, Degraded: true, Missing: true, Reason: "资金流数据不足5天"}
 	}
 	f := flows[len(flows)-5:]
 

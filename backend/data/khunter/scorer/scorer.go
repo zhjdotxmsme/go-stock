@@ -32,6 +32,27 @@ type Result struct {
 	Level       string
 	VetoReason  string
 	Degraded    bool
+	// Explain 逐维解释：score/missing/reason/detail，落库 details 供前端展示
+	Explain map[string]any
+}
+
+// dimExplain 单维解释快照：得分/缺失标记/原因/明细
+func dimExplain(d DimScore) map[string]any {
+	out := map[string]any{
+		"score":    d.Score,
+		"missing":  d.Missing,
+		"degraded": d.Degraded,
+	}
+	if d.Reason != "" {
+		out["reason"] = d.Reason
+	}
+	for k, v := range d.Detail {
+		if k == "score" {
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // LevelOf 六档评级
@@ -64,6 +85,13 @@ func Score(in FiveDimInput) Result {
 		Technical: tech.Score, Moneyflow: mf.Score, Fundamental: fund.Score,
 		Sector: sector.Score, Event: event.Score,
 		Degraded: tech.Degraded || mf.Degraded || fund.Degraded || sector.Degraded || event.Degraded,
+	}
+	r.Explain = map[string]any{
+		"technical":   dimExplain(tech),
+		"moneyflow":   dimExplain(mf),
+		"fundamental": dimExplain(fund),
+		"sector":      dimExplain(sector),
+		"event":       dimExplain(event),
 	}
 	for _, d := range []DimScore{tech, mf, fund, sector, event} {
 		if d.Veto {

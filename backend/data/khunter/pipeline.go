@@ -156,7 +156,7 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 					}
 					mu.Lock()
 					signals = append(signals, row)
-					hits[code] = append(hits[code], scorer.Hit{Name: s.Name(), Weight: s.Weight()})
+					hits[code] = append(hits[code], scorer.Hit{Name: s.Name(), Weight: s.Weight(), Reasons: sig.Reasons})
 					mu.Unlock()
 				}
 			}
@@ -200,17 +200,33 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 	var scores []models.KhunterScore
 	for _, code := range candidates {
 		flows, _ := repo.GetMoneyFlow(code, 5)
-		events, _ := repo.GetActiveEvents(code, tradeDate)
+		events, evErr := repo.GetActiveEvents(code, tradeDate)
 		in := scorer.FiveDimInput{
 			Hits:      hits[code],
 			MoneyFlow: flows,
-			Finance:   FetchFundamental(code),
+			Finance:   FetchFundamentalRetry(code, 1),
 			Sectors:   fetchSectorInputs(code),
 			Events:    events,
 			StockName: names[code],
 		}
 		r := scorer.Score(in)
-		details, _ := json.Marshal(map[string]any{"hits": len(in.Hits)})
+		// 逐维解释落库：命中策略+理由、技术画像、缺数据标注，供前端"讲清楚"
+		explain := r.Explain
+		if explain == nil {
+			explain = map[string]any{}
+		}
+		if tech, ok := explain["technical"].(map[string]any); ok {
+			if bars := lastBars[code]; len(bars) > 0 {
+				tech["profile"] = BuildTechProfile(bars)
+			}
+		}
+		if evErr != nil {
+			if ev, ok := explain["event"].(map[string]any); ok {
+				ev["missing"] = true
+				ev["reason"] = "事件查询失败: " + evErr.Error()
+			}
+		}
+		details, _ := json.Marshal(explain)
 		scores = append(scores, models.KhunterScore{
 			Code: code, Name: names[code], ScoreDate: tradeDate,
 			Technical: r.Technical, Moneyflow: r.Moneyflow, Fundamental: r.Fundamental,

@@ -17,7 +17,7 @@ const (
 // ScoreSector 板块得分 = 50 + 排名分 + 资金流分；个股取所属板块 MAX
 func ScoreSector(sectors []SectorInput) DimScore {
 	if len(sectors) == 0 {
-		return DimScore{Score: sectorBase, Degraded: true, Reason: "无板块归属数据"}
+		return DimScore{Score: sectorBase, Degraded: true, Missing: true, Reason: "无板块归属数据"}
 	}
 	best := -1000.0
 	bestName := ""

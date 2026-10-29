@@ -184,8 +184,64 @@ function renderLevel(row: any) {
   return h('span', parts)
 }
 
+function parseScoreDetails(row: any): any {
+  if (!row || !row.details || typeof row.details !== 'string') return null
+  try {
+    return JSON.parse(row.details)
+  } catch {
+    return null
+  }
+}
+
 function renderScoreExpand(row: any) {
-  return h('div', { style: { display: 'flex', gap: '24px', alignItems: 'center', padding: '4px 12px' } }, [
+  const d = parseScoreDetails(row)
+  const dimNames: Record<string, string> = { technical: '技术', moneyflow: '资金', fundamental: '基本面', sector: '板块', event: '事件' }
+
+  // 技术面解释：命中策略+理由+技术画像
+  const techChildren: any[] = []
+  if (d?.technical?.strategies?.length) {
+    for (const s of d.technical.strategies) {
+      techChildren.push(h('div', { style: { marginBottom: '2px' } }, [
+        h(NText, { strong: true, style: { fontSize: '12px' } },
+          { default: () => `${s.name}（权重 ${s.weight}）` }),
+      ]))
+      if (Array.isArray(s.reasons)) {
+        for (const r of s.reasons) {
+          techChildren.push(h('div', { style: { paddingLeft: '14px', fontSize: '12px' } }, [
+            h(NText, { depth: 2 }, { default: () => `· ${r}` }),
+          ]))
+        }
+      }
+    }
+  } else if (d?.technical) {
+    techChildren.push(h(NText, { depth: 3, style: { fontSize: '12px' } }, { default: () => '无策略命中' }))
+  }
+  if (d?.technical?.profile) {
+    const p = d.technical.profile
+    techChildren.push(h('div', { style: { marginTop: '6px', fontSize: '12px' } }, [
+      h(NText, { depth: 3 }, { default: () => `技术画像：${p.trend ?? ''}；${p.volume ?? ''}；${p.position ?? ''}；${p.momentum ?? ''}` }),
+    ]))
+  }
+
+  // 其他维度：缺数据标注 / 原因
+  const dimRows: any[] = []
+  for (const key of ['moneyflow', 'fundamental', 'sector', 'event']) {
+    const dim = d?.[key]
+    if (!dim) continue
+    const label = dimNames[key]
+    if (dim.missing) {
+      dimRows.push(h('div', { key, style: { fontSize: '12px' } }, [
+        h(NTag, { type: 'warning', size: 'tiny', bordered: false, style: { marginRight: '4px' } }, { default: () => '缺数据' }),
+        h(NText, { depth: 2 }, { default: () => `${label}：${dim.reason ?? '数据缺失，按中性 50 分计'}` }),
+      ]))
+    } else if (dim.reason) {
+      dimRows.push(h('div', { key, style: { fontSize: '12px' } }, [
+        h(NText, { depth: 2 }, { default: () => `${label}：${dim.reason}` }),
+      ]))
+    }
+  }
+
+  return h('div', { style: { display: 'flex', gap: '24px', padding: '4px 12px' } }, [
     h('div', { style: { width: '320px', flexShrink: 0 } }, [
       h(RadarChart, {
         indicators: scoreIndicators,
@@ -193,10 +249,17 @@ function renderScoreExpand(row: any) {
         height: 220,
       }),
     ]),
-    h('div', [
-      row.vetoReason
-        ? h(NText, { type: 'error' }, { default: () => `否决原因：${row.vetoReason}` })
-        : h(NText, { depth: 3 }, { default: () => '无否决项' }),
+    h('div', { style: { flex: 1, minWidth: 0 } }, [
+      h('div', { style: { marginBottom: '6px' } }, [
+        row.vetoReason
+          ? h(NText, { type: 'error' }, { default: () => `否决原因：${row.vetoReason}` })
+          : h(NText, { depth: 3 }, { default: () => '无否决项' }),
+      ]),
+      h('div', { style: { marginBottom: '4px' } }, [
+        h(NText, { strong: true }, { default: () => '技术面命中：' }),
+      ]),
+      ...techChildren,
+      ...(dimRows.length ? [h('div', { style: { marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '2px' } }, dimRows)] : []),
     ]),
   ])
 }

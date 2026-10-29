@@ -16,6 +16,7 @@ type TechnicalScorer struct {
 func (s TechnicalScorer) Score(hits []Hit) DimScore {
 	total := 0.0
 	names := map[string]bool{}
+	strategies := make([]map[string]any, 0, len(hits))
 	for _, h := range hits {
 		w := h.Weight
 		if ow, ok := s.Overrides[h.Name]; ok {
@@ -23,8 +24,14 @@ func (s TechnicalScorer) Score(hits []Hit) DimScore {
 		}
 		total += float64(w)
 		names[h.Name] = true
+		strategies = append(strategies, map[string]any{
+			"name": h.Name, "weight": w, "reasons": h.Reasons,
+		})
 	}
-	d := DimScore{Score: total, Detail: map[string]any{"hits": len(hits)}}
+	d := DimScore{Score: total, Detail: map[string]any{
+		"hits":       len(hits),
+		"strategies": strategies,
+	}}
 	if names[technicalVetoPair[0]] && names[technicalVetoPair[1]] {
 		d.Veto = true
 		d.Score = -100

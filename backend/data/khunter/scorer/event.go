@@ -16,12 +16,22 @@ func ScoreEvent(events []models.KhunterEvent, stockName string) DimScore {
 		return DimScore{Score: -100, Veto: true, Reason: "ST/*ST 股票"}
 	}
 	score := 50.0
+	eventSummaries := make([]string, 0, len(events))
 	for _, e := range events {
 		score += e.Score
 		if eventVetoTypes[e.EventType] {
 			return DimScore{Score: -100, Veto: true, Reason: e.EventType}
 		}
+		summary := e.EventType
+		if e.EventDate != "" {
+			summary += "(" + e.EventDate + ")"
+		}
+		eventSummaries = append(eventSummaries, summary)
 	}
-	return DimScore{Score: math.Max(-100, math.Min(100, score)),
-		Detail: map[string]any{"event_count": len(events)}}
+	detail := map[string]any{"event_count": len(events), "events": eventSummaries}
+	reason := "核查期内无活跃事件"
+	if len(events) > 0 {
+		reason = "存在活跃事件"
+	}
+	return DimScore{Score: math.Max(-100, math.Min(100, score)), Reason: reason, Detail: detail}
 }

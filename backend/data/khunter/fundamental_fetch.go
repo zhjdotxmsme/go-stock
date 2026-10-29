@@ -31,3 +31,13 @@ func FetchFundamental(code string) scorer.FundamentalInput {
 	}
 	return in
 }
+
+// FetchFundamentalRetry 带一次重试：流水线评分时段偶发网络失败会导致基本面
+// 整维退化 50 分（生产实测），重试一次把瞬时失败降下来。
+func FetchFundamentalRetry(code string, retries int) scorer.FundamentalInput {
+	in := FetchFundamental(code)
+	for i := 0; i < retries && !in.Available; i++ {
+		in = FetchFundamental(code)
+	}
+	return in
+}

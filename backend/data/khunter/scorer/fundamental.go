@@ -16,7 +16,7 @@ type FundamentalInput struct {
 // ScoreFundamental = 50 + 增速分 + ROE分 + 现金流分，截断 [-100,100]
 func ScoreFundamental(f FundamentalInput) DimScore {
 	if !f.Available {
-		return DimScore{Score: 50, Degraded: true, Reason: "基本面数据缺失"}
+		return DimScore{Score: 50, Degraded: true, Missing: true, Reason: "基本面数据缺失（F10 财务指标获取失败）"}
 	}
 	// 一票否决
 	if f.HasYoy && f.NetProfitYoy < -50 {
