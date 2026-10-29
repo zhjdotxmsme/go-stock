@@ -1,6 +1,7 @@
 <script setup>
 import * as stockApi from '../api/stock'
 import * as systemApi from '../api/system'
+import { pinyin } from 'pinyin-pro'
 import { EventsOn } from '../../wailsjs/runtime'
 import StockLightweightKlineChart from './StockLightweightKlineChart.vue'
 import { NAutoComplete, NButton, NFlex, NText, NInputGroup } from 'naive-ui'
@@ -46,15 +47,93 @@ function toEastMoneyCode(code) {
   return ''
 }
 
+// 检索归一化：全角转半角，并去掉空格、连字符等分隔符，保证「连打」能命中
+// 例：五 粮 液 → 五粮液、中巨芯-U → 中巨芯u、万  科Ａ → 万科a
+function normalizeSearchKey(s) {
+  return String(s || '')
+    .replace(/[\uff01-\uff5e]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[^\p{L}\p{N}]/gu, '')
+    .toLowerCase()
+}
+
+// 繁→简（常用公司/港股名用字）：pinyin-pro 的多音词组词典只按简体建索引，
+// 不转换会把「恒生銀行」的行读成 xíng（yx）而不是 háng（yh）
+const TRAD_TO_SIMP = {
+  銀: '银', 業: '业', 發: '发', 長: '长', 慶: '庆', 廈: '厦', 門: '门', 樂: '乐', 娛: '娱',
+  東: '东', 鑰: '钥', 給: '给', 側: '侧', 祕: '秘', 魯: '鲁', 國: '国', 華: '华', 興: '兴',
+  際: '际', 藥: '药', 證: '证', 險: '险', 產: '产', 團: '团', 島: '岛', 灣: '湾', 龍: '龙',
+  萬: '万', 亞: '亚', 恆: '恒', 豐: '丰', 實: '实', 創: '创', 營: '营', 聯: '联', 匯: '汇',
+  滙: '汇', 財: '财', 貿: '贸', 運: '运', 輸: '输', 電: '电', 鋼: '钢', 鐵: '铁', 銅: '铜',
+  鋁: '铝', 輕: '轻', 車: '车', 馬: '马', 醫: '医', 學: '学', 農: '农', 縣: '县', 鎮: '镇',
+  廣: '广', 寧: '宁', 寶: '宝', 麗: '丽', 潤: '润', 貴: '贵', 陽: '阳', 蘇: '苏', 閩: '闽',
+  雲: '云', 煙: '烟', 臺: '台', 網: '网', 訊: '讯', 軟: '软', 數: '数', 據: '据', 機: '机',
+  構: '构', 認: '认', 議: '议', 記: '记', 務: '务', 勢: '势', 億: '亿', 債: '债', 儲: '储',
+  權: '权', 錢: '钱', 濟: '济', 眾: '众', 競: '竞', 總: '总', 會: '会',
+}
+
+function toSimplified(s) {
+  let out = ''
+  for (const ch of String(s || '')) out += TRAD_TO_SIMP[ch] || ch
+  return out
+}
+
+// 股票名称拼音首字母（gzmt → 贵州茅台）：pinyin-pro 带词组词典，可正确处理多音字（银行→yh、重庆→cq）
+const pinyinCache = new Map()
+
+function initialsOf(name) {
+  const key = String(name || '')
+  if (!key) return ''
+  if (pinyinCache.has(key)) return pinyinCache.get(key)
+  let py = ''
+  try {
+    py = pinyin(toSimplified(key), { pattern: 'first', toneType: 'none', type: 'array' }).join('')
+  } catch (_) {
+    py = ''
+  }
+  const normalized = normalizeSearchKey(py)
+  pinyinCache.set(key, normalized)
+  return normalized
+}
+
+// 单条索引（归一化名称 + 拼音首字母），幂等：已建好就直接返回
+function ensureItemIndex(item) {
+  if (!item || item.nameKey !== undefined) return
+  item.nameKey = normalizeSearchKey(item.name)
+  item.pyInit = initialsOf(item.name)
+}
+
+let indexBuilt = false
+
+// 分片建立检索索引，避免一次性转换上万条名称卡住界面
+function buildPinyinIndex() {
+  indexBuilt = false
+  let i = 0
+  const step = () => {
+    const end = Math.min(i + 1500, stockList.value.length)
+    for (; i < end; i++) ensureItemIndex(stockList.value[i])
+    if (i < stockList.value.length) setTimeout(step, 0)
+    else indexBuilt = true
+  }
+  step()
+}
+
 function findStockList(val) {
   if (!val || !val.trim()) {
     options.value = []
     return
   }
+  // 分片建索引尚未完成时先补齐剩余条目，避免搜索落在这个时间窗口里漏检
+  if (!indexBuilt) {
+    for (const item of stockList.value) ensureItemIndex(item)
+    indexBuilt = true
+  }
   const q = val.trim().toLowerCase()
+  const qn = normalizeSearchKey(val)
   const filtered = stockList.value.filter(item =>
     item.name.toLowerCase().includes(q) ||
-    item.ts_code.toLowerCase().includes(q)
+    item.ts_code.toLowerCase().includes(q) ||
+    (qn && ((item.nameKey && item.nameKey.includes(qn)) ||
+      (item.pyInit && item.pyInit.includes(qn))))
   ).slice(0, 30)
   options.value = filtered.map(item => ({
     label: item.name + ' - ' + item.ts_code,
@@ -111,6 +190,7 @@ function updateChartHeight() {
 onBeforeMount(() => {
   stockApi.getStockList('').then(({data: result}) => {
     stockList.value = result || []
+    buildPinyinIndex()
   }).catch(err => { console.error('GetStockList error:', err) })
   systemApi.getConfig().then(({data: result}) => {
     darkTheme.value = !!result.darkTheme
