@@ -63,6 +63,9 @@ var (
 	ErrKronosTimeout       = errors.New("KRONOS_TIMEOUT")
 	ErrKronosModelMissing  = errors.New("KRONOS_MODEL_MISSING")
 	ErrKronosInsuffData    = errors.New("KRONOS_INSUFFICIENT_DATA")
+	// ErrKronosModelLoading 模型冷加载进行中：predict 立即返回可读错误，
+	// 避免请求在 Python _model_lock 上排队直到 300s 超时（用户感知的"卡住"）。
+	ErrKronosModelLoading = errors.New("Kronos 模型正在加载（冷启动约需数分钟），请稍后重试")
 )
 
 // KronosConfigSnapshot 预测所需配置快照
@@ -606,6 +609,10 @@ func kronosPredictEx(ctx context.Context, apiCode string, predLen int, asOfDate 
 	if err := kronosProc.EnsureRunning(cfg); err != nil {
 		return nil, err
 	}
+	// 冷模型门控：模型未就绪时立即返回，避免请求在 Python _model_lock 上排队至超时
+	if !kronosProc.isModelReady(ctx, cfg.Port) {
+		return nil, ErrKronosModelLoading
+	}
 	if predLen <= 0 {
 		if cfg.PredLen > 0 {
 			predLen = cfg.PredLen
@@ -714,6 +721,10 @@ func KronosBacktest(ctx context.Context, stockCode string, asOfDate string, pred
 	}
 	if err := kronosProc.EnsureRunning(cfg); err != nil {
 		return nil, err
+	}
+	// 冷模型门控：同 kronosPredictEx，未就绪立即返回
+	if !kronosProc.isModelReady(ctx, cfg.Port) {
+		return nil, ErrKronosModelLoading
 	}
 	if predLen <= 0 {
 		predLen = orDefaultI(cfg.PredLen, 5)
@@ -824,6 +835,10 @@ func KronosBatchPredict(ctx context.Context, apiCodes []string, predLen int) (ma
 	}
 	if err := kronosProc.EnsureRunning(cfg); err != nil {
 		return nil, nil, err
+	}
+	// 冷模型门控：同 kronosPredictEx，未就绪立即返回，避免批量排队至超时
+	if !kronosProc.isModelReady(ctx, cfg.Port) {
+		return nil, nil, ErrKronosModelLoading
 	}
 	if predLen <= 0 {
 		predLen = orDefaultI(cfg.PredLen, 5)

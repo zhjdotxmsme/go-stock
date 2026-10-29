@@ -10,7 +10,9 @@ import (
 	"go-stock/backend/internal/adapter/repository/sqlite"
 	domainstock "go-stock/backend/internal/domain/stock"
 	stocksvc "go-stock/backend/internal/service/stock"
+	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -93,7 +95,15 @@ func addStockFollowData(follow data.FollowedStock, stockData *data.StockInfo) {
 }
 
 // Follow adds a stock to watchlist (业务规则/文案在 service)
-func (h *StockHandler) Follow(stockCode string) string {
+func (h *StockHandler) Follow(stockCode string) (result string) {
+	// 生产环境 wails 只记录 "nil pointer dereference" 而无栈，发生时可定位；
+	// 非吞异常：日志含完整堆栈，返回值保持与 data 层失败文案同风格。
+	defer func() {
+		if r := recover(); r != nil {
+			logger.SugaredLogger.Errorf("StockHandler.Follow panic: %v\n%s", r, debug.Stack())
+			result = "关注失败（内部错误，详见 logs/info.log）"
+		}
+	}()
 	return h.svc.Follow(context.Background(), stockCode)
 }
 
