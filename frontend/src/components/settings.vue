@@ -17,6 +17,7 @@ const formValue = ref({
   tushareToken: '',
   iwencaiApiKey: '',
   emApiKey: '',
+  deepSeekSearchApiKey: '',
   dingPush: {
     enable: false,
     dingRobot: ''
@@ -322,6 +323,7 @@ onMounted(() => {
     formValue.value.tushareToken = res.tushareToken
     formValue.value.iwencaiApiKey = res.iwencaiApiKey || ''
     formValue.value.emApiKey = res.emApiKey || ''
+    formValue.value.deepSeekSearchApiKey = res.deepSeekSearchApiKey || ''
     formValue.value.dingPush = {
       enable: res.dingPushEnable,
       dingRobot: res.dingRobot
@@ -451,6 +453,7 @@ function persistSettingConfig() {
     tushareToken: formValue.value.tushareToken,
     iwencaiApiKey: formValue.value.iwencaiApiKey,
     emApiKey: formValue.value.emApiKey,
+    deepSeekSearchApiKey: formValue.value.deepSeekSearchApiKey,
     prompt: formValue.value.openAI.prompt,
     questionTemplate: formValue.value.openAI.questionTemplate,
     crawlTimeOut: formValue.value.openAI.crawlTimeOut,
@@ -548,6 +551,7 @@ function importConfig() {
       formValue.value.tushareToken = config.tushareToken
       formValue.value.iwencaiApiKey = config.iwencaiApiKey || ''
       formValue.value.emApiKey = config.emApiKey || ''
+      formValue.value.deepSeekSearchApiKey = config.deepSeekSearchApiKey || ''
       formValue.value.dingPush = {
         enable: config.dingPushEnable,
         dingRobot: config.dingRobot
@@ -846,6 +850,27 @@ function saveMultiAgentPrompt() {
                     访问东方财富妙想AI平台获取API Key。
                     https://ai.eastmoney.com/mxClaw<br>
                     配置后可使用个股业绩点评功能。
+                  </div>
+                  </n-gradient-text>
+                </template>
+              </n-tooltip>
+            </n-form-item-gi>
+
+            <n-form-item-gi :span="11" label="DeepSeek搜索密钥：" path="deepSeekSearchApiKey">
+              <n-input type="password" placeholder="DeepSeek 联网搜索 API Key" v-model:value="formValue.deepSeekSearchApiKey" clearable show-password-on="click"/>
+              <n-tooltip placement="top">
+                <template #trigger>
+                  <n-icon color="#0e7a0d" size="20">
+                    <HelpCircleFilledIcon />
+                  </n-icon>
+                </template>
+                <template #default>
+                  <n-gradient-text :type="'warning'">
+                  <div style="max-width: 400px;text-align: left">
+                    获取方法：<br>
+                    访问 DeepSeek 开放平台创建 API Key：<br>
+                    <a href="https://platform.deepseek.com" target="_blank" style="color: #63e2b7">https://platform.deepseek.com</a><br>
+                    配置后 AI 助手获得联网搜索(WebSearch)与网页阅读(WebFetch)能力，按成功请求计费。
                   </div>
                   </n-gradient-text>
                 </template>

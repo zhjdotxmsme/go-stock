@@ -364,6 +364,11 @@ func getToolsByQuestion(question string) []tool.BaseTool {
 
 	allTools = append(allTools, tools.GetHolidayTools()...)
 
+	// DeepSeek 联网搜索/网页抓取工具：补充本地数据工具未覆盖的实时网络信息
+	// （API Key 在设置页配置，未配置时工具执行会返回提示，不影响注册）
+	allTools = append(allTools, NewWebSearchTool())
+	allTools = append(allTools, NewWebFetchTool())
+
 	allTools = append(allTools, tools.GetMCPServerTools()...)
 	allTools = append(allTools, tools.GetSkillTools()...)
 

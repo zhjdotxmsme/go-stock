@@ -2229,6 +2229,7 @@ export namespace data {
 	    qgqpBId: string;
 	    iwencaiApiKey: string;
 	    emApiKey: string;
+	    deepSeekSearchApiKey: string;
 	    windowWidth: number;
 	    windowHeight: number;
 	    enableLlmRanking?: boolean;
@@ -2300,6 +2301,7 @@ export namespace data {
 	        this.qgqpBId = source["qgqpBId"];
 	        this.iwencaiApiKey = source["iwencaiApiKey"];
 	        this.emApiKey = source["emApiKey"];
+	        this.deepSeekSearchApiKey = source["deepSeekSearchApiKey"];
 	        this.windowWidth = source["windowWidth"];
 	        this.windowHeight = source["windowHeight"];
 	        this.enableLlmRanking = source["enableLlmRanking"];

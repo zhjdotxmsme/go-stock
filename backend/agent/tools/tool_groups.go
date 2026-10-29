@@ -98,6 +98,10 @@ var toolGroupMap = map[string]ToolGroup{
 
 	"FinanceSearch": GroupNewsResearch,
 
+	// DeepSeek 联网搜索/网页抓取：通用资讯类能力，归 news_research 常驻组
+	"WebSearch": GroupNewsResearch,
+	"WebFetch":  GroupNewsResearch,
+
 	"SearchReport": GroupNewsResearch,
 
 	"QueryInsResearch": GroupNewsResearch,

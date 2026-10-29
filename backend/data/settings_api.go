@@ -54,12 +54,15 @@ type Settings struct {
 	SponsorCode            string `json:"sponsorCode"`
 	HttpProxy              string `json:"httpProxy"`
 	HttpProxyEnabled       bool   `json:"httpProxyEnabled"`
-	EnableAgent            bool   `json:"enableAgent"`
-	QgqpBId                string `json:"qgqpBId" gorm:"column:qgqp_b_id"`
-	IwencaiApiKey          string `json:"iwencaiApiKey" gorm:"column:iwencai_api_key"`
-	EmApiKey               string `json:"emApiKey" gorm:"column:em_api_key"`
-	WindowWidth            int    `json:"windowWidth"`
-	WindowHeight           int    `json:"windowHeight"`
+	EnableAgent   bool   `json:"enableAgent"`
+	QgqpBId       string `json:"qgqpBId" gorm:"column:qgqp_b_id"`
+	IwencaiApiKey string `json:"iwencaiApiKey" gorm:"column:iwencai_api_key"`
+	EmApiKey      string `json:"emApiKey" gorm:"column:em_api_key"`
+	// DeepSeekSearchApiKey DeepSeek 联网搜索/网页抓取 API Key（api.deepseek.com），
+	// 为 Agent 的 WebSearch/WebFetch 工具提供鉴权，按次计费。
+	DeepSeekSearchApiKey string `json:"deepSeekSearchApiKey" gorm:"column:deepseek_search_api_key"`
+	WindowWidth          int    `json:"windowWidth"`
+	WindowHeight         int    `json:"windowHeight"`
 	// EnableLLMRanking AI 增强选股（D2 LLM 二次排序）开关；nil = 默认开。
 	EnableLLMRanking *bool `json:"enableLlmRanking" gorm:"column:enable_llm_ranking"`
 	// Kronos K线预测（可选增强，默认关闭；服务由 go-stock 托管拉起）
@@ -196,6 +199,7 @@ func UpdateConfig(s *SettingConfig) string {
 			"qgqp_b_id":                  s.QgqpBId,
 			"iwencai_api_key":            s.IwencaiApiKey,
 			"em_api_key":                 s.EmApiKey,
+			"deepseek_search_api_key":    s.DeepSeekSearchApiKey,
 			"window_width":               s.WindowWidth,
 			"window_height":              s.WindowHeight,
 			"enable_llm_ranking":         s.EnableLLMRanking,
