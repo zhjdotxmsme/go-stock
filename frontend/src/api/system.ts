@@ -573,7 +573,7 @@ export async function enableSkill(id: number, enable: boolean): Promise<any> {
 
 /**
  * 从URL生成技能
- * Go: GenerateSkillFromURL(url string) models.Skill
+ * Go: GenerateSkillFromURL(url string) (*models.Skill, float64, error)
  */
 export async function generateSkillFromURL(url: string): Promise<any> {
   return callApi(App.GenerateSkillFromURL, url)

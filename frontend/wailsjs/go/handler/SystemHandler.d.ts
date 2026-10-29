@@ -47,7 +47,7 @@ export function FetchAiModelInfo(arg1:string,arg2:string,arg3:string):Promise<ha
 
 export function FetchAiModels(arg1:string,arg2:string):Promise<Array<string>>;
 
-export function GenerateSkillFromURL(arg1:string):Promise<models.Skill>;
+export function GenerateSkillFromURL(arg1:string):Promise<[models.Skill, number]>;
 
 export function GetAiAssistantSession(arg1:string):Promise<models.AiAssistantSessionResp>;
 
