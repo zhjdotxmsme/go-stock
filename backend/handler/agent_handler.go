@@ -33,10 +33,18 @@ type AgentHandler struct {
 	agentMu     sync.Mutex
 	agentCancel context.CancelFunc
 
-	summaryMu     sync.Mutex
-	summaryCancel context.CancelFunc
+	// summarySessions 按 eventName 隔离的进行中总结会话（市场总结、悬浮助手等各用各的事件名，
+	// 互不误杀：某一入口的新请求或手动中断只取消自己事件名下的会话）。
+	// 存指针而非 CancelFunc：函数值不可比较，指针可用于判断登记是否仍属于本次会话。
+	summaryMu       sync.Mutex
+	summarySessions map[string]*summarySession
 
 	tools []data.Tool
+}
+
+// summarySession 一次进行中的总结会话。
+type summarySession struct {
+	cancel context.CancelFunc
 }
 
 // NewAgentHandler creates a new AgentHandler.
@@ -212,18 +220,22 @@ func (h *AgentHandler) GetAllStrategies() []*strategy.Strategy {
 func (h *AgentHandler) SummaryStockNews(question string, aiConfigId int, sysPromptId *int, enableTools bool, think bool, eventName string, historyJSON string) {
 	ctx, cancel := context.WithCancel(h.currentCtx())
 
-	// 保存当前会话的 cancel，用于前端中断
-	h.summaryMu.Lock()
-	if h.summaryCancel != nil {
-		h.summaryCancel()
-	}
-	h.summaryCancel = cancel
-	h.summaryMu.Unlock()
-
 	// 允许前端自定义事件名，避免不同页面之间的事件冲突
 	if strings.TrimSpace(eventName) == "" {
 		eventName = "summaryStockNews"
 	}
+
+	// 按 eventName 登记 cancel：同入口新请求先取消旧的（防叠加），异入口互不影响
+	session := &summarySession{cancel: cancel}
+	h.summaryMu.Lock()
+	if h.summarySessions == nil {
+		h.summarySessions = make(map[string]*summarySession)
+	}
+	if old, ok := h.summarySessions[eventName]; ok && old != nil {
+		old.cancel()
+	}
+	h.summarySessions[eventName] = session
+	h.summaryMu.Unlock()
 
 	// 解析对话历史（AI 助手记忆）：空字符串或解析失败则无历史
 	var history []map[string]interface{}
@@ -253,20 +265,38 @@ func (h *AgentHandler) SummaryStockNews(question string, aiConfigId int, sysProm
 	}
 
 	h.summaryMu.Lock()
-	h.summaryCancel = nil
+	if h.summarySessions[eventName] == session {
+		delete(h.summarySessions, eventName)
+	}
 	h.summaryMu.Unlock()
 
 	h.emit(eventName, "DONE")
 }
 
-// AbortSummaryStockNews 取消当前进行中的 SummaryStockNews 流式回答
+// AbortSummaryStockNews 取消全部进行中的总结会话
 func (h *AgentHandler) AbortSummaryStockNews() {
 	h.summaryMu.Lock()
 	defer h.summaryMu.Unlock()
-	if h.summaryCancel != nil {
-		h.summaryCancel()
-		h.summaryCancel = nil
+	for name, session := range h.summarySessions {
+		if session != nil {
+			session.cancel()
+		}
+		delete(h.summarySessions, name)
 	}
+}
+
+// AbortSummaryStockNewsByEvent 取消指定入口（eventName）的进行中总结会话，多入口互不误杀
+func (h *AgentHandler) AbortSummaryStockNewsByEvent(eventName string) {
+	if strings.TrimSpace(eventName) == "" {
+		h.AbortSummaryStockNews()
+		return
+	}
+	h.summaryMu.Lock()
+	defer h.summaryMu.Unlock()
+	if session, ok := h.summarySessions[eventName]; ok && session != nil {
+		session.cancel()
+	}
+	delete(h.summarySessions, eventName)
 }
 
 func (h *AgentHandler) SetStockAICron(cronText, stockCode string) {

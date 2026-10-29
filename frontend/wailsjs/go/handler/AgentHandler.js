@@ -10,6 +10,10 @@ export function AbortSummaryStockNews() {
   return window['go']['handler']['AgentHandler']['AbortSummaryStockNews']();
 }
 
+export function AbortSummaryStockNewsByEvent(arg1) {
+  return window['go']['handler']['AgentHandler']['AbortSummaryStockNewsByEvent'](arg1);
+}
+
 export function ChatWithAgent(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
   return window['go']['handler']['AgentHandler']['ChatWithAgent'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }

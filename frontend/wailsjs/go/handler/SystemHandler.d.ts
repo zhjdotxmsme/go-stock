@@ -5,8 +5,6 @@ import {handler} from '../models';
 import {data} from '../models';
 import {lo} from '../models';
 
-export function AbortSummaryStockNews():Promise<void>;
-
 export function AnalyzeSkillEffectiveness(arg1:number):Promise<string>;
 
 export function CalculateNextRunTime(arg1:string):Promise<string>;

@@ -45,8 +45,6 @@ type SystemHandler struct {
 	cronScheduler     *cronv3.Cron
 	cronEntrys        map[string]cronv3.EntryID
 	cronEntrysMu      sync.Mutex
-	summaryMu         sync.Mutex
-	summaryCancel     context.CancelFunc
 	sponsorInfo       map[string]any
 	vipLevel          int64
 	version           string
@@ -903,15 +901,6 @@ func (h *SystemHandler) InitCronTasks() {
 			continue
 		}
 		h.setCronEntry(convertor.ToString(taskCopy.ID)+"_"+taskCopy.Name, entryID)
-	}
-}
-
-func (h *SystemHandler) AbortSummaryStockNews() {
-	h.summaryMu.Lock()
-	defer h.summaryMu.Unlock()
-	if h.summaryCancel != nil {
-		h.summaryCancel()
-		h.summaryCancel = nil
 	}
 }
 
