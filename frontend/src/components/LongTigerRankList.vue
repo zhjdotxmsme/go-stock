@@ -102,6 +102,12 @@ function longTiger(date) {
   fetchDate(date || formattedDate);
 }
 
+// 金额自适应单位：≥1亿 用"亿"，否则用"万"
+function fmtAmount(v: number) {
+  if (Math.abs(v) >= 1e8) return (v / 1e8).toFixed(2) + '亿'
+  return (v / 1e4).toFixed(2) + '万'
+}
+
 function handleEXPLANATION(value, option){
   SearchForm.value.EXPLANATION = value
   if(value){
@@ -141,10 +147,10 @@ function handleEXPLANATION(value, option){
         <n-th width="60px">名称</n-th>
         <n-th>收盘价</n-th>
         <n-th width="60px">涨跌幅</n-th>
-        <n-th>龙虎榜净买额(万)</n-th>
-        <n-th>龙虎榜买入额(万)</n-th>
-        <n-th>龙虎榜卖出额(万)</n-th>
-        <n-th>龙虎榜成交额(万)</n-th>
+        <n-th>龙虎榜净买额</n-th>
+        <n-th>龙虎榜买入额</n-th>
+        <n-th>龙虎榜卖出额</n-th>
+        <n-th>龙虎榜成交额</n-th>
         <!--                <n-th>市场总成交额(万)</n-th>-->
         <!--                <n-th>净买额占总成交比</n-th>-->
         <!--                <n-th>成交额占总成交比</n-th>-->
@@ -183,20 +189,20 @@ function handleEXPLANATION(value, option){
 
           <n-popover trigger="hover" placement="right">
             <template #trigger>
-              <n-button tag="a"  text :type="item.BILLBOARD_NET_AMT>0?'error':'success'" :bordered=false >{{ (item.BILLBOARD_NET_AMT/10000).toFixed(2) }}</n-button>
+              <n-button tag="a"  text :type="item.BILLBOARD_NET_AMT>0?'error':'success'" :bordered=false >{{ fmtAmount(item.BILLBOARD_NET_AMT) }}</n-button>
             </template>
             <money-trend :code="item.SECUCODE.split('.')[1].toLowerCase()+item.SECUCODE.split('.')[0]" :name="item.SECURITY_NAME_ABBR" :days="360" :dark-theme="true" :chart-height="500" style="width: 800px"></money-trend>
           </n-popover>
 
         </n-td>
         <n-td>
-          <n-text :type="'error'">{{ (item.BILLBOARD_BUY_AMT/10000).toFixed(2) }}</n-text>
+          <n-text :type="'error'">{{ fmtAmount(item.BILLBOARD_BUY_AMT) }}</n-text>
         </n-td>
         <n-td>
-          <n-text :type="'success'">{{ (item.BILLBOARD_SELL_AMT/10000).toFixed(2) }}</n-text>
+          <n-text :type="'success'">{{ fmtAmount(item.BILLBOARD_SELL_AMT) }}</n-text>
         </n-td>
         <n-td>
-          <n-text :type="'info'">{{ (item.BILLBOARD_DEAL_AMT/10000).toFixed(2) }}</n-text>
+          <n-text :type="'info'">{{ fmtAmount(item.BILLBOARD_DEAL_AMT) }}</n-text>
         </n-td>
         <!--                <n-td>-->
         <!--                  <n-text :type="'info'">{{ (item.ACCUM_AMOUNT/10000).toFixed(2) }}</n-text>-->
