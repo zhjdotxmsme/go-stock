@@ -271,18 +271,73 @@ func (m MarketNewsApi) GetTelegraphList(source string) *[]*models.Telegraph {
 	} else {
 		db.Dao.Model(news).Preload("TelegraphTags").Order("data_time desc,time desc").Limit(50).Find(news)
 	}
-	for _, item := range *news {
-		tags := &[]models.Tags{}
-		db.Dao.Model(&models.Tags{}).Where("id in ?", lo.Map(item.TelegraphTags, func(item models.TelegraphTags, index int) uint {
-			return item.TagId
-		})).Find(&tags)
-		tagNames := lo.Map(*tags, func(item models.Tags, index int) string {
-			return item.Name
-		})
-		item.SubjectTags = tagNames
-		//logger.SugaredLogger.Infof("tagNames %v ，SubjectTags：%s", tagNames, item.SubjectTags)
-	}
+	fillTelegraphTags(*news)
 	return news
+}
+
+// fillTelegraphTags 批量补齐快讯的标签名。
+// 原实现逐条查询 Tags（50 条 = 50 次查询），这里改为两条批量查询：
+// 先取这些快讯的全部标签关联，再一次性取出标签名，避免 N+1。
+func fillTelegraphTags(news []*models.Telegraph) {
+	ids := make([]uint, 0, len(news))
+	for _, item := range news {
+		if item != nil {
+			ids = append(ids, item.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	var links []models.TelegraphTags
+	db.Dao.Model(&models.TelegraphTags{}).Where("telegraph_id in ?", ids).Find(&links)
+
+	tagIds := lo.Uniq(lo.Map(links, func(item models.TelegraphTags, _ int) uint {
+		return item.TagId
+	}))
+	tagNames := map[uint]string{}
+	if len(tagIds) > 0 {
+		var tags []models.Tags
+		db.Dao.Model(&models.Tags{}).Where("id in ?", tagIds).Find(&tags)
+		for _, tag := range tags {
+			tagNames[tag.ID] = tag.Name
+		}
+	}
+
+	byTelegraph := make(map[uint][]string, len(ids))
+	for _, link := range links {
+		if name, ok := tagNames[link.TagId]; ok {
+			byTelegraph[link.TelegraphId] = append(byTelegraph[link.TelegraphId], name)
+		}
+	}
+	for _, item := range news {
+		if item == nil {
+			continue
+		}
+		if names, ok := byTelegraph[item.ID]; ok {
+			item.SubjectTags = names
+		} else {
+			// 保持与逐条查询时一致的 JSON 形态（空数组而非 null）
+			item.SubjectTags = []string{}
+		}
+	}
+}
+
+// CleanOldTelegraph 清理指定天数之前的快讯及其标签关联，返回删除的快讯数与关联数。
+// 快讯表只增不减，而页面只展示每个源最新 50 条，历史数据会持续拖慢排序扫描并占用磁盘。
+// 使用 Unscoped 做物理删除，否则 GORM 只会写 deleted_at 标记，表仍然膨胀。
+func (m MarketNewsApi) CleanOldTelegraph(days int) (int64, int64) {
+	if days <= 0 {
+		return 0, 0
+	}
+	cutoff := time.Now().AddDate(0, 0, -days)
+	// 部分历史快讯 data_time 为空，仅按 data_time 比较会永远漏掉它们，
+	// 这类记录用入库时间兜底判断。
+	cond := "(data_time IS NOT NULL AND data_time < ?) OR (data_time IS NULL AND created_at < ?)"
+	sub := db.Dao.Model(&models.Telegraph{}).Select("id").Where(cond, cutoff, cutoff)
+	linkRes := db.Dao.Unscoped().Where("telegraph_id in (?)", sub).Delete(&models.TelegraphTags{})
+	newsRes := db.Dao.Unscoped().Where(cond, cutoff, cutoff).Delete(&models.Telegraph{})
+	return newsRes.RowsAffected, linkRes.RowsAffected
 }
 func (m MarketNewsApi) GetTelegraphListWithPaging(source string, page, pageSize int) *[]*models.Telegraph {
 	// 计算偏移量

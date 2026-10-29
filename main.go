@@ -138,6 +138,8 @@ func main() {
 	initDataSources()
 	initFreeStockDBMCP()
 	go AutoMigrate()
+	// 历史大表清理补跑（与凌晨低峰 cron 双保险）：桌面应用夜间通常未运行，仅靠 cron 会永不执行
+	go data.CleanupHistoryData()
 
 	//db.Dao.Model(&data.Group{}).Where("id = ?", 0).FirstOrCreate(&data.Group{
 	//	Name: "默认分组",

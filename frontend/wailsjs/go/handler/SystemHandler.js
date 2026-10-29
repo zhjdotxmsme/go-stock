@@ -26,6 +26,10 @@ export function CheckSponsorCode(arg1) {
   return window['go']['handler']['SystemHandler']['CheckSponsorCode'](arg1);
 }
 
+export function VacuumDatabase() {
+  return window['go']['handler']['SystemHandler']['VacuumDatabase']();
+}
+
 export function CheckUpdate(arg1) {
   return window['go']['handler']['SystemHandler']['CheckUpdate'](arg1);
 }

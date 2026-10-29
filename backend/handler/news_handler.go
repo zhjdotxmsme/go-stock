@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"sync"
+	"time"
 
 	"go-stock/backend/data"
 	"go-stock/backend/internal/adapter/repository/sqlite"
@@ -39,13 +41,29 @@ func (h *NewsHandler) GetTelegraphList(source string) *[]*models.Telegraph {
 	return &out
 }
 
+// telegraphCrawlThrottle 快讯外部抓取节流：市场页交易时段每 10 秒对 3 个源各调一次刷新，
+// 每次都会起协程抓外部 API 并去重写入（约 18 次抓取/分钟）。同一源 60 秒内只放行一次抓取，
+// 之后的刷新仅重新读库返回。
+var telegraphCrawlLast = sync.Map{} // source -> time.Time
+
+func shouldCrawlTelegraph(source string, now time.Time) bool {
+	if v, ok := telegraphCrawlLast.Load(source); ok {
+		if last, ok := v.(time.Time); ok && now.Sub(last) < 60*time.Second {
+			return false
+		}
+	}
+	telegraphCrawlLast.Store(source, now)
+	return true
+}
+
 // ReFleshTelegraphList refreshes telegraph/Sina/TradingView news and returns the latest telegraph list.
 // 外部拉取留 handler 直连 data；最终 DB 读走 service。
 func (h *NewsHandler) ReFleshTelegraphList(source string) *[]*models.Telegraph {
-	//data.NewMarketNewsApi().GetNewTelegraph(30)
-	go data.NewMarketNewsApi().TelegraphList(30)
-	go data.NewMarketNewsApi().GetSinaNews(30)
-	go data.NewMarketNewsApi().TradingViewNews()
+	if shouldCrawlTelegraph(source, time.Now()) {
+		go data.NewMarketNewsApi().TelegraphList(30)
+		go data.NewMarketNewsApi().GetSinaNews(30)
+		go data.NewMarketNewsApi().TradingViewNews()
+	}
 	list, err := h.svc.GetTelegraphList(h.currentCtx(), source)
 	if err != nil {
 		return &[]*models.Telegraph{}

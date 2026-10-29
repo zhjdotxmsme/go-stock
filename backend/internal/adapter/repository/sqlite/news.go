@@ -27,21 +27,36 @@ func (r *TelegraphRepository) GetTelegraphList(ctx context.Context, source strin
 		return nil, err
 	}
 
-	// SubjectTags 补全：telegraph_tags -> tags 名称（与原 data 层一致）
+	// SubjectTags 批量补全：telegraph_tags -> tags 名称。
+	// 原实现逐条查询（50 条 = 50 次查询），改为两条批量查询避免 N+1。
+	tagIDs := make([]uint, 0)
 	for i := range news {
-		tagIDs := make([]uint, 0, len(news[i].TelegraphTags))
 		for _, t := range news[i].TelegraphTags {
 			tagIDs = append(tagIDs, t.TagId)
 		}
+	}
+	if len(tagIDs) > 0 {
 		tags := make([]market.Tags, 0)
 		if err := db.Dao.Model(&market.Tags{}).Where("id in ?", tagIDs).Find(&tags).Error; err != nil {
 			return nil, err
 		}
-		names := make([]string, 0, len(tags))
+		names := make(map[uint]string, len(tags))
 		for _, t := range tags {
-			names = append(names, t.Name)
+			names[t.ID] = t.Name
 		}
-		news[i].SubjectTags = names
+		for i := range news {
+			set := make(map[uint]struct{}, len(news[i].TelegraphTags))
+			for _, t := range news[i].TelegraphTags {
+				set[t.TagId] = struct{}{}
+			}
+			subjectTags := make([]string, 0, len(set))
+			for id := range set {
+				if name, ok := names[id]; ok {
+					subjectTags = append(subjectTags, name)
+				}
+			}
+			news[i].SubjectTags = subjectTags
+		}
 	}
 	return news, nil
 }

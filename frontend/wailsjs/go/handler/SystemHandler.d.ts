@@ -17,6 +17,8 @@ export function CheckDeviceBinding(arg1:string,arg2:string):Promise<Record<strin
 
 export function CheckSponsorCode(arg1:string):Promise<Record<string, any>>;
 
+export function VacuumDatabase():Promise<string>;
+
 export function CheckUpdate(arg1:number):Promise<void>;
 
 export function CreateCronTask(arg1:models.CronTask):Promise<string>;

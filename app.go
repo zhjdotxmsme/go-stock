@@ -50,6 +50,8 @@ func NewApp() *App {
 	cache := freecache.NewCache(cacheSize)
 	c := cron.New(cron.WithSeconds(), cron.WithChain(cron.Recover(cron.DefaultLogger)))
 	c.Start()
+	// 凌晨低峰历史大表清理（与启动补跑双保险，见 data.CleanupHistoryData）
+	c.AddFunc("0 0 2 * * *", data.CleanupHistoryData)
 	var tools []data.Tool
 	tools = data.Tools(tools)
 	app := &App{

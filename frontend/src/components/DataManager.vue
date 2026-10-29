@@ -5,6 +5,7 @@ import {
   getSeedImportStatus, runSeedImport as runSeedImportApi, getLastSeedImportOutput,
 } from '../api/backtest'
 import * as stockApi from '../api/stock'
+import { VacuumDatabase } from '../../wailsjs/go/handler/SystemHandler'
 import {
   NAlert, NButton, NCard, NDataTable, NDivider,
   NGi, NGrid, NSpin, NStatistic, NTag, NText, NFlex,
@@ -196,6 +197,27 @@ async function refreshSeedOutput() {
   }
 }
 
+// ── 数据库维护 ──
+const vacuumLoading = ref(false)
+const vacuumResult = ref('')
+
+async function runVacuum() {
+  vacuumLoading.value = true
+  vacuumResult.value = ''
+  try {
+    vacuumResult.value = await VacuumDatabase()
+    if (vacuumResult.value.includes('完成')) {
+      message.success(vacuumResult.value)
+    } else {
+      message.error(vacuumResult.value)
+    }
+  } catch (e) {
+    message.error('数据库压缩失败: ' + String(e))
+  } finally {
+    vacuumLoading.value = false
+  }
+}
+
 // ── Lifecycle ──
 onMounted(() => {
   loadStats()
@@ -259,6 +281,22 @@ onMounted(() => {
       <n-text v-if="!progressLoading && progressItems.length === 0" depth="3" style="display: block; text-align: center; padding: 24px 0">
         暂无同步任务
       </n-text>
+    </n-card>
+
+    <!-- 数据库维护 -->
+    <n-card title="数据库维护" size="small" style="margin-top: 16px">
+      <n-flex align="center" :size="12">
+        <n-popconfirm @positive-click="runVacuum">
+          <template #trigger>
+            <n-button type="warning" :loading="vacuumLoading">
+              压缩数据库(VACUUM)
+            </n-button>
+          </template>
+          VACUUM 全程独占写锁、耗时与库大小成正比，执行期间其它写入会排队等待。请在非交易时段执行，确定继续？
+        </n-popconfirm>
+        <n-text v-if="vacuumResult" depth="2">{{ vacuumResult }}</n-text>
+        <n-text v-else depth="3">回收已删除数据占用的磁盘空间；每天 02:00 自动清理历史大表后，文件体积不会自动缩小，需手动压缩。</n-text>
+      </n-flex>
     </n-card>
 
     <n-divider />
