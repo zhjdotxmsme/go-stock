@@ -8,6 +8,7 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"go-stock/backend/stockcode"
 	"go-stock/backend/util/timeutil"
 )
 
@@ -80,10 +81,67 @@ func RequeueDoneWithMissingBars(ctx context.Context, limit int) (int, error) {
 	return requeued, nil
 }
 
+// RepairBrokenSyncTasks 修复历史假完成（syncDateRange 旧缺陷：补历史区间时拉的是
+// "最新 N 根"，过滤后区间内 0 根也返回成功 → 3892 个 done 任务仅落 55/1310 根）。
+//  1. 日志代码统一为内部格式（tushare/bare → sz300780；内部格式行已存在时删旧行）；
+//  2. done 但 synced_count 明显低于 expected 的任务批量重置为 pending 重新补齐。
+// 幂等：修复后的任务只有真正补齐才会再标 done。
+func RepairBrokenSyncTasks(ctx context.Context) (int64, error) {
+	// 1) 代码格式收敛
+	var rows []models.KLineSyncLog
+	if err := db.Dao.WithContext(ctx).
+		Where("stock_code NOT GLOB '[a-z]*'").
+		Find(&rows).Error; err != nil {
+		return 0, err
+	}
+	renamed := int64(0)
+	for _, row := range rows {
+		norm := stockcode.Normalize(row.StockCode)
+		if norm == "" || norm == row.StockCode {
+			continue
+		}
+		var cnt int64
+		if err := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
+			Where("stock_code = ? AND period = ? AND adjusted = ?", norm, row.Period, row.Adjusted).
+			Count(&cnt).Error; err != nil {
+			continue
+		}
+		if cnt > 0 {
+			// 内部格式行已存在：删除格式错误的旧行，避免重复排队
+			if err := db.Dao.WithContext(ctx).Delete(&models.KLineSyncLog{}, row.ID).Error; err != nil {
+				logger.SugaredLogger.Warnf("repair sync log: delete %s failed: %v", row.StockCode, err)
+			}
+			continue
+		}
+		if err := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
+			Where("id = ?", row.ID).Update("stock_code", norm).Error; err != nil {
+			logger.SugaredLogger.Warnf("repair sync log: rename %s failed: %v", row.StockCode, err)
+			continue
+		}
+		renamed++
+	}
+
+	// 2) 假完成批量重置（synced_count 低于 expected 90% 视为未完成）
+	res := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
+		Where("status = ? AND expected_count > 0 AND synced_count * 10 < expected_count * 9", SyncStatusDone).
+		Updates(map[string]interface{}{
+			"status":     SyncStatusPending,
+			"error_msg":  "repair: done 但同步条数远低于预期（历史缺口），重新补齐",
+			"updated_at": time.Now(),
+		})
+	return res.RowsAffected + renamed, res.Error
+}
+
 // PrepareSyncQueueOnStartup 启动时回收僵死任务、延长过期 end_date，并后台扫描缺口。
 func PrepareSyncQueueOnStartup(onMorePending func()) {
 	ctx := context.Background()
 	today := timeutil.TodayStr()
+
+	if n, err := RepairBrokenSyncTasks(ctx); err != nil {
+		logger.SugaredLogger.Warnf("repair broken sync tasks: %v", err)
+	} else if n > 0 {
+		logger.SugaredLogger.Infof("K线同步：修复 %d 条历史假完成/格式错误任务，重新排队补齐", n)
+	}
 
 	if n, err := ReclaimStaleRunningSyncTasks(ctx, DefaultStaleRunningAge); err != nil {
 		logger.SugaredLogger.Warnf("reclaim stale running sync: %v", err)

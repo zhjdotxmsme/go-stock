@@ -10,6 +10,7 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"go-stock/backend/stockcode"
 	"go-stock/backend/util/timeutil"
 
 	"gorm.io/gorm"
@@ -44,6 +45,8 @@ func SyncKLineForStock(ctx context.Context, stockCode, period, startDate, endDat
 	if err := validateSyncParams(stockCode, period, startDate, endDate); err != nil {
 		return fmt.Errorf("invalid sync parameters: %w", err)
 	}
+	// Rule 3：落库统一内部格式（生产库混有 tushare/bare 格式，读者按内部格式取数会漏）
+	stockCode = stockcode.Normalize(stockCode)
 
 	logger.SugaredLogger.Infof("Starting K-line sync for %s %s [%s - %s] adjusted=%v", stockCode, period, startDate, endDate, adjusted)
 
@@ -77,6 +80,22 @@ func SyncKLineForStock(ctx context.Context, stockCode, period, startDate, endDat
 	}
 
 	logger.SugaredLogger.Infof("Successfully completed K-line sync for %s %s [%s - %s]", stockCode, period, startDate, endDate)
+
+	// 完成前校验：重算缺口。仍有缺口 = 源数据暂缺或拉取失败，
+	// 返回错误让任务标 failed（可重试），而不是假 done 把缺口永久掩盖。
+	remaining, err := findMissingRangesLocal(ctx, store, stockCode, period, startDate, endDate, adjusted)
+	if err != nil {
+		return fmt.Errorf("verify gaps after sync: %w", err)
+	}
+	if len(remaining) > 0 {
+		first, last := remaining[0], remaining[len(remaining)-1]
+		summary := first.Start
+		if len(remaining) > 1 {
+			summary = fmt.Sprintf("%s ~ %s 等 %d 段", first.Start, last.End, len(remaining))
+		}
+		return fmt.Errorf("补齐后仍有缺口未覆盖（%s），源数据暂缺或连续拉取失败", summary)
+	}
+
 	return nil
 }
 
@@ -209,6 +228,8 @@ func CreateSyncTask(ctx context.Context, stockCode, period, startDate, endDate s
 	if err := validateSyncParams(stockCode, period, startDate, endDate); err != nil {
 		return fmt.Errorf("invalid sync parameters: %w", err)
 	}
+	// Rule 3：任务与落库统一内部格式
+	stockCode = stockcode.Normalize(stockCode)
 
 	var existing models.KLineSyncLog
 	err := db.Dao.WithContext(ctx).
@@ -295,8 +316,10 @@ func syncDateRange(ctx context.Context, router *datasource.Router, store *dataso
 		count = 2000
 	}
 
-	// 落库时机由本函数控制（先做除权检测），不走 GetKLine 的异步持久化
-	data, err := router.FetchKLineNoPersist(ctx, stockCode, period, count)
+	// 落库时机由本函数控制（先做除权检测），不走 GetKLine 的异步持久化。
+	// 锚定 endDate 取数：历史中段缺口用"最新 N 根"语义永远覆盖不到（旧实现
+	// 取到的是尾部数据，过滤后区间内 0 根还返回成功 → 任务假 done，缺口永不补）。
+	data, err := router.FetchKLineNoPersistBefore(ctx, stockCode, period, count, endDate)
 	if err != nil {
 		return fmt.Errorf("failed to fetch K-line data from router: %w", err)
 	}
@@ -316,8 +339,9 @@ func syncDateRange(ctx context.Context, router *datasource.Router, store *dataso
 	}
 
 	if len(filtered) == 0 {
-		logger.SugaredLogger.Warnf("No bars in date range [%s - %s] for %s", startDate, endDate, stockCode)
-		return nil
+		// 旧行为是 Warn+return nil（任务标 done）——历史中段缺口被永久掩盖。
+		// 改为报错：任务标 failed 可重试；长期停牌属源数据事实，同样如实暴露。
+		return fmt.Errorf("区间 [%s - %s] 未取到任何 K 线（源数据暂缺或长期停牌）", startDate, endDate)
 	}
 
 	// 除权防线：前复权序列与库内重叠日收盘系统性错位（除权导致 qfq 整体平移）时，

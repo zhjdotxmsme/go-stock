@@ -98,6 +98,58 @@ func (r *Router) FetchKLineNoPersist(ctx context.Context, code, period string, c
 	return r.getKLineNoPersist(ctx, stockcode.Normalize(code), CanonicalKLinePeriod(period), count)
 }
 
+// EndAnchoredKLineProvider 支持按结束日期锚定取数的 K 线数据源。
+// 历史缺口回补必需：缺口检测给出的区间在历史中段，"最新 N 根"语义的取数
+// 永远覆盖不到，导致补齐任务假完成（生产实测 3892 个 done 任务仅落 55/1310 根）。
+type EndAnchoredKLineProvider interface {
+	KLineProvider
+	// GetKLineBefore 取 endDate（含）之前（不含当日及以后）的 count 根 K 线。
+	// endDate 格式 YYYY-MM-DD。
+	GetKLineBefore(ctx context.Context, code, period string, count int, endDate string) (*KLineData, error)
+}
+
+// FetchKLineNoPersistBefore 锚定结束日期取数（不含 endDate 当日及以后）。
+// 优先走支持锚定的 provider；全部不支持时退化为"取到今天"的窗口拉取，
+// count 按缺口到今天的自然日跨度放大（只对近期缺口有效，远期缺口要求 provider 锚定）。
+func (r *Router) FetchKLineNoPersistBefore(ctx context.Context, code, period string, count int, endDate string) (*KLineData, error) {
+	normalized := stockcode.Normalize(code)
+	canonical := CanonicalKLinePeriod(period)
+
+	r.mu.RLock()
+	provs := append([]KLineProvider(nil), r.klineProviders...)
+	r.mu.RUnlock()
+
+	var lastErr error
+	for _, p := range provs {
+		ap, ok := p.(EndAnchoredKLineProvider)
+		if !ok {
+			continue
+		}
+		k, err := ap.GetKLineBefore(ctx, normalized, canonical, count, endDate)
+		if err == nil && k != nil && len(k.Bars) > 0 {
+			return k, nil
+		}
+		if err != nil {
+			lastErr = err
+			logger.SugaredLogger.Warnf("kline anchored fetch via %s failed for %s before %s: %v", p.Name(), normalized, endDate, err)
+		}
+	}
+
+	// 退化路径：窗口拉到今天，覆盖近期缺口
+	if endT, e := timeutil.ParseDate(endDate); e == nil {
+		days := int(time.Since(endT).Hours()/24) + 1
+		count += days*5/7 + 10
+		if count > maxKLineFetchCount {
+			count = maxKLineFetchCount
+		}
+	}
+	k, err := r.getKLineNoPersist(ctx, normalized, canonical, count)
+	if err != nil && lastErr != nil {
+		return nil, fmt.Errorf("anchored providers failed (%v) and tail fetch failed: %w", lastErr, err)
+	}
+	return k, err
+}
+
 // getKLineNoPersist 与 GetKLine 相同的 fallback 链，但不触发异步落库。
 // 增量路径用它取尾部数据，落库时机由调用方控制（先做除权检测再决定怎么写）。
 func (r *Router) getKLineNoPersist(ctx context.Context, code, period string, count int) (*KLineData, error) {

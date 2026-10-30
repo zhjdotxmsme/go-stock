@@ -8,6 +8,7 @@ import (
 	"go-stock/backend/logger"
 	"go-stock/backend/util/timeutil"
 	"strconv"
+	"strings"
 )
 
 // TDXKLineProvider was removed: MootdxKLineProvider (free_data.go, priority 5)
@@ -40,6 +41,28 @@ func (p *EastMoneyKLineProvider) GetKLine(ctx context.Context, code string, peri
 		return nil, fmt.Errorf("eastmoney kline: empty result for %s", code)
 	}
 	logger.SugaredLogger.Infof("datasource: kline %s from eastmoney (%d bars)", code, len(*kLines))
+	return ConvertKLineData(code, period, *kLines), nil
+}
+
+// GetKLineBefore 取 endDate（YYYY-MM-DD，不含当日）之前的 count 根 K 线。
+// 历史缺口回补用：东财 kline 接口原生支持 end+lmt 锚定语义。
+func (p *EastMoneyKLineProvider) GetKLineBefore(ctx context.Context, code string, period string, count int, endDate string) (*datasource.KLineData, error) {
+	em := data.NewEastMoneyKLineApi(data.GetSettingConfig())
+	if em == nil {
+		return nil, fmt.Errorf("eastmoney kline api not available")
+	}
+	period = datasource.NormalizePeriod(period)
+	// 东财 end 参数格式 YYYYMMDD；锚定语义为"取 end 之前的 limit 根"
+	end := strings.ReplaceAll(endDate, "-", "")
+	adjustFlag := "1" // 前复权
+	kLines := em.GetKLineDataBefore(code, period, adjustFlag, count, end)
+	if kLines == nil || len(*kLines) == 0 {
+		kLines = em.GetKLineDataBefore(code, period, "", count, end)
+	}
+	if kLines == nil || len(*kLines) == 0 {
+		return nil, fmt.Errorf("eastmoney kline before %s: empty result for %s", endDate, code)
+	}
+	logger.SugaredLogger.Infof("datasource: kline %s before %s from eastmoney (%d bars)", code, endDate, len(*kLines))
 	return ConvertKLineData(code, period, *kLines), nil
 }
 

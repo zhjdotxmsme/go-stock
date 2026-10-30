@@ -15,6 +15,7 @@ import (
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/data/history"
 	"go-stock/backend/db"
+	"go-stock/backend/stockcode"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 )
@@ -136,6 +137,9 @@ func (s *Service) StartHistoricalSync(years int) error {
 	startDate := now.AddDate(-years, 0, 0).Format("2006-01-02")
 	endDate := now.Format("2006-01-02")
 
+	if n, err := history.RepairBrokenSyncTasks(ctx); err == nil && n > 0 {
+		logger.SugaredLogger.Infof("historical sync: repaired %d broken/fake-done tasks", n)
+	}
 	if n, err := history.ReclaimStaleRunningSyncTasks(ctx, history.DefaultStaleRunningAge); err == nil && n > 0 {
 		logger.SugaredLogger.Infof("historical sync: reclaimed %d stale running tasks", n)
 	}
@@ -162,20 +166,25 @@ func (s *Service) StartHistoricalSync(years int) error {
 	created := 0
 	skipped := 0
 	for _, info := range infos {
-		if _, ok := running[info.SECUCODE]; ok {
+		// Rule 3：任务代码统一内部格式（修复 done 跳过检查被混格式行误命中）
+		code := stockcode.Normalize(info.SECUCODE)
+		if code == "" {
+			code = info.SECUCODE
+		}
+		if _, ok := running[code]; ok {
 			continue
 		}
 		var prior models.KLineSyncLog
 		if err := db.Dao.WithContext(ctx).
-			Where("stock_code = ? AND period = ? AND adjusted = ?", info.SECUCODE, "day", true).
+			Where("stock_code = ? AND period = ? AND adjusted = ?", code, "day", true).
 			First(&prior).Error; err == nil &&
 			prior.Status == history.SyncStatusDone &&
 			prior.EndDate >= endDate && prior.StartDate <= startDate {
 			skipped++
 			continue
 		}
-		if err := history.CreateSyncTask(ctx, info.SECUCODE, "day", startDate, endDate, true); err != nil {
-			logger.SugaredLogger.Errorf("create sync task failed for %s: %v", info.SECUCODE, err)
+		if err := history.CreateSyncTask(ctx, code, "day", startDate, endDate, true); err != nil {
+			logger.SugaredLogger.Errorf("create sync task failed for %s: %v", code, err)
 			continue
 		}
 		created++
