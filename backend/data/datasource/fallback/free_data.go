@@ -131,6 +131,38 @@ func (p *TencentKLineProvider) Priority() int                     { return 10 }
 func (p *TencentKLineProvider) Available(ctx context.Context) bool { return true }
 
 func (p *TencentKLineProvider) GetKLine(ctx context.Context, code string, period string, count int) (*datasource.KLineData, error) {
+	k, err := p.getKLineTencent(code, period, count, "")
+	if err != nil {
+		return nil, err
+	}
+	logger.SugaredLogger.Infof("datasource: kline %s from tencent (%d bars)", code, len(k.Bars))
+	return k, nil
+}
+
+// GetKLineBefore 取 endDate（YYYY-MM-DD）当日及之前的 count 根 K 线。
+// 东财限流时的第二锚定源：fqkline param 原生支持 start/end 锚定段。
+func (p *TencentKLineProvider) GetKLineBefore(ctx context.Context, code string, period string, count int, endDate string) (*datasource.KLineData, error) {
+	k, err := p.getKLineTencent(code, period, count, endDate)
+	if err != nil {
+		return nil, err
+	}
+	// 统一接口语义：只保留 endDate 当日及之前的 bars
+	kept := make([]datasource.KLineBar, 0, len(k.Bars))
+	for _, b := range k.Bars {
+		if b.Time.Format("2006-01-02") <= endDate {
+			kept = append(kept, b)
+		}
+	}
+	k.Bars = kept
+	if len(k.Bars) == 0 {
+		return nil, fmt.Errorf("tencent kline before %s: no bars on/before anchor for %s", endDate, code)
+	}
+	logger.SugaredLogger.Infof("datasource: kline %s before %s from tencent (%d bars)", code, endDate, len(k.Bars))
+	return k, nil
+}
+
+// getKLineTencent fqkline 取数。end 为空取最新一段；否则锚定 end（含当日）。
+func (p *TencentKLineProvider) getKLineTencent(code, period string, count int, endDate string) (*datasource.KLineData, error) {
 	tencentCode := toTencentCode(code)
 	// Tencent fqkline wants its own period vocabulary ("day"/"week"/"month"),
 	// not the normalized numeric codes ("101"/...) — the numeric form made
@@ -144,7 +176,8 @@ func (p *TencentKLineProvider) GetKLine(ctx context.Context, code string, period
 	case "103", "month":
 		period = "month"
 	}
-	url := fmt.Sprintf("http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,%s,,,%d,qfq", tencentCode, period, count)
+	// param 段：code,period,start,end,count,qfq；start 留空由 end+count 锚定
+	url := fmt.Sprintf("http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,%s,,%s,%d,qfq", tencentCode, period, endDate, count)
 	resp, err := data.CreateHTTPClientWithTimeout(15*time.Second).R().
 		SetHeader("Host", "web.ifzq.gtimg.cn").
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
@@ -157,7 +190,6 @@ func (p *TencentKLineProvider) GetKLine(ctx context.Context, code string, period
 	if err != nil {
 		return nil, err
 	}
-	logger.SugaredLogger.Infof("datasource: kline %s from tencent (%d bars)", code, len(kline.Bars))
 	return kline, nil
 }
 

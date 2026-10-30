@@ -103,8 +103,9 @@ func (r *Router) FetchKLineNoPersist(ctx context.Context, code, period string, c
 // 永远覆盖不到，导致补齐任务假完成（生产实测 3892 个 done 任务仅落 55/1310 根）。
 type EndAnchoredKLineProvider interface {
 	KLineProvider
-	// GetKLineBefore 取 endDate（含）之前（不含当日及以后）的 count 根 K 线。
-	// endDate 格式 YYYY-MM-DD。
+	// GetKLineBefore 取 endDate（YYYY-MM-DD）当日及之前的 count 根 K 线。
+	// 历史缺口回补必需：缺口检测给出的区间在历史中段，"最新 N 根"语义的取数
+	// 永远覆盖不到，导致补齐任务假完成（生产实测 3892 个 done 任务仅落 55/1310 根）。
 	GetKLineBefore(ctx context.Context, code, period string, count int, endDate string) (*KLineData, error)
 }
 

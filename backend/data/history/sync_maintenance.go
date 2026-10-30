@@ -132,6 +132,46 @@ func RepairBrokenSyncTasks(ctx context.Context) (int64, error) {
 	return res.RowsAffected + renamed, res.Error
 }
 
+// ConvergeKLineBarCodeFormats 收敛 kline_bars 存量混格式代码为内部格式。
+// 混格式并存时按 candidates 的容错查询会对同一交易日返回两根（跨格式重复），
+// MA/缺口检测等逐日计算会重复计数。规则：tushare（300780.SZ）→ sz300780；
+// 裸 6 位由 stockcode.Normalize 启发式判市。内部格式行已存在的同键行先删旧格式行。
+// 幂等：收敛后再跑无行可改。表大，放 goroutine 执行，不阻塞启动。
+func ConvergeKLineBarCodeFormats(ctx context.Context) (int64, error) {
+	var codes []string
+	if err := db.Dao.WithContext(ctx).
+		Table("kline_bars").
+		Distinct("stock_code").
+		Where("stock_code NOT GLOB '[a-z]*'").
+		Pluck("stock_code", &codes).Error; err != nil {
+		return 0, err
+	}
+
+	converted := int64(0)
+	for _, old := range codes {
+		norm := stockcode.Normalize(old)
+		if norm == "" || norm == old {
+			continue
+		}
+		// 同键（period/adjusted/trade_date）内部格式行已存在 → 删旧格式行防唯一冲突/重复
+		del := db.Dao.WithContext(ctx).Exec(
+			`DELETE FROM kline_bars WHERE stock_code = ? AND (period, adjusted, trade_date) IN
+			 (SELECT period, adjusted, trade_date FROM kline_bars WHERE stock_code = ?)`, old, norm)
+		if del.Error != nil {
+			logger.SugaredLogger.Warnf("converge kline codes: delete dup %s: %v", old, del.Error)
+			continue
+		}
+		upd := db.Dao.WithContext(ctx).Exec(
+			"UPDATE kline_bars SET stock_code = ? WHERE stock_code = ?", norm, old)
+		if upd.Error != nil {
+			logger.SugaredLogger.Warnf("converge kline codes: update %s: %v", old, upd.Error)
+			continue
+		}
+		converted += upd.RowsAffected
+	}
+	return converted, nil
+}
+
 // PrepareSyncQueueOnStartup 启动时回收僵死任务、延长过期 end_date，并后台扫描缺口。
 func PrepareSyncQueueOnStartup(onMorePending func()) {
 	ctx := context.Background()
@@ -141,6 +181,31 @@ func PrepareSyncQueueOnStartup(onMorePending func()) {
 		logger.SugaredLogger.Warnf("repair broken sync tasks: %v", err)
 	} else if n > 0 {
 		logger.SugaredLogger.Infof("K线同步：修复 %d 条历史假完成/格式错误任务，重新排队补齐", n)
+	}
+
+	// 存量混格式 kline_bars 收敛（表大，后台执行；与新写入的内部格式行并存期间
+	// 由查询端 StockCodeCandidates 容错，收敛完成后查询自然单一化）
+	go func() {
+		if n, err := ConvergeKLineBarCodeFormats(ctx); err != nil {
+			logger.SugaredLogger.Warnf("converge kline bar formats: %v", err)
+		} else if n > 0 {
+			logger.SugaredLogger.Infof("K线同步：收敛 %d 条混格式存量 bars 为内部格式", n)
+		}
+	}()
+
+	// failed 任务重置一轮：网络瞬断类失败重启后重试；
+	// "源数据暂缺/长期停牌"类再次失败会继续标 failed，不会死循环（仅启动时重试）。
+	res := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
+		Where("status = ?", SyncStatusFailed).
+		Updates(map[string]interface{}{
+			"status":     SyncStatusPending,
+			"error_msg":  "requeue: failed task retried after restart",
+			"updated_at": time.Now(),
+		})
+	if res.Error != nil {
+		logger.SugaredLogger.Warnf("requeue failed sync tasks: %v", res.Error)
+	} else if res.RowsAffected > 0 {
+		logger.SugaredLogger.Infof("K线同步：%d 条 failed 任务重启后重试", res.RowsAffected)
 	}
 
 	if n, err := ReclaimStaleRunningSyncTasks(ctx, DefaultStaleRunningAge); err != nil {
