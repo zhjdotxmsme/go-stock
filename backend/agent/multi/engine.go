@@ -184,6 +184,7 @@ func (e *MultiAgentEngine) Run(ctx context.Context, stockCode, stockName, market
 		if err != nil {
 			logger.SugaredLogger.Errorf("synthesis error: %v", err)
 		}
+		finalReport = reportOrHold(finalReport)
 		ac.FinalReport = finalReport
 
 		emitEvent(ctx, ch, "agent:phase", map[string]string{
@@ -290,6 +291,18 @@ func emitEvent(ctx context.Context, ch chan<- *schema.Message, eventType string,
 	select {
 	case ch <- &schema.Message{Role: schema.Assistant, Content: string(raw)}:
 	case <-ctx.Done():
+	}
+}
+
+// reportOrHold 保证前端总能收到一份报告。综合节点失败时返回 nil，
+// 直接发出去会变成 agent:final 的 report=null。
+func reportOrHold(report *FinalReport) *FinalReport {
+	if report != nil {
+		return report
+	}
+	return &FinalReport{
+		OverallRating: "hold",
+		Conclusion:    "综合结论生成失败，各分析师报告仍然有效",
 	}
 }
 

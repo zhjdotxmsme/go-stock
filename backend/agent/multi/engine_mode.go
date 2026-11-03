@@ -3,6 +3,7 @@ package multi
 import (
 	"context"
 	"sync"
+	"time"
 
 	"go-stock/backend/data"
 	"go-stock/backend/logger"
@@ -29,6 +30,21 @@ var analystRunners = map[string]func(context.Context, *AgentContext) (*AgentRepo
 func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext, ch chan *schema.Message) {
 	cfg := e.config.normalize()
 	budget := newBudgetTracker(cfg.TotalBudget, cfg.StageMinBudget, nil)
+
+	// 与 standard 管线同一道预检：K 线缺失或过期时不再启动分析师。
+	ac.DataPack = PrefetchDataPack(ctx, ac.StockCode)
+	if check := CheckDataPack(ac.DataPack, time.Now()); !check.Passed {
+		logger.SugaredLogger.Errorf("data pre-check failed for %s: %s", ac.StockCode, check.Summary())
+		emitEvent(ctx, ch, "agent:phase", map[string]string{
+			"phase": "datapack", "status": "error",
+			"label": "数据完整性检查未通过",
+		})
+		emitEvent(ctx, ch, "agent:phase", map[string]string{
+			"phase": "error", "status": "error",
+			"label": check.FailReason,
+		})
+		return
+	}
 
 	for _, stage := range planStages(cfg) {
 		// 预算控制：剩余 < StageMinBudget 时跳过非必需阶段，而非启动注定超时的阶段
@@ -98,6 +114,7 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 			if err != nil {
 				logger.SugaredLogger.Errorf("synthesis error: %v", err)
 			}
+			finalReport = reportOrHold(finalReport)
 			ac.FinalReport = finalReport
 			// D6 分类结果回写 FinalReport（透出到 agent:final）
 			if finalReport != nil {
@@ -115,6 +132,7 @@ func (e *MultiAgentEngine) runModePipeline(ctx context.Context, ac *AgentContext
 	}
 
 	// D5 决策标尺（A4）：在风控辩论（D4 可能已调整 OverallRating）之后、落库前计算
+	ac.FinalReport = reportOrHold(ac.FinalReport)
 	applyDecisionScale(ac)
 
 	saveMultiAgentResult(ac)
