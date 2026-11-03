@@ -19,6 +19,7 @@ type StrategyBacktestStat struct {
 	AvgWin          float64
 	AvgLoss         float64
 	ProfitLossRatio float64
+	MaxDrawdown     float64
 }
 
 // aggregateReturns 聚合收益率序列为统计（纯函数）
@@ -48,6 +49,18 @@ func aggregateReturns(name string, returns []float64) StrategyBacktestStat {
 	return st
 }
 
+// worstDrawdown 取单笔回撤里最深的一笔。
+// 各股票并发回测，收益序列的拼接顺序不稳定，不能拿它做组合权益曲线。
+func worstDrawdown(dds []float64) float64 {
+	worst := 0.0
+	for _, dd := range dds {
+		if dd > worst {
+			worst = dd
+		}
+	}
+	return worst
+}
+
 // BacktestStrategies 信号级回测：对 codes 在 [startDate, endDate] 内逐交易日跑 5 策略，
 // 信号日收盘价买入、持有 holdingDays 天，走现有 backtest.Engine 的涨跌停/基准规则。
 // 注：这是重计算（全市场约百万次 Select），并发 8，进度经 onProgress 回调。
@@ -59,6 +72,7 @@ func BacktestStrategies(ctx context.Context, codes []string, startDate, endDate 
 	engine := backtest.NewEngine()
 	strategies := strategy.Registry()
 	returns := map[string][]float64{}
+	drawdowns := map[string][]float64{}
 	var mu sync.Mutex
 	sem := make(chan struct{}, 8)
 	var wg sync.WaitGroup
@@ -111,6 +125,7 @@ func BacktestStrategies(ctx context.Context, codes []string, startDate, endDate 
 					}
 					mu.Lock()
 					returns[s.Name()] = append(returns[s.Name()], r.TotalReturn)
+					drawdowns[s.Name()] = append(drawdowns[s.Name()], r.MaxDrawdown)
 					mu.Unlock()
 				}
 			}
@@ -125,7 +140,9 @@ func BacktestStrategies(ctx context.Context, codes []string, startDate, endDate 
 	sort.Strings(names)
 	stats := make([]StrategyBacktestStat, 0, len(names))
 	for _, name := range names {
-		stats = append(stats, aggregateReturns(name, returns[name]))
+		st := aggregateReturns(name, returns[name])
+		st.MaxDrawdown = worstDrawdown(drawdowns[name])
+		stats = append(stats, st)
 		logger.SugaredLogger.Infof("khunter 回测 %s: %d 笔 胜率 %.1f%% 盈亏比 %.2f",
 			name, len(returns[name]), stats[len(stats)-1].WinRate*100, stats[len(stats)-1].ProfitLossRatio)
 	}

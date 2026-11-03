@@ -177,7 +177,6 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 		entry = signalBar.Close
 	}
 
-	maxPrice := entry
 	exitPrice := entry
 	exitIdx := 0
 	warning := ""
@@ -185,27 +184,29 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 	// T+1 约束：bars[0] 为买入日（信号日），从 i=1 开始检查退出
 	// 确保买入当日不可卖出
 	var dailyValues []float64
+	// path 是实际成交能走到的价格：止损/止盈日用成交价，其余用收盘。
+	// 最大回撤按这条路径的峰谷计算，中途下跌后收复仍会计入。
+	var path []float64
 	for i := 1; i < len(bars) && i <= in.HoldingDays; i++ {
 		bar := bars[i]
 		dailyValues = append(dailyValues, (bar.Close-entry)/entry)
 
-		if bar.High > maxPrice {
-			maxPrice = bar.High
-		}
-
 		if in.StopLoss > 0 && bar.Low <= entry*(1-in.StopLoss) {
 			exitPrice = entry * (1 - in.StopLoss)
 			exitIdx = i
+			path = append(path, exitPrice)
 			break
 		}
 		if in.StopProfit > 0 && bar.High >= entry*(1+in.StopProfit) {
 			exitPrice = entry * (1 + in.StopProfit)
 			exitIdx = i
+			path = append(path, exitPrice)
 			break
 		}
 
 		exitPrice = bar.Close
 		exitIdx = i
+		path = append(path, bar.Close)
 	}
 
 	if exitIdx == 0 {
@@ -223,13 +224,7 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 	}
 
 	ret := (exitPrice - entry) / entry
-	var maxDD float64
-	if maxPrice > 0 {
-		maxDD = (maxPrice - exitPrice) / maxPrice
-	}
-	if maxDD < 0 {
-		maxDD = 0
-	}
+	maxDD := pathMaxDrawdown(entry, path)
 
 	benchRet := 0.0
 	var benchValues []float64
@@ -257,4 +252,27 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 		DailyValues:     dailyValues,
 		BenchmarkValues: benchValues,
 	}, nil
+}
+
+// pathMaxDrawdown 是持有期内权益曲线的最大回撤（相对买入价）。
+// 只看「最高价到卖出价」会把中途下跌后收复的交易记成接近 0。
+func pathMaxDrawdown(entry float64, prices []float64) float64 {
+	if entry <= 0 {
+		return 0
+	}
+	peak := 1.0
+	maxDD := 0.0
+	for _, px := range prices {
+		if px <= 0 {
+			continue
+		}
+		eq := px / entry
+		if eq > peak {
+			peak = eq
+		}
+		if dd := (peak - eq) / peak; dd > maxDD {
+			maxDD = dd
+		}
+	}
+	return maxDD
 }

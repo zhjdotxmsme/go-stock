@@ -158,6 +158,34 @@ func TestEngineRun_StopLoss(t *testing.T) {
 	assert.LessOrEqual(t, result.ExitPrice, 92.0+1e-6)
 }
 
+func TestEngineRun_DrawdownKeepsMidHoldDip(t *testing.T) {
+	restoreDB := setupEngineTestDB(t)
+	defer restoreDB()
+
+	code := "mock_dd"
+	registerEngineMock(code, makeBars([]price{
+		{"2024-01-02", 100, 102, 99, 101},
+		{"2024-01-03", 101, 115, 108, 110},
+		{"2024-01-04", 108, 100, 93, 94},
+		{"2024-01-05", 96, 109, 100, 108},
+	}))
+
+	engine := NewEngine()
+	result, err := engine.Run(context.Background(), Input{
+		StockCode:   code,
+		SignalDate:  "2024-01-02",
+		EntryPrice:  100,
+		HoldingDays: 3,
+		StopLoss:    0.08,
+		StopProfit:  0.50,
+	})
+	require.NoError(t, err)
+	assert.InDelta(t, 108.0, result.ExitPrice, 0.01)
+	// 收盘 110 → 94 → 108。峰 1.10、谷 0.94，回撤 (1.10-0.94)/1.10。
+	// 旧算法 (最高价 115 - 卖出价 108) / 115 ≈ 6%，会漏掉这段回撤。
+	assert.InDelta(t, (1.10-0.94)/1.10, result.MaxDrawdown, 0.001)
+}
+
 func TestEngineRun_TakeProfit(t *testing.T) {
 	restoreDB := setupEngineTestDB(t)
 	defer restoreDB()

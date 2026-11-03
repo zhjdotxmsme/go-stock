@@ -16,3 +16,13 @@ func TestAggregateStats(t *testing.T) {
 		t.Fatalf("PLRatio expect ~3, got %v", st.ProfitLossRatio)
 	}
 }
+
+func TestWorstDrawdown(t *testing.T) {
+	got := worstDrawdown([]float64{0.02, 0.145, 0.05})
+	if got < 0.144 || got > 0.146 {
+		t.Fatalf("worst drawdown: %v", got)
+	}
+	if worstDrawdown(nil) != 0 {
+		t.Fatal("empty drawdowns should be 0")
+	}
+}
