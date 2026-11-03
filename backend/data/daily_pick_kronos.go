@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go-stock/backend/logger"
+	"go-stock/backend/models"
 )
 
 const (
@@ -118,6 +119,10 @@ func (e *DailyPickEngine) applyKronosFactor(ctx context.Context, result []scored
 		p.KronosDirection = pred.Summary.Direction
 		p.KronosChangePct = pred.Summary.ChangePct
 		p.KronosConfidence = pred.Summary.Confidence
+		p.KronosPredLen = pred.Summary.PredLen
+		if p.KronosPredLen <= 0 {
+			p.KronosPredLen = 5
+		}
 		p.KronosScore = kronosFactorScore(pred)
 		// 混入综合分
 		p.Score = math.Round((p.Score*(1-w)+p.KronosScore*w)*100) / 100
@@ -131,7 +136,7 @@ func (e *DailyPickEngine) applyKronosFactor(ctx context.Context, result []scored
 }
 
 // kronosFactorMultiplier 复盘驱动的因子调权系数（P2）。
-// 依据近 60 天复盘样本中 Kronos 预测方向的命中率（T+1 对照）调权：
+// 依据近 60 天里已经走完预测窗口的方向命中率调权（对照预测期末，不是次日）：
 // 命中率 ≥55% → 上浮（最高 3 倍，即权重上限 15%）；<45% → 降权；<40% → 归零。
 // 护栏：样本 <20 恒为 1.0；任何异常回落 1.0（不调权）。
 func (e *DailyPickEngine) kronosFactorMultiplier(ctx context.Context) float64 {
@@ -164,7 +169,7 @@ type KronosFactorStats struct {
 	Hits     int     `json:"hits"`     // 方向命中数
 	HitRate  float64 `json:"hitRate"`  // 命中率 0~1
 	AvgPred  float64 `json:"avgPred"`  // 平均预测涨幅 %
-	AvgT1    float64 `json:"avgT1"`    // 命中样本的实际 T+1 平均收益 %
+	AvgT1    float64 `json:"avgT1"`    // 已到期样本在预测期末的平均实际涨幅 %
 	CurrentW float64 `json:"currentW"` // 当前生效权重（调权后）
 }
 
@@ -174,26 +179,118 @@ func (e *DailyPickEngine) kronosFactorStats(ctx context.Context) KronosFactorSta
 	cutoff := time.Now().AddDate(0, 0, -weightHistoryDays).Format("2006-01-02")
 	mature := time.Now().AddDate(0, 0, -weightMatureCalendarDays).Format("2006-01-02")
 	picks := e.repo.ReviewedPicksSince(ctx, cutoff)
-	var predSum, t1Sum float64
+	var predSum, actualSum float64
+	actualN := 0
 	for _, p := range picks {
 		if p.KronosDirection == "" || p.TradeDate > mature {
 			continue
 		}
+		hit, actual, ok := judgeKronosPick(p)
+		if !ok {
+			continue
+		}
 		stats.Samples++
 		predSum += p.KronosChangePct
-		if p.KronosHit == "hit" {
+		actualSum += actual
+		actualN++
+		if hit == "hit" {
 			stats.Hits++
-			t1Sum += p.NextReturnT1
 		}
 	}
 	if stats.Samples > 0 {
 		stats.HitRate = math.Round(float64(stats.Hits)/float64(stats.Samples)*1000) / 1000
 		stats.AvgPred = math.Round(predSum/float64(stats.Samples)*100) / 100
 	}
-	if stats.Hits > 0 {
-		stats.AvgT1 = math.Round(t1Sum/float64(stats.Hits)*100) / 100
+	if actualN > 0 {
+		stats.AvgT1 = math.Round(actualSum/float64(actualN)*100) / 100
 	}
 	return stats
+}
+
+// kronosHorizon 预测对照的交易日数。历史记录没有 predLen 时按默认 5 日。
+func kronosHorizon(predLen int) int {
+	if predLen <= 0 {
+		return 5
+	}
+	return predLen
+}
+
+// kronosHorizonHit 用预测期末涨跌对照方向。未到期返回空字符串。
+// 涨跌绝对值不超过 0.3% 视为平盘，不记入命中率。
+func kronosHorizonHit(direction string, horizonRet float64) string {
+	const band = 0.3
+	if math.Abs(horizonRet) <= band || direction == "flat" {
+		if direction == "flat" && math.Abs(horizonRet) <= band {
+			return "hit"
+		}
+		if direction == "flat" {
+			return "miss"
+		}
+		return ""
+	}
+	up := horizonRet > 0
+	switch direction {
+	case "up":
+		if up {
+			return "hit"
+		}
+		return "miss"
+	case "down":
+		if !up {
+			return "hit"
+		}
+		return "miss"
+	default:
+		return ""
+	}
+}
+
+// applyKronosHorizonHit 按预测期末收盘回写命中标记。窗口未走完时清空，避免沿用次日对错。
+func applyKronosHorizonHit(pick *models.DailyPick, klines []KLineData, t1 int, base float64) bool {
+	if pick == nil || pick.KronosDirection == "" || base <= 0 {
+		return false
+	}
+	want := ""
+	horizon := kronosHorizon(pick.KronosPredLen)
+	idx := t1 + horizon - 1
+	if idx >= 0 && idx < len(klines) {
+		closePx := parseFloat64(klines[idx].Close)
+		if closePx > 0 {
+			want = kronosHorizonHit(pick.KronosDirection, (closePx/base-1)*100)
+		}
+	}
+	if pick.KronosHit == want {
+		return false
+	}
+	pick.KronosHit = want
+	return true
+}
+
+// judgeKronosPick 在预测窗口已经走完时给出命中和期末实际涨幅。
+func judgeKronosPick(p models.DailyPick) (hit string, actual float64, ok bool) {
+	if p.KronosDirection == "" {
+		return "", 0, false
+	}
+	horizon := kronosHorizon(p.KronosPredLen)
+	switch {
+	case horizon <= 1:
+		actual = p.NextReturnT1
+		ok = p.Reviewed && (p.NextClose > 0 || p.NextReturnT1 != 0)
+	case horizon <= 3:
+		actual = p.Return3D
+		ok = p.Return3D != 0
+	default:
+		actual = p.Return5D
+		ok = p.Return5D != 0
+	}
+	if !ok {
+		return "", 0, false
+	}
+	hit = kronosHorizonHit(p.KronosDirection, actual)
+	if hit == "" {
+		return "", actual, false
+	}
+	return hit, actual, true
 }
 
 // GetKronosFactorStats 前端查询：Kronos 因子复盘统计 + 当前权重。

@@ -37,6 +37,20 @@ def _make_candles(n=60, base=10.0):
     return candles
 
 
+def test_forecast_summary_uses_sample_ends():
+    # 均值路径本身大涨，但四次采样期末价几乎重合，一致度应高。
+    agreed = app_module._forecast_summary(10, [14.0, 14.1, 13.9, 14.0], [10, 11, 12, 13, 14], [14.2], [9.8], 5)
+    assert agreed["direction"] == "up"
+    assert agreed["confidence"] > 80
+    # 期末价散开，一致度应低。路径起伏不再拿来当置信度。
+    split = app_module._forecast_summary(10, [8, 14, 9, 15], [11, 11, 11, 11, 11.5], [15], [8], 5)
+    assert split["confidence"] < 40
+    flat = app_module._forecast_summary(10, [10.01, 10.0, 9.99], [10, 10, 10.01], [10.1], [9.9], 5)
+    assert flat["direction"] == "flat"
+    once = app_module._forecast_summary(10, [12], [10, 12], [12], [10], 5)
+    assert once["confidence"] == 50
+
+
 def test_health():
     r = client.get("/health")
     assert r.status_code == 200

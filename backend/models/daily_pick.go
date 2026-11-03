@@ -78,11 +78,12 @@ type DailyPick struct {
 	StrategyMult float64 `json:"strategyMult"`
 
 	// Kronos K线预测因子（可选增强，推荐日由批量预测填充；空字符串=未启用/失败）
-	KronosDirection  string  `json:"kronosDirection" gorm:"size:10"`  // up/down
-	KronosChangePct  float64 `json:"kronosChangePct"`                 // 预测期末相对现价涨跌 %
-	KronosConfidence float64 `json:"kronosConfidence"`                // 采样一致度 0~100
-	KronosScore      float64 `json:"kronosScore"`                     // 因子分 0~100（方向×涨幅×一致度折算）
-	KronosHit        string  `json:"kronosHit" gorm:"size:10"`        // 复盘时回填：hit/miss（T+1 方向对照）
+	KronosDirection  string  `json:"kronosDirection" gorm:"size:10"` // up/down/flat
+	KronosChangePct  float64 `json:"kronosChangePct"`                // 预测期末相对现价涨跌 %
+	KronosConfidence float64 `json:"kronosConfidence"`               // 采样一致度 0~100
+	KronosScore      float64 `json:"kronosScore"`                    // 因子分 0~100（方向×涨幅×一致度折算）
+	KronosPredLen    int     `json:"kronosPredLen"`                  // 预测交易日数；0 表示历史数据，按 5 日处理
+	KronosHit        string  `json:"kronosHit" gorm:"size:10"`       // 复盘回填：hit/miss，对照预测期末而不是次日
 
 	// ===== D12 扩展：选股→排名→风控→后分析生命周期（方案 §8.1 D12，纯新增）=====
 
@@ -173,6 +174,15 @@ type DailyPick struct {
 	// 备注
 	Reason  string `json:"reason" gorm:"size:500"`
 	Remarks string `json:"remarks" gorm:"size:500"`
+
+	// TechBrief 读取时由指标快照生成，不落库。
+	TechBrief []TechSection `json:"techBrief,omitempty" gorm:"-"`
+}
+
+// TechSection 技术分析的一段结论。
+type TechSection struct {
+	Title string `json:"title"`
+	Text  string `json:"text"`
 }
 
 func (DailyPick) TableName() string {

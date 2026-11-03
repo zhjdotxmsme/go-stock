@@ -1,6 +1,7 @@
 package scorer
 
 import (
+	"fmt"
 	"math"
 	"strings"
 
@@ -20,18 +21,26 @@ func ScoreEvent(events []models.KhunterEvent, stockName string) DimScore {
 	for _, e := range events {
 		score += e.Score
 		if eventVetoTypes[e.EventType] {
-			return DimScore{Score: -100, Veto: true, Reason: e.EventType}
+			when := ""
+			if e.EventDate != "" {
+				when = e.EventDate + "，"
+			}
+			return DimScore{Score: -100, Veto: true, Reason: fmt.Sprintf("%s（%s%+.0f分），一票否决。", e.EventType, when, e.Score)}
 		}
-		summary := e.EventType
+		summary := fmt.Sprintf("%s %+.0f分", e.EventType, e.Score)
 		if e.EventDate != "" {
 			summary += "(" + e.EventDate + ")"
 		}
+		if e.ExpireDate != "" {
+			summary += "，有效至" + e.ExpireDate
+		}
 		eventSummaries = append(eventSummaries, summary)
 	}
+	score = math.Max(-100, math.Min(100, score))
 	detail := map[string]any{"event_count": len(events), "events": eventSummaries}
-	reason := "核查期内无活跃事件"
+	reason := "核查期内没有活跃事件，事件分维持基准 50。"
 	if len(events) > 0 {
-		reason = "存在活跃事件"
+		reason = fmt.Sprintf("活跃事件 %d 条：%s。基准 50 分后合计 %.0f。", len(events), strings.Join(eventSummaries, "、"), score)
 	}
-	return DimScore{Score: math.Max(-100, math.Min(100, score)), Reason: reason, Detail: detail}
+	return DimScore{Score: score, Reason: reason, Detail: detail}
 }

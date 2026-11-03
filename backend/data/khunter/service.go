@@ -44,6 +44,7 @@ func (s *Service) GetScores(date string) ([]models.KhunterScore, error) {
 		return nil, err
 	}
 	enrichKhunterScoreNames(rows)
+	enrichScoreTechProfiles(context.Background(), rows)
 	return rows, nil
 }
 

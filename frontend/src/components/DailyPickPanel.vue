@@ -38,7 +38,7 @@
       </template>
       <TrendLine :data="winRateData" :dark="false" :loading="winRateLoading" height="180" area-style :smooth="true" y-unit="%" />
     </n-card>
-    <n-grid :cols="7" :x-gap="12">
+    <n-grid :cols="5" :x-gap="12" :y-gap="12">
       <n-gi><n-card size="small" :bordered="true"><n-statistic label="总推荐" :value="stats.totalPicks" /></n-card></n-gi>
       <n-gi><n-card size="small"><n-statistic label="已复盘" :value="stats.reviewedPicks" /></n-card></n-gi>
       <n-gi><n-card size="small"><n-statistic label="胜利" :value="stats.winCount" /></n-card></n-gi>
@@ -46,6 +46,8 @@
       <n-gi><n-card size="small"><n-statistic label="胜率" :value="stats.winRate + '%'" /></n-card></n-gi>
       <n-gi><n-card size="small"><n-statistic label="平均收益" :value="stats.avgReturn + '%'" /></n-card></n-gi>
       <n-gi><n-card size="small"><n-statistic label="最大收益" :value="stats.maxReturn + '%'" /></n-card></n-gi>
+      <n-gi><n-card size="small"><n-statistic label="次日最大回撤" :value="fmtPct(stats.maxDrawdown)" /></n-card></n-gi>
+      <n-gi><n-card size="small"><n-statistic label="平均次日回撤" :value="fmtPct(stats.avgMaxDrawdown)" /></n-card></n-gi>
     </n-grid>
     <n-card size="small" v-if="kronosStats.samples > 0" style="border-color:#7c5cd6">
       <n-space align="center">
@@ -55,6 +57,8 @@
           方向命中率 {{ (kronosStats.hitRate * 100).toFixed(1) }}%
         </n-text>
         <n-text depth="2">平均预测涨幅 {{ kronosStats.avgPred > 0 ? '+' : '' }}{{ kronosStats.avgPred }}%</n-text>
+        <n-text depth="2">到期实际涨幅 {{ kronosStats.avgT1 > 0 ? '+' : '' }}{{ kronosStats.avgT1 }}%</n-text>
+        <n-text depth="3">命中率按预测期末对照，不是次日。一致度看多次采样是否收敛，单次采样记 50。</n-text>
         <n-text depth="2">当前因子权重 {{ (kronosStats.currentW * 100).toFixed(1) }}%（复盘自动调权）</n-text>
       </n-space>
     </n-card>
@@ -92,35 +96,35 @@
       止损 = -3%。建议仅为按固定比例生成的参考，请结合大盘与个股基本面自行决策，不构成投资建议。
     </n-alert>
     <n-data-table remote :columns="visibleColumns" :data="picks" :loading="loading" :bordered="true" :single-line="false" :max-height="520" :pagination="tablePagination" striped @update:sorter="onSorterChange" />
-    <n-drawer v-model:show="showDetail" placement="bottom" :height="'55vh'">
+    <n-drawer v-model:show="showDetail" placement="bottom" :height="'72vh'">
       <n-drawer-content :title="detailTitle" closable>
-        <n-grid :cols="3" :x-gap="16" v-if="selectedPick">
+        <n-grid :cols="2" :x-gap="16" v-if="selectedPick">
           <n-gi>
             <n-card size="small" title="因子得分">
-              <RadarChart :indicators="factorIndicators" :data="factorValues(selectedPick)" :height="260" />
+              <RadarChart :indicators="factorIndicators" :data="factorValues(selectedPick)" :height="220" />
             </n-card>
           </n-gi>
           <n-gi>
             <n-card size="small" title="K线走势">
-              <StockLightweightKlineChart style="width:100%" :code="detailStockCode" :chart-height="260" :stock-name="selectedPick.stockName" :dark-theme="false" />
-            </n-card>
-          </n-gi>
-          <n-gi>
-            <n-card size="small" title="技术指标">
-              <n-descriptions label-placement="left" :column="1">
-                <n-descriptions-item label="RSI(14)">{{ selectedPick.rsi14?.toFixed(1) }}</n-descriptions-item>
-                <n-descriptions-item label="解读">{{ rsiInterpret(selectedPick.rsi14) }}</n-descriptions-item>
-                <n-descriptions-item label="MACD">{{ selectedPick.macd?.toFixed(3) }}</n-descriptions-item>
-                <n-descriptions-item label="解读">{{ macdInterpret(selectedPick.macd) }}</n-descriptions-item>
-                <n-descriptions-item label="均线形态">{{ maInterpret(selectedPick) }}</n-descriptions-item>
-                <n-descriptions-item label="KDJ">{{ selectedPick.kdjK?.toFixed(1) }} / {{ selectedPick.kdjD?.toFixed(1) }} / {{ selectedPick.kdjJ?.toFixed(1) }}</n-descriptions-item>
-              </n-descriptions>
-            </n-card>
-            <n-card size="small" title="选股理由" style="margin-top:8px">
-              <n-text>{{ selectedPick.reason || '无' }}</n-text>
+              <StockLightweightKlineChart style="width:100%" :code="detailStockCode" :chart-height="220" :stock-name="selectedPick.stockName" :dark-theme="false" />
             </n-card>
           </n-gi>
         </n-grid>
+        <n-card v-if="selectedPick" size="small" title="技术分析" style="margin-top:8px">
+          <div v-for="s in techSections(selectedPick)" :key="s.title" style="margin-bottom:8px">
+            <n-text strong>{{ s.title }}</n-text>
+            <div style="font-size:13px;line-height:1.6">{{ s.text }}</div>
+          </div>
+        </n-card>
+        <n-card v-if="selectedPick && otherBrief(selectedPick).length" size="small" title="其他分析" style="margin-top:8px">
+          <div v-for="s in otherBrief(selectedPick)" :key="s.title" style="margin-bottom:8px">
+            <n-text strong>{{ s.title }}</n-text>
+            <div style="font-size:13px;line-height:1.6">{{ s.text }}</div>
+          </div>
+        </n-card>
+        <n-card v-if="selectedPick" size="small" title="选股理由" style="margin-top:8px">
+          <n-text>{{ selectedPick.reason || '无' }}</n-text>
+        </n-card>
       </n-drawer-content>
     </n-drawer>
   </n-space>
@@ -222,6 +226,11 @@ function factorValues(pick: any): number[] {
   ]
 }
 
+function fmtPct(v: number) {
+  if (v == null || Number.isNaN(v)) return '-'
+  return `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}%`
+}
+
 function scoreTag(score: number) {
   const t = score >= 80 ? 'success' as const : score >= 60 ? 'warning' as const : 'info' as const
   return h(NTag, { type: t, size: 'small', style: { fontWeight: 'bold' } }, { default: () => score.toFixed(1) })
@@ -261,13 +270,20 @@ function renderChange(row: any) {
 function renderKronos(row: any) {
   if (!row.kronosDirection) return h('span', { style: { color: '#c0c4cc' } }, '-')
   const up = row.kronosDirection === 'up'
+  const flat = row.kronosDirection === 'flat'
+  const horizon = row.kronosPredLen || 5
+  const color = flat ? '#909399' : up ? '#d03050' : '#18a058'
+  const arrow = flat ? '平' : up ? '↑' : '↓'
   const parts: any[] = [
-    h('span', { style: { color: up ? '#d03050' : '#18a058', fontWeight: 'bold' } },
-      `${up ? '↑' : '↓'}${row.kronosChangePct >= 0 ? '+' : ''}${(row.kronosChangePct ?? 0).toFixed(1)}%`),
+    h('span', { style: { color, fontWeight: 'bold' } },
+      `${horizon}日${arrow}${row.kronosChangePct >= 0 ? '+' : ''}${(row.kronosChangePct ?? 0).toFixed(1)}%`),
   ]
-  if (row.kronosHit === 'hit') parts.push(h('span', { style: { color: '#18a058', marginLeft: '2px' }, title: '复盘：预测方向命中' }, '✓'))
-  else if (row.kronosHit === 'miss') parts.push(h('span', { style: { color: '#d03050', marginLeft: '2px' }, title: '复盘：预测方向未命中' }, '✗'))
-  return h('span', { style: { fontSize: '12px' }, title: `一致度 ${(row.kronosConfidence ?? 0).toFixed(0)}/100` }, parts)
+  if (row.kronosHit === 'hit') parts.push(h('span', { style: { color: '#18a058', marginLeft: '2px' }, title: `复盘：第${horizon}个交易日方向命中` }, '✓'))
+  else if (row.kronosHit === 'miss') parts.push(h('span', { style: { color: '#d03050', marginLeft: '2px' }, title: `复盘：第${horizon}个交易日方向未命中` }, '✗'))
+  return h('span', {
+    style: { fontSize: '12px' },
+    title: `预测 ${horizon} 个交易日，不是次日。一致度 ${(row.kronosConfidence ?? 0).toFixed(0)}/100，由多次采样的期末价离散计算；只有一次采样时记 50。`,
+  }, parts)
 }
 
 function renderPnL(row: any) {
@@ -279,10 +295,60 @@ function renderPnL(row: any) {
   ])
 }
 
+function otherBrief(pick: any): Array<{ title: string; text: string }> {
+  if (!pick) return []
+  const out: Array<{ title: string; text: string }> = []
+  if (pick.kronosDirection) {
+    const horizon = pick.kronosPredLen || 5
+    const dir = pick.kronosDirection === 'up' ? '看多' : pick.kronosDirection === 'down' ? '看空' : '平盘'
+    const judged = pick.kronosHit === 'hit' ? `第 ${horizon} 个交易日方向命中。` : pick.kronosHit === 'miss' ? `第 ${horizon} 个交易日方向未命中。` : '预测窗口还没走完，先不记对错。'
+    out.push({
+      title: 'Kronos',
+      text: `预测 ${horizon} 个交易日收盘相对信号日 ${pick.kronosChangePct >= 0 ? '+' : ''}${Number(pick.kronosChangePct ?? 0).toFixed(2)}%，方向${dir}。一致度 ${Number(pick.kronosConfidence ?? 0).toFixed(0)}/100，衡量的是多次采样期末价是否接近；只有一次采样时记 50，不用预测路径自己的起伏充一致度。对照口径是预测期末，不是次日。${judged}`,
+    })
+  }
+  const bits: string[] = []
+  if (pick.industry) bits.push(`行业 ${pick.industry}`)
+  if (pick.industryScore) bits.push(`行业强度 ${Number(pick.industryScore).toFixed(2)}`)
+  if (pick.researchScore) bits.push(`研报 ${Number(pick.researchScore).toFixed(0)} 篇`)
+  if (pick.macroScore) bits.push(`宏观环境 ${Number(pick.macroScore).toFixed(2)}`)
+  if (bits.length) out.push({ title: '行业与环境', text: bits.join('，') + '。这些是加分项，不替代价格和量能结论。' })
+  if (pick.riskLevel || pick.riskScore) {
+    out.push({
+      title: '风控',
+      text: `风险档 ${pick.riskLevel || '未分级'}，风险分 ${Number(pick.riskScore ?? 0).toFixed(1)}${pick.excludedByRisk ? '，已被风控排除。' : '。'}${pick.riskFlags ? '标记：' + pick.riskFlags : ''}`,
+    })
+  }
+  if (pick.llmThesis || pick.llmReason) {
+    out.push({ title: 'AI 论点', text: [pick.llmThesis, pick.llmReason, pick.llmRisk ? '风险：' + pick.llmRisk : ''].filter(Boolean).join(' ') })
+  }
+  return out
+}
+
+function techSections(pick: any): Array<{ title: string; text: string }> {
+  const raw = pick?.techBrief
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((s: any) => ({ title: s.title || s.Title || '', text: s.text || s.Text || '' }))
+    .filter((s: { title: string; text: string }) => s.text)
+}
+
+function briefVerdict(row: any): string {
+  const verdict = techSections(row).find(s => s.title === '综合')
+  return verdict?.text || row.reason || ''
+}
+
+function briefTooltip(row: any): string {
+  const secs = techSections(row)
+  if (!secs.length) return row.reason || ''
+  return secs.map(s => `${s.title}：${s.text}`).join('\n')
+}
+
 function renderReason(row: any) {
-  if (!row.reason) return h('span', { style: { color: '#909399', fontSize: '12px' } }, '-')
-  return h('span', { style: { fontSize: '12px', color: '#606266', cursor: 'pointer', maxWidth: '200px', display: 'inline-block' }, title: row.reason },
-    row.reason.length > 30 ? row.reason.slice(0, 30) + '...' : row.reason)
+  const text = briefVerdict(row)
+  if (!text) return h('span', { style: { color: '#909399', fontSize: '12px' } }, '-')
+  return h('span', { style: { fontSize: '12px', color: '#606266', cursor: 'pointer', maxWidth: '280px', display: 'inline-block' }, title: briefTooltip(row) },
+    text.length > 42 ? text.slice(0, 42) + '...' : text)
 }
 
 // 长文本（AI 论点/风险等）截断展示，悬浮显示全文
@@ -414,27 +480,6 @@ async function loadWinRate() {
 
 function showPickDetail(row: any) {
   selectedPick.value = row; showDetail.value = true
-}
-
-function rsiInterpret(val: number | null | undefined): string {
-  if (val == null) return '-'
-  if (val >= 70) return '超买'
-  if (val >= 50) return '偏强'
-  if (val >= 30) return '偏弱'
-  return '超卖'
-}
-
-function macdInterpret(val: number | null | undefined): string {
-  if (val == null) return '-'
-  return val > 0 ? '多头' : val < 0 ? '空头' : '中性'
-}
-
-function maInterpret(pick: any): string {
-  const { closePrice, ma5, ma10, ma20 } = pick
-  if (!closePrice || !ma5) return '-'
-  if (closePrice >= ma5 && ma5 >= ma10 && ma10 >= ma20) return '多头排列 ↑'
-  if (closePrice <= ma5 && ma5 <= ma10 && ma10 <= ma20) return '空头排列 ↓'
-  return '均线缠绕'
 }
 
 async function loadPicks() {

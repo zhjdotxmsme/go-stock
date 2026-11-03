@@ -9,7 +9,6 @@ import (
 	"go-stock/backend/db"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
-
 )
 
 // DailyPickProgressEvent is the Wails event name used to report async
@@ -169,6 +168,14 @@ func (s *DailyPickService) GetDailyPicks(query models.DailyPickQuery) models.Dai
 	}
 	result.Total = total
 
+	for i := range picks {
+		picks[i].TechBrief = DailyPickTechBrief(picks[i])
+		if hit, _, ok := judgeKronosPick(picks[i]); ok {
+			picks[i].KronosHit = hit
+		} else if picks[i].KronosDirection != "" {
+			picks[i].KronosHit = ""
+		}
+	}
 	result.List = picks
 	result.Page = query.Page
 	result.PageSize = query.PageSize

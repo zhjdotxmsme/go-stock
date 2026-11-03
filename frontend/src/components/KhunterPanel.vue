@@ -218,9 +218,22 @@ function renderScoreExpand(row: any) {
   }
   if (d?.technical?.profile) {
     const p = d.technical.profile
-    techChildren.push(h('div', { style: { marginTop: '6px', fontSize: '12px' } }, [
-      h(NText, { depth: 3 }, { default: () => `技术画像：${p.trend ?? ''}；${p.volume ?? ''}；${p.position ?? ''}；${p.momentum ?? ''}` }),
-    ]))
+    const sections = Array.isArray(p.sections) ? p.sections : []
+    if (sections.length) {
+      for (const s of sections) {
+        const title = s.title || s.Title || ''
+        const text = s.text || s.Text || ''
+        if (!text) continue
+        techChildren.push(h('div', { style: { marginTop: '6px' } }, [
+          h('div', [h(NText, { strong: true, style: { fontSize: '12px' } }, { default: () => title })]),
+          h('div', { style: { fontSize: '12px', lineHeight: '1.55' } }, [h(NText, { depth: 2 }, { default: () => text })]),
+        ]))
+      }
+    } else {
+      techChildren.push(h('div', { style: { marginTop: '6px', fontSize: '12px' } }, [
+        h(NText, { depth: 3 }, { default: () => `技术画像：${p.trend ?? ''}；${p.volume ?? ''}；${p.position ?? ''}；${p.momentum ?? ''}` }),
+      ]))
+    }
   }
 
   // 其他维度：缺数据标注 / 原因
@@ -235,8 +248,9 @@ function renderScoreExpand(row: any) {
         h(NText, { depth: 2 }, { default: () => `${label}：${dim.reason ?? '数据缺失，按中性 50 分计'}` }),
       ]))
     } else if (dim.reason) {
-      dimRows.push(h('div', { key, style: { fontSize: '12px' } }, [
-        h(NText, { depth: 2 }, { default: () => `${label}：${dim.reason}` }),
+      dimRows.push(h('div', { key, style: { fontSize: '12px', lineHeight: '1.55', marginTop: '4px' } }, [
+        h(NText, { strong: true }, { default: () => `${label}：` }),
+        h(NText, { depth: 2 }, { default: () => dim.reason }),
       ]))
     }
   }
@@ -390,6 +404,8 @@ const btColumns: any[] = [
   { title: '胜率', key: 'WinRate', width: 100, align: 'center',
     render: (r: any) => (((r.WinRate ?? r.winRate ?? 0) * 100).toFixed(1) + '%') },
   { title: '盈亏比', key: 'ProfitLossRatio', width: 100, align: 'center', render: renderPLRatio },
+  { title: '最大回撤', key: 'MaxDrawdown', width: 110, align: 'center',
+    render: (r: any) => (((r.MaxDrawdown ?? r.maxDrawdown ?? 0) * 100).toFixed(1) + '%') },
 ]
 
 // ===== Tab 4: 风险看板 =====

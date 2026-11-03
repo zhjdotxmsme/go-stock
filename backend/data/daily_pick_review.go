@@ -128,14 +128,8 @@ func (r *DailyPickReview) reviewOne(ctx context.Context, pick *models.DailyPick,
 		pick.NextReturnT1 = math.Round((pick.NextClose/base-1)*10000) / 100
 	}
 
-	// Kronos 因子方向命中回填（T+1 方向对照；仅预测过的推荐参与）
-	if pick.KronosDirection != "" && base > 0 && pick.NextClose > 0 {
-		if (pick.NextClose >= base) == (pick.KronosDirection == "up") {
-			pick.KronosHit = "hit"
-		} else {
-			pick.KronosHit = "miss"
-		}
-	}
+	// Kronos 对照预测期末，不用次日涨跌。窗口没走完时清掉旧的次日标记。
+	applyKronosHorizonHit(pick, klines, t1, base)
 
 	// 3/5 日窗口（存在才回填，未到期由 backfillWindows 补齐）
 	if idx := t1 + 2; idx < len(klines) && base > 0 {
@@ -157,7 +151,7 @@ func (r *DailyPickReview) reviewOne(ctx context.Context, pick *models.DailyPick,
 // backfillWindows 回填近期已复盘 picks 的 3/5 日窗口（到期后数据可用）。
 // 范围限定最近 15 个自然日，避免重复拉取历史数据；幂等可重复执行。
 func (r *DailyPickReview) backfillWindows(ctx context.Context) {
-	picks, err := r.repo.RecentPicksMissingWindows(ctx, 15)
+	picks, err := r.repo.RecentPicksMissingWindows(ctx, 60)
 	if err != nil {
 		logger.SugaredLogger.Warnf("daily_review: backfill query error: %v", err)
 		return
@@ -196,6 +190,9 @@ func (r *DailyPickReview) backfillWindows(ctx context.Context) {
 				p.Return5D = math.Round((parseFloat64(klines[idx].Close)/base-1)*10000) / 100
 				changed = true
 			}
+		}
+		if applyKronosHorizonHit(p, klines, t1, base) {
+			changed = true
 		}
 		if changed {
 			if err := r.repo.SavePick(ctx, p); err != nil {

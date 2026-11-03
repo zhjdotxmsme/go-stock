@@ -9,6 +9,9 @@ func TestFundamentalNormal(t *testing.T) {
 	if d.Score != 100 || d.Veto {
 		t.Fatalf("expect 100, got %+v", d)
 	}
+	if d.Reason == "" || len(d.Reason) < 10 {
+		t.Fatalf("基本面结论过短: %q", d.Reason)
+	}
 }
 
 func TestFundamentalVeto(t *testing.T) {

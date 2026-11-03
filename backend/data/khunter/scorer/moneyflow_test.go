@@ -21,6 +21,9 @@ func TestMoneyFlowStrong(t *testing.T) {
 	if d.Veto || d.Score != 100 {
 		t.Fatalf("expect 100 无否决, got %+v", d)
 	}
+	if d.Reason == "" {
+		t.Fatal("资金面应写明净额和占比")
+	}
 }
 
 func TestMoneyFlowVetoMainOutflow(t *testing.T) {

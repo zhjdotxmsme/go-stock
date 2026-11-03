@@ -2,6 +2,7 @@
 # 基于清华开源 Kronos 模型：https://github.com/shiyu-coder/Kronos
 # 由 go-stock 进程托管拉起，仅监听 127.0.0.1。独立手动运行：python app.py --port 8765
 import argparse
+import statistics
 import sys
 import threading
 
@@ -102,6 +103,49 @@ def _next_trade_dates(last_date: pd.Timestamp, pred_len: int) -> pd.DatetimeInde
     return pd.bdate_range(last_date + pd.Timedelta(days=1), periods=pred_len)
 
 
+def _forecast_summary(last_close: float, sample_ends: list[float], closes: list[float], highs: list[float], lows: list[float], pred_len: int) -> dict:
+    """期末涨跌和一致度。
+
+    一致度用各次采样的期末价离散，不用均值路径自身的涨跌幅度。
+    单次采样没有交叉验证，记 50，避免把一条趋势路径误判成低置信。
+    涨跌绝对值不足 0.3% 记为 flat，避免平盘被标成看多。
+    """
+    pred_end = closes[-1] if closes else last_close
+    change_pct = (pred_end - last_close) / last_close * 100 if last_close > 0 else 0.0
+    if abs(change_pct) < 0.3:
+        direction = "flat"
+    elif change_pct > 0:
+        direction = "up"
+    else:
+        direction = "down"
+    if len(sample_ends) < 2:
+        confidence = 50.0
+    else:
+        mean = statistics.mean(sample_ends)
+        if mean <= 0:
+            confidence = 0.0
+        else:
+            cv = statistics.pstdev(sample_ends) / mean
+            confidence = max(0.0, min(100.0, 100.0 * (1.0 - min(cv / 0.05, 1.0))))
+    return {
+        "lastClose": last_close,
+        "predEnd": pred_end,
+        "predHigh": max(highs) if highs else pred_end,
+        "predLow": min(lows) if lows else pred_end,
+        "changePct": round(change_pct, 2),
+        "direction": direction,
+        "confidence": round(confidence, 1),
+        "predLen": pred_len,
+    }
+
+
+def _mean_frame(paths: list[pd.DataFrame]) -> pd.DataFrame:
+    acc = paths[0].copy()
+    for frame in paths[1:]:
+        acc = acc.add(frame.reindex(acc.index), fill_value=0)
+    return acc / len(paths)
+
+
 def _run_predict(req: PredictRequest) -> PredictResponse:
     try:
         predictor = _get_predictor(req.model, req.device)
@@ -118,17 +162,25 @@ def _run_predict(req: PredictRequest) -> PredictResponse:
     last_date = df.index[-1]
     y_timestamp = _next_trade_dates(last_date, req.predLen)
 
+    # 库内部会把 sample_count 次采样平均后丢掉离散度。
+    # 这里每次只采 1 条，总采样次数不变，期末价用来算一致度。
     try:
+        paths = []
+        sample_ends = []
         with _predict_lock:
-            pred = predictor.predict(
-                df=df,
-                x_timestamp=pd.Series(df.index),
-                y_timestamp=pd.Series(y_timestamp),
-                pred_len=req.predLen,
-                T=req.T,
-                top_p=req.topP,
-                sample_count=req.sampleCount,
-            )
+            for _ in range(req.sampleCount):
+                one = predictor.predict(
+                    df=df,
+                    x_timestamp=pd.Series(df.index),
+                    y_timestamp=pd.Series(y_timestamp),
+                    pred_len=req.predLen,
+                    T=req.T,
+                    top_p=req.topP,
+                    sample_count=1,
+                )
+                paths.append(one)
+                sample_ends.append(float(one["close"].iloc[-1]))
+        pred = _mean_frame(paths)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PREDICT_FAILED: {e}") from e
 
@@ -146,35 +198,9 @@ def _run_predict(req: PredictRequest) -> PredictResponse:
             )
         )
 
-    closes = [b.close for b in bars]
-    highs = [b.high for b in bars]
-    lows = [b.low for b in bars]
     last_close = float(df["close"].iloc[-1])  # 切点截断后的最后一根收盘
-    pred_end = closes[-1]
-    direction = "up" if pred_end >= last_close else "down"
-    change_pct = (pred_end - last_close) / last_close * 100 if last_close > 0 else 0.0
-    # 置信度：多次采样离散度换算（std/mean 越小越可信），映射到 0~100
-    import statistics
-
-    if len(closes) > 1 and statistics.mean(closes) > 0:
-        cv = statistics.pstdev(closes) / statistics.mean(closes)
-    else:
-        cv = 0.0
-    confidence = max(0.0, min(100.0, 100.0 * (1.0 - min(cv * 10.0, 1.0))))
-
-    return PredictResponse(
-        bars=bars,
-        summary={
-            "lastClose": last_close,
-            "predEnd": pred_end,
-            "predHigh": max(highs),
-            "predLow": min(lows),
-            "changePct": round(change_pct, 2),
-            "direction": direction,
-            "confidence": round(confidence, 1),
-            "predLen": req.predLen,
-        },
-    )
+    summary = _forecast_summary(last_close, sample_ends, [b.close for b in bars], [b.high for b in bars], [b.low for b in bars], req.predLen)
+    return PredictResponse(bars=bars, summary=summary)
 
 
 try:

@@ -1,6 +1,7 @@
 package scorer
 
 import (
+	"fmt"
 	"math"
 
 	"go-stock/backend/models"
@@ -83,15 +84,58 @@ func ScoreMoneyFlow(flows []models.KhunterMoneyFlowDaily) DimScore {
 	out := DimScore{Score: total, Detail: map[string]any{
 		"main_5d": mainSum, "lg_ratio_avg": lgRatioAvg, "sm_ratio_avg": smRatioAvg,
 	}}
+	out.Reason = moneyFlowReason(mainSum, lgRatioAvg, smRatioAvg, dirScore)
 
 	// 一票否决 1：主力净额 < -1亿 且大单占比均值 < -5%
 	if mainSum < mfVetoMainAmount && lgRatioAvg < mfVetoMainRatio {
-		out.Veto, out.Score, out.Reason = true, -100, "主力资金大幅流出"
+		out.Veto, out.Score = true, -100
+		out.Reason = "主力资金大幅流出。" + out.Reason
 		return out
 	}
 	// 一票否决 2：出货信号（大单流出>1% 且小单流入>1%）
 	if lgRatioAvg < -mfVetoDistRatio && smRatioAvg > mfVetoDistRatio {
-		out.Veto, out.Score, out.Reason = true, -100, "出货信号（大单出小单进）"
+		out.Veto, out.Score = true, -100
+		out.Reason = "出货信号（大单出、小单进）。" + out.Reason
 	}
 	return out
+}
+
+func moneyFlowReason(mainSum, lgAvg, smAvg, dirScore float64) string {
+	mainTone := "中性"
+	switch {
+	case mainSum > 1e8:
+		mainTone = "大幅净流入"
+	case mainSum > 0:
+		mainTone = "净流入"
+	case mainSum < 0:
+		mainTone = "净流出"
+	}
+	dirTone := "大单与小单同向或接近零，方向不明确"
+	switch {
+	case dirScore >= 100:
+		dirTone = "大单净流入、小单净流出，偏吸筹"
+	case dirScore > 0:
+		dirTone = "大单净流入，但小单也在进，不是典型吸筹"
+	case dirScore < 0:
+		dirTone = "大单净流出、小单净流入，偏派发"
+	}
+	return fmt.Sprintf("近5日主力净额 %s（%s）。大单净占比均值 %+.1f%%，小单净占比均值 %+.1f%%，%s。北向没有独立数据源，这项按中性 50 分计入，不参与方向判断。",
+		yuanText(mainSum), mainTone, lgAvg, smAvg, dirTone)
+}
+
+func yuanText(v float64) string {
+	sign := "+"
+	abs := v
+	if v < 0 {
+		sign = "-"
+		abs = -v
+	}
+	switch {
+	case abs >= 1e8:
+		return fmt.Sprintf("%s%.2f亿", sign, abs/1e8)
+	case abs >= 1e4:
+		return fmt.Sprintf("%s%.0f万", sign, abs/1e4)
+	default:
+		return fmt.Sprintf("%s%.0f元", sign, abs)
+	}
 }

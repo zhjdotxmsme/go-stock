@@ -7,7 +7,39 @@ import (
 	"time"
 
 	"go-stock/backend/data/datasource"
+	"go-stock/backend/models"
 )
+
+func TestKronosHorizonHit(t *testing.T) {
+	if got := kronosHorizonHit("up", 1.2); got != "hit" {
+		t.Fatalf("up vs +1.2: %s", got)
+	}
+	if got := kronosHorizonHit("up", -1.2); got != "miss" {
+		t.Fatalf("up vs -1.2: %s", got)
+	}
+	if got := kronosHorizonHit("down", -2); got != "hit" {
+		t.Fatalf("down vs -2: %s", got)
+	}
+	if got := kronosHorizonHit("up", 0.1); got != "" {
+		t.Fatalf("flat tape should stay out of the hit rate, got %q", got)
+	}
+	if got := kronosHorizonHit("flat", 0.1); got != "hit" {
+		t.Fatalf("flat forecast on a flat tape: %s", got)
+	}
+	if got := kronosHorizonHit("flat", 2); got != "miss" {
+		t.Fatalf("flat forecast on a rise: %s", got)
+	}
+	// 次日下跌、第 5 日上涨：旧逻辑会记 miss，现在按 5 日收益记 hit。
+	hit, actual, ok := judgeKronosPick(models.DailyPick{
+		KronosDirection: "up", KronosPredLen: 5, Return5D: 3.5, NextReturnT1: -1.2,
+	})
+	if !ok || hit != "hit" || actual != 3.5 {
+		t.Fatalf("horizon judge: hit=%s actual=%v ok=%v", hit, actual, ok)
+	}
+	if _, _, ok := judgeKronosPick(models.DailyPick{KronosDirection: "up", NextReturnT1: 1}); ok {
+		t.Fatal("5-day forecast must not be judged from T+1 alone")
+	}
+}
 
 func TestKronosFactorScore(t *testing.T) {
 	mk := func(chg, conf float64) *KronosPrediction {
@@ -19,11 +51,11 @@ func TestKronosFactorScore(t *testing.T) {
 		want float64
 	}{
 		{"nil", nil, 0},
-		{"涨5% 一致度100", mk(5, 100), 75},   // base=75, conf=1 → 75
-		{"跌5% 一致度100", mk(-5, 100), 25},  // base=25
-		{"涨5% 一致度0", mk(5, 0), 50},       // 全部收缩到中性
-		{"涨5% 一致度50", mk(5, 50), 62.5},   // 75*0.5+50*0.5
-		{"超涨截断", mk(30, 100), 100},       // chg 截断到 10 → base=100
+		{"涨5% 一致度100", mk(5, 100), 75},  // base=75, conf=1 → 75
+		{"跌5% 一致度100", mk(-5, 100), 25}, // base=25
+		{"涨5% 一致度0", mk(5, 0), 50},      // 全部收缩到中性
+		{"涨5% 一致度50", mk(5, 50), 62.5},  // 75*0.5+50*0.5
+		{"超涨截断", mk(30, 100), 100},      // chg 截断到 10 → base=100
 		{"超跌截断", mk(-30, 100), 0},
 	}
 	for _, c := range cases {

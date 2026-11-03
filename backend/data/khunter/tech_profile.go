@@ -1,8 +1,15 @@
 package khunter
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 
+	"go-stock/backend/data"
+	"go-stock/backend/data/indicator"
+	"go-stock/backend/data/khunter/strategy"
+	"go-stock/backend/db"
 	"go-stock/backend/models"
 )
 
@@ -105,5 +112,234 @@ func BuildTechProfile(bars []models.KLineBar) map[string]any {
 		"volume":   volDesc,
 		"position": posDesc,
 		"momentum": momDesc,
+		// 与每日选股同一套口径：均线、MACD、RSI、KDJ、布林、量能、波动、回撤。
+		"sections": data.DailyPickTechBrief(snapshotFromBars(bars)),
 	}
+}
+
+// snapshotFromBars 把本地日 K 收成推荐日指标快照，供技术结论复用。
+func snapshotFromBars(bars []models.KLineBar) models.DailyPick {
+	n := len(bars)
+	last := bars[n-1]
+	closes := make([]float64, n)
+	highs := make([]float64, n)
+	lows := make([]float64, n)
+	vols := make([]float64, n)
+	for i, bar := range bars {
+		closes[i] = bar.Close
+		highs[i] = bar.High
+		lows[i] = bar.Low
+		vols[i] = float64(bar.Volume)
+	}
+	p := models.DailyPick{
+		ClosePrice: last.Close,
+		OpenPrice:  last.Open,
+		HighPrice:  last.High,
+		LowPrice:   last.Low,
+		Volume:     last.Volume,
+	}
+	prev := last.PrevClose
+	if prev <= 0 && n >= 2 {
+		prev = bars[n-2].Close
+	}
+	if prev > 0 {
+		p.ChangePercent = (last.Close/prev - 1) * 100
+	}
+	p.Ma5 = smaLast(closes, 5)
+	p.Ma10 = smaLast(closes, 10)
+	p.Ma20 = smaLast(closes, 20)
+	p.Ma60 = smaLast(closes, 60)
+	dif, dea, _ := indicator.MACD(closes, 12, 26, 9)
+	if v, ok := indicator.LastValid(dif); ok {
+		p.Macd = round2(v)
+	}
+	if v, ok := indicator.LastValid(dea); ok {
+		p.MacdSignal = round2(v)
+	}
+	if v, ok := indicator.LastValid(indicator.RSI(closes, 14)); ok {
+		p.Rsi14 = round2(v)
+	}
+	k, d, j := indicator.KDJ(highs, lows, closes, 9, 3, 3)
+	if v, ok := indicator.LastValid(k); ok {
+		p.KdjK = round2(v)
+	}
+	if v, ok := indicator.LastValid(d); ok {
+		p.KdjD = round2(v)
+	}
+	if v, ok := indicator.LastValid(j); ok {
+		p.KdjJ = round2(v)
+	}
+	mid, up, low := indicator.BOLL(closes, 20, 2)
+	if v, ok := indicator.LastValid(mid); ok {
+		p.BollMid = round2(v)
+	}
+	if v, ok := indicator.LastValid(up); ok {
+		p.BollUp = round2(v)
+	}
+	if v, ok := indicator.LastValid(low); ok {
+		p.BollDown = round2(v)
+	}
+	if v, ok := indicator.LastValid(indicator.ATR(highs, lows, closes, 14)); ok {
+		p.Atr14 = round2(v)
+	}
+	if n >= 21 {
+		base := highs[n-21]
+		for _, h := range highs[n-21 : n-1] {
+			if h > base {
+				base = h
+			}
+		}
+		if base > 0 {
+			p.Breakout20dPct = round2((closes[n-1] - base) / base * 100)
+		}
+		sum := 0.0
+		for _, v := range vols[n-21 : n-1] {
+			sum += v
+		}
+		if avg := sum / 20; avg > 0 {
+			p.VolumeRatio20d = round2(vols[n-1] / avg)
+		}
+	}
+	if n >= 2 && closes[0] > 0 {
+		look := n - 1
+		if look > 60 {
+			look = 60
+		}
+		base := closes[n-1-look]
+		if base > 0 {
+			p.Change60dPct = round2((closes[n-1]/base - 1) * 100)
+		}
+	}
+	if prev > 0 {
+		p.AmplitudePct = round2((last.High - last.Low) / prev * 100)
+	}
+	if rng := last.High - last.Low; rng > 0 {
+		p.BodyPct = round2(math.Abs(last.Close-last.Open) / rng)
+	}
+	if p.Ma20 > 0 {
+		dev := (p.ClosePrice - p.Ma20) / p.Ma20 * 100
+		p.PullbackMa20 = dev >= -3 && dev <= 3
+	}
+	for i := n - 1; i >= 1; i-- {
+		if closes[i-1] <= 0 {
+			break
+		}
+		amp := (highs[i] - lows[i]) / closes[i-1] * 100
+		chg := math.Abs(closes[i]-closes[i-1]) / closes[i-1] * 100
+		if amp <= 4 && chg <= 2 {
+			p.ConsolidationDays++
+		} else {
+			break
+		}
+	}
+	p.Volatility20dPct = round2(annVolPct(closes))
+	p.MaxDrawdownPct = round2(windowMaxDD(closes))
+	return p
+}
+
+func smaLast(xs []float64, period int) float64 {
+	if period <= 0 || len(xs) < period {
+		return 0
+	}
+	sum := 0.0
+	for _, v := range xs[len(xs)-period:] {
+		sum += v
+	}
+	return round2(sum / float64(period))
+}
+
+func annVolPct(closes []float64) float64 {
+	if len(closes) < 3 {
+		return 0
+	}
+	returns := make([]float64, 0, len(closes)-1)
+	for i := 1; i < len(closes); i++ {
+		if closes[i-1] <= 0 {
+			continue
+		}
+		returns = append(returns, (closes[i]-closes[i-1])/closes[i-1])
+	}
+	if len(returns) < 2 {
+		return 0
+	}
+	mean := 0.0
+	for _, r := range returns {
+		mean += r
+	}
+	mean /= float64(len(returns))
+	varSq := 0.0
+	for _, r := range returns {
+		varSq += (r - mean) * (r - mean)
+	}
+	return math.Sqrt(varSq/float64(len(returns)-1)) * math.Sqrt(252) * 100
+}
+
+func windowMaxDD(closes []float64) float64 {
+	if len(closes) < 2 {
+		return 0
+	}
+	peak := closes[0]
+	maxDD := 0.0
+	for _, c := range closes {
+		if c > peak {
+			peak = c
+		}
+		if peak > 0 {
+			if dd := (c - peak) / peak * 100; dd < maxDD {
+				maxDD = dd
+			}
+		}
+	}
+	return maxDD
+}
+
+func round2(v float64) float64 {
+	return math.Round(v*100) / 100
+}
+
+// enrichScoreTechProfiles 给还没有分段结论的历史评分补上技术分析。
+// 只读本地日 K，不重跑狩猎场流水线。
+func enrichScoreTechProfiles(ctx context.Context, rows []models.KhunterScore) {
+	if db.Dao == nil {
+		return
+	}
+	for i := range rows {
+		if rows[i].Code == "" || profileHasSections(rows[i].Details) {
+			continue
+		}
+		bars, err := strategy.LoadDailyBars(ctx, rows[i].Code, 30)
+		if err != nil || len(bars) == 0 {
+			continue
+		}
+		rows[i].Details = mergeTechProfile(rows[i].Details, BuildTechProfile(bars))
+	}
+}
+
+func profileHasSections(details string) bool {
+	var root map[string]any
+	if json.Unmarshal([]byte(details), &root) != nil {
+		return false
+	}
+	tech, _ := root["technical"].(map[string]any)
+	prof, _ := tech["profile"].(map[string]any)
+	secs, _ := prof["sections"].([]any)
+	return len(secs) > 0
+}
+
+func mergeTechProfile(details string, profile map[string]any) string {
+	root := map[string]any{}
+	if details != "" {
+		_ = json.Unmarshal([]byte(details), &root)
+	}
+	tech, _ := root["technical"].(map[string]any)
+	if tech == nil {
+		tech = map[string]any{}
+		root["technical"] = tech
+	}
+	tech["profile"] = profile
+	b, err := json.Marshal(root)
+	if err != nil {
+		return details
+	}
+	return string(b)
 }
