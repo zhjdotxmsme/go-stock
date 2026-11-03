@@ -1,12 +1,12 @@
 <script setup>
-// AI Agent 助手输入区（自 FloatingAgentAssistant.vue 原样抽离：模板 + 样式零改动）
-// 8 个 v-model 直通父组件状态；sendMessage/abortStream/onUserPromptChange 为函数 props。
+// AI Agent 助手输入区。8 个 v-model 直通父组件状态；sendMessage/abortStream/onUserPromptChange 为函数 props。
+// 常驻只留模型、Agent 模式和输入框；提示词/思考/记忆收在「选项」里。
 //
 // 交互修复（spec A）：流式期间**不再禁用输入框**（旧实现 :disabled="isStreamLoad"，
 // 让用户在整个回答过程中打不了字）。改为：可继续输入草稿；有草稿时主按钮变
 // 「中断并发送」（点击=先中断当前回答再发出新问题，与 sendMessage 语义一致），
 // 无草稿时主按钮禁用并给出独立「中断」按钮。
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const aiConfigId = defineModel('aiConfigId')
 const sysPromptId = defineModel('sysPromptId')
@@ -18,6 +18,8 @@ const agentMode = defineModel('agentMode', { type: String })
 const inputValue = defineModel('inputValue', { type: String })
 
 const props = defineProps({
+  /** 'page' 默认展开选项；'panel' 默认收起，把高度留给消息和输入框 */
+  density: { type: String, default: 'panel' },
   aiConfigOptions: { type: Array, required: true },
   sysPromptOptions: { type: Array, required: true },
   userPromptOptions: { type: Array, required: true },
@@ -29,6 +31,9 @@ const props = defineProps({
   abortStream: { type: Function, required: true },
   onUserPromptChange: { type: Function, required: true },
 })
+
+/** 页面够宽时默认展开；抽屉里默认收起，避免选项行把输入框顶出可视区 */
+const optionsOpen = ref(props.density === 'page')
 
 /** 有草稿的流式态下，主按钮承担「中断并发送」语义 */
 const sendInterrupts = computed(() => props.isStreamLoad && props.canSend)
@@ -63,6 +68,26 @@ function onSendClick() {
         :menu-props="{ style: { zIndex: 10002 } }"
         class="chat-footer-select"
       />
+      <NSelect
+        v-model:value="agentMode"
+        :options="agentModeOptions"
+        size="small"
+        to="body"
+        placement="top-start"
+        placeholder="Agent模式"
+        :consistent-menu-width="false"
+        :menu-props="{ style: { zIndex: 10002 } }"
+        class="chat-footer-agent-mode-select"
+      />
+      <NButton size="small" quaternary class="chat-footer-options-btn" @click="optionsOpen = !optionsOpen">
+        {{ optionsOpen ? '收起' : '选项' }}
+      </NButton>
+      <template v-if="!optionsOpen">
+        <span v-if="thinkingMode" class="chat-footer-chip">思考</span>
+        <span v-if="memoryMode" class="chat-footer-chip">记忆 {{ memoryCount }}</span>
+      </template>
+    </div>
+    <div v-show="optionsOpen" class="chat-footer-row chat-footer-row--options">
       <NSelect
         v-model:value="sysPromptId"
         :options="sysPromptOptions"
@@ -105,19 +130,6 @@ function onSendClick() {
           placement="top-start"
           :menu-props="{ style: { zIndex: 10002 } }"
           class="chat-footer-memory-count"
-        />
-      </div>
-      <div class="chat-footer-agent-mode">
-        <NSelect
-          v-model:value="agentMode"
-          :options="agentModeOptions"
-          size="small"
-          to="body"
-          placement="top-start"
-          placeholder="Agent模式"
-          :consistent-menu-width="false"
-          :menu-props="{ style: { zIndex: 10002 } }"
-          class="chat-footer-agent-mode-select"
         />
       </div>
     </div>
@@ -203,7 +215,23 @@ function onSendClick() {
   width: 70px;
 }
 .chat-footer-agent-mode-select {
-  width: 120px;
+  width: 132px;
+  flex: 0 0 132px;
+}
+.chat-footer-options-btn {
+  flex-shrink: 0;
+}
+.chat-footer-chip {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 20px;
+  color: var(--n-text-color-2);
+  background: var(--n-color-embedded);
+}
+.chat-footer-row--options .chat-footer-prompt {
+  flex: 1 1 140px;
 }
 .chat-footer-memory-count .n-select {
   width: 100%;

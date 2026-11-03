@@ -181,7 +181,7 @@ onBeforeUnmount(() => {
                 </div>
                 <div ref="bottomBarRef" class="app-bottom-bar">
                   <n-card size="small" style="--wails-draggable:no-drag">
-                    <n-menu style="font-size: 18px;"
+                    <n-menu class="app-main-menu" style="font-size: 14px;"
                             v-model:value="activeKey"
                             mode="horizontal"
                             :options="menuOptions"
@@ -259,5 +259,11 @@ onBeforeUnmount(() => {
 .app-bottom-bar {
   flex: 0 0 auto;
   width: 100%;
+}
+.app-bottom-bar .n-card-content {
+  padding: 4px 8px;
+}
+.app-main-menu.n-menu {
+  font-size: 14px;
 }
 </style>

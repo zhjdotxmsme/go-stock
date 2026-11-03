@@ -131,6 +131,7 @@ defineExpose({
     </NScrollbar>
 
     <AgentChatFooter
+      :density="props.density"
       v-model:ai-config-id="aiConfigId"
       v-model:sys-prompt-id="sysPromptId"
       v-model:user-prompt-id="userPromptId"

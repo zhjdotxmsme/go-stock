@@ -1,7 +1,7 @@
 <template>
   <Transition name="fade">
     <div
-      v-if="showButton"
+      v-if="showButton && !panelVisible"
       :class="['edge-trigger', { 'edge-trigger-busy': hasBackgroundTask }]"
       @click="togglePanel"
       :title="hasBackgroundTask ? 'go-stock AI Agent 助手正在后台分析...' : 'go-stock AI Agent 助手'"
@@ -113,12 +113,12 @@ onMounted(() => {
 <style scoped>
 .edge-trigger {
   position: fixed;
-  top: 50%;
   right: 0;
+  /* 贴在底栏上方，避开 K 线右侧价格轴和底部菜单 */
+  bottom: calc(var(--app-bottombar-h, 68px) + 12px);
   z-index: 9998;
-  transform: translateY(-50%);
   width: 32px;
-  height: 120px;
+  height: 96px;
   border-radius: 12px 0 0 12px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #fff;
@@ -179,7 +179,11 @@ onMounted(() => {
 }
 .drawer-mask {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  left: 0;
+  /* 遮罩停在底栏之上，聊天时仍可切换菜单 */
+  bottom: var(--app-bottombar-h, 68px);
   background: rgba(0, 0, 0, 0.35);
   cursor: pointer;
 }
@@ -187,10 +191,8 @@ onMounted(() => {
   position: absolute;
   top: 0;
   right: 0;
-  bottom: 0;
-  width: 60vw;
-  min-width: 320px;
-  max-width: calc(100vw - 48px);
+  bottom: var(--app-bottombar-h, 68px);
+  width: min(520px, calc(100vw - 56px));
   background: var(--n-color-modal);
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.15);
   overflow: hidden;
@@ -221,15 +223,22 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 .panel-actions {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 .panel-title {
   font-weight: 600;
-  font-size: 16px;
+  font-size: 15px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-body {

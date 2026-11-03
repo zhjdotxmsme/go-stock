@@ -85,8 +85,13 @@ onMounted(() => {
   font-weight: 600;
 }
 .agent-page-sub {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 12px;
   color: var(--n-text-color-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .agent-page-actions {
   margin-left: auto;
@@ -94,5 +99,17 @@ onMounted(() => {
 .agent-page-panel {
   flex: 1 1 auto;
   min-height: 0;
+}
+@media (max-width: 960px) {
+  .agent-page {
+    flex-direction: column;
+  }
+  .agent-page :deep(.session-side) {
+    width: 100%;
+    flex: 0 0 auto;
+    max-height: 168px;
+    border-right: none;
+    border-bottom: 1px solid var(--n-border-color);
+  }
 }
 </style>
