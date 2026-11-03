@@ -17,11 +17,11 @@ import (
 )
 
 const (
-	SyncStatusPending   = "pending"
-	SyncStatusRunning   = "running"
-	SyncStatusDone      = "done"
-	SyncStatusFailed    = "failed"
-	SyncStatusPartial   = "partial"
+	SyncStatusPending = "pending"
+	SyncStatusRunning = "running"
+	SyncStatusDone    = "done"
+	SyncStatusFailed  = "failed"
+	SyncStatusPartial = "partial"
 )
 
 // SyncTask represents a single K-line synchronization task.
@@ -57,6 +57,7 @@ func SyncKLineForStock(ctx context.Context, stockCode, period, startDate, endDat
 	if err != nil {
 		return fmt.Errorf("failed to find missing ranges for %s: %w", stockCode, err)
 	}
+	missingRanges = subtractEmptySpans(missingRanges, loadEmptySpans(ctx, stockCode, period, adjusted))
 
 	if len(missingRanges) == 0 {
 		logger.SugaredLogger.Infof("No missing data for %s %s [%s - %s]", stockCode, period, startDate, endDate)
@@ -66,32 +67,43 @@ func SyncKLineForStock(ctx context.Context, stockCode, period, startDate, endDat
 	logger.SugaredLogger.Infof("Found %d missing range(s) for %s %s", len(missingRanges), stockCode, period)
 
 	for i, rng := range missingRanges {
+		if !shouldSyncGap(rng, startDate, endDate) {
+			continue
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
 			logger.SugaredLogger.Debugf("Syncing range %d/%d for %s: [%s - %s]", i+1, len(missingRanges), stockCode, rng.Start, rng.End)
-			
-			if err := syncDateRange(ctx, router, store, stockCode, period, rng.Start, rng.End, adjusted); err != nil {
+
+			emptyStart, emptyEnd, err := syncDateRange(ctx, router, store, stockCode, period, rng.Start, rng.End, adjusted, startDate, endDate)
+			if err != nil {
 				logger.SugaredLogger.Errorf("Failed to sync range [%s - %s] for %s: %v", rng.Start, rng.End, stockCode, err)
 				return fmt.Errorf("sync failed for range [%s - %s]: %w", rng.Start, rng.End, err)
+			}
+			// 贴着任务结束日的空窗不落库。否则数据源少给的尾部会被当成永久停牌，断点再跳过去就补不回来。
+			if emptyStart != "" && emptyEnd != "" && emptyEnd < endDate {
+				saveEmptySpan(ctx, stockCode, period, adjusted, emptyStart, emptyEnd)
 			}
 		}
 	}
 
 	logger.SugaredLogger.Infof("Successfully completed K-line sync for %s %s [%s - %s]", stockCode, period, startDate, endDate)
 
-	// 完成前校验：重算缺口。仍有缺口 = 源数据暂缺或拉取失败，
-	// 返回错误让任务标 failed（可重试），而不是假 done 把缺口永久掩盖。
+	// 完成前只拦截「长于长假、且没有被数据源核实为空窗」的缺口。
+	// 周末之外的法定假日、上市前工作日不是失败：假完成的根因是拉错窗口后把 0 根当成功，
+	// 那类情况 decideSyncChunk 会标成 unanchored/unproven 并返回错误，不会走到这里。
 	remaining, err := findMissingRangesLocal(ctx, store, stockCode, period, startDate, endDate, adjusted)
 	if err != nil {
 		return fmt.Errorf("verify gaps after sync: %w", err)
 	}
-	if len(remaining) > 0 {
-		first, last := remaining[0], remaining[len(remaining)-1]
-		summary := first.Start
-		if len(remaining) > 1 {
-			summary = fmt.Sprintf("%s ~ %s 等 %d 段", first.Start, last.End, len(remaining))
+	remaining = subtractEmptySpans(remaining, loadEmptySpans(ctx, stockCode, period, adjusted))
+	blocking := blockingGaps(remaining)
+	if len(blocking) > 0 {
+		first, last := blocking[0], blocking[len(blocking)-1]
+		summary := first.Start + "~" + first.End
+		if len(blocking) > 1 {
+			summary = fmt.Sprintf("%s ~ %s 等 %d 段", first.Start, last.End, len(blocking))
 		}
 		return fmt.Errorf("补齐后仍有缺口未覆盖（%s），源数据暂缺或连续拉取失败", summary)
 	}
@@ -192,8 +204,9 @@ func RunSyncTask(ctx context.Context, task *SyncTask) error {
 		logger.SugaredLogger.Errorf("Sync task failed: %s - %v", task.StockCode, err)
 	} else {
 		task.Status = SyncStatusDone
-		task.LastSyncDate = task.EndDate
+		task.LastSyncDate = checkpointFromGaps(task.StartDate, task.EndDate, openGaps(ctx, task))
 		task.ErrorMsg = ""
+		alignDoneTask(ctx, task)
 		logger.SugaredLogger.Infof("Sync task completed successfully: %s", task.StockCode)
 	}
 
@@ -288,115 +301,178 @@ func CreateSyncTask(ctx context.Context, stockCode, period, startDate, endDate s
 	return nil
 }
 
-// syncDateRange syncs K-line data for a specific date range.
-func syncDateRange(ctx context.Context, router *datasource.Router, store *datasource.KLineStore, stockCode, period, startDate, endDate string, adjusted bool) error {
-	// Estimate bars from the range span instead of always pulling 2000:
-	// trading days ≈ calendar days × 5/7, clamped to a sane minimum.
-	startT, err := timeutil.ParseDate(startDate)
-	if err != nil {
-		return fmt.Errorf("invalid start date %q: %w", startDate, err)
+// syncDateRange 按结束日向前分块拉取 [startDate, endDate]。
+// 返回的空窗是数据源已核实、该区间内没有交易日（上市前或整段停牌）。
+// progressStart/progressEnd 是任务全窗，用于把 synced_count 写成库内实数而不是累加。
+// 不推进 last_sync_date：尾部块成功不代表前缀已齐，断点只在整单成功时写成 endDate。
+func syncDateRange(ctx context.Context, router *datasource.Router, store *datasource.KLineStore, stockCode, period, startDate, endDate string, adjusted bool, progressStart, progressEnd string) (string, string, error) {
+	if _, err := timeutil.ParseDate(startDate); err != nil {
+		return "", "", fmt.Errorf("invalid start date %q: %w", startDate, err)
 	}
-	endT, err := timeutil.ParseDate(endDate)
-	if err != nil {
-		return fmt.Errorf("invalid end date %q: %w", endDate, err)
+	if _, err := timeutil.ParseDate(endDate); err != nil {
+		return "", "", fmt.Errorf("invalid end date %q: %w", endDate, err)
 	}
-	days := int(endT.Sub(startT).Hours()/24) + 1
-	count := days * 5 / 7
-	if period != "day" {
-		// week/month bars span more per bar; keep a small multiplier
-		count = days/7 + 2
-		if period == "month" {
-			count = days/28 + 2
+
+	cursorEnd := endDate
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", "", err
 		}
-	}
-	if count < 50 {
-		count = 50
-	}
-	if count > 2000 {
-		count = 2000
-	}
-
-	// 落库时机由本函数控制（先做除权检测），不走 GetKLine 的异步持久化。
-	// 锚定 endDate 取数：历史中段缺口用"最新 N 根"语义永远覆盖不到（旧实现
-	// 取到的是尾部数据，过滤后区间内 0 根还返回成功 → 任务假 done，缺口永不补）。
-	data, err := router.FetchKLineNoPersistBefore(ctx, stockCode, period, count, endDate)
-	if err != nil {
-		return fmt.Errorf("failed to fetch K-line data from router: %w", err)
-	}
-
-	if data == nil || len(data.Bars) == 0 {
-		logger.SugaredLogger.Warnf("No K-line data returned for %s %s [%s - %s]", stockCode, period, startDate, endDate)
-		return nil
-	}
-
-	bars := datasource.BarsFromKLineData(stockCode, period, "sync", adjusted, data)
-
-	var filtered []models.KLineBar
-	for _, bar := range bars {
-		if bar.TradeDate >= startDate && bar.TradeDate <= endDate {
-			filtered = append(filtered, bar)
+		count := chunkCount(period, startDate, cursorEnd)
+		// 落库时机由本函数控制（先做除权检测），不走 GetKLine 的异步持久化。
+		// 锚定 cursorEnd：历史中段缺口用「最新 N 根」永远覆盖不到。
+		data, err := router.FetchKLineNoPersistBefore(ctx, stockCode, period, count, cursorEnd)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to fetch K-line data from router: %w", err)
 		}
-	}
+		if data == nil || len(data.Bars) == 0 {
+			return "", "", fmt.Errorf("区间 [%s - %s] 未取到任何 K 线（源数据暂缺或长期停牌）", startDate, cursorEnd)
+		}
 
-	if len(filtered) == 0 {
-		// 旧行为是 Warn+return nil（任务标 done）——历史中段缺口被永久掩盖。
-		// 改为报错：任务标 failed 可重试；长期停牌属源数据事实，同样如实暴露。
-		return fmt.Errorf("区间 [%s - %s] 未取到任何 K 线（源数据暂缺或长期停牌）", startDate, endDate)
-	}
-
-	// 除权防线：前复权序列与库内重叠日收盘系统性错位（除权导致 qfq 整体平移）时，
-	// 缺口检测认为日期已存在不会重拉，必须全量重拉覆盖，否则增量追加会写坏历史。
-	if adjusted {
-		storedSnapshot, qerr := store.QueryKLines(ctx, stockCode, period, filtered[0].TradeDate, filtered[len(filtered)-1].TradeDate, true)
-		if qerr != nil {
-			logger.SugaredLogger.Warnf("除权检测读库失败 %s: %v", stockCode, qerr)
-		} else if datasource.DetectAdjustedSeriesShift(storedSnapshot, filtered, 8) {
-			logger.SugaredLogger.Warnf("检测到前复权序列平移（除权）%s [%s - %s]，全量重拉覆盖", stockCode, startDate, endDate)
-			if _, rerr := router.RefreshKLineFull(ctx, stockCode, period, len(filtered)); rerr == nil {
-				logger.SugaredLogger.Infof("除权全量覆盖完成 %s [%s - %s]", stockCode, startDate, endDate)
-				updateCheckpoint(stockCode, period, adjusted, filtered[len(filtered)-1].TradeDate, len(filtered))
-				return nil
-			} else {
-				logger.SugaredLogger.Errorf("除权全量重拉失败 %s: %v，回退常规增量追加", stockCode, rerr)
+		bars := datasource.BarsFromKLineData(stockCode, period, "sync", adjusted, data)
+		dates := make([]string, 0, len(bars))
+		for _, bar := range bars {
+			if bar.TradeDate != "" {
+				dates = append(dates, bar.TradeDate)
 			}
 		}
+		plan := decideSyncChunk(startDate, cursorEnd, dates, count)
+		if plan.Action == chunkUnproven {
+			return "", "", fmt.Errorf("区间 [%s - %s] 未取到任何 K 线（源数据暂缺或长期停牌）", startDate, cursorEnd)
+		}
+		if plan.Action == chunkUnanchored {
+			return "", "", fmt.Errorf("区间 [%s - %s] 锚定未被遵守，历史缺口不能用最新一段代替", startDate, cursorEnd)
+		}
+
+		var filtered []models.KLineBar
+		for _, bar := range bars {
+			if bar.TradeDate >= startDate && bar.TradeDate <= cursorEnd {
+				filtered = append(filtered, bar)
+			}
+		}
+		if len(filtered) > 0 {
+			if adjusted {
+				storedSnapshot, qerr := store.QueryKLines(ctx, stockCode, period, filtered[0].TradeDate, filtered[len(filtered)-1].TradeDate, true)
+				if qerr != nil {
+					logger.SugaredLogger.Warnf("除权检测读库失败 %s: %v", stockCode, qerr)
+				} else if datasource.DetectAdjustedSeriesShift(storedSnapshot, filtered, 8) {
+					logger.SugaredLogger.Warnf("检测到前复权序列平移（除权）%s [%s - %s]，全量重拉覆盖", stockCode, startDate, endDate)
+					if _, rerr := router.RefreshKLineFull(ctx, stockCode, period, len(filtered)); rerr == nil {
+						logger.SugaredLogger.Infof("除权全量覆盖完成 %s [%s - %s]", stockCode, startDate, endDate)
+						refreshSyncedCount(ctx, stockCode, period, adjusted, progressStart, progressEnd)
+						return "", "", nil
+					}
+					logger.SugaredLogger.Errorf("除权全量重拉失败 %s，回退常规增量追加", stockCode)
+				}
+			}
+			if err := store.UpsertKLines(ctx, filtered); err != nil {
+				return "", "", fmt.Errorf("failed to upsert K-line bars: %w", err)
+			}
+			logger.SugaredLogger.Infof("Synced %d bars for %s [%s - %s]", len(filtered), stockCode, startDate, cursorEnd)
+			refreshSyncedCount(ctx, stockCode, period, adjusted, progressStart, progressEnd)
+		}
+
+		switch plan.Action {
+		case chunkEmpty:
+			return startDate, plan.EmptyEnd, nil
+		case chunkPrefix:
+			return startDate, plan.EmptyEnd, nil
+		case chunkContinue:
+			if plan.NextEnd == "" || plan.NextEnd >= cursorEnd {
+				return "", "", fmt.Errorf("区间 [%s - %s] 分块没有向前推进", startDate, cursorEnd)
+			}
+			cursorEnd = plan.NextEnd
+			continue
+		default:
+			return "", "", nil
+		}
 	}
-
-	if err := store.UpsertKLines(ctx, filtered); err != nil {
-		return fmt.Errorf("failed to upsert K-line bars: %w", err)
-	}
-
-	logger.SugaredLogger.Infof("Synced %d bars for %s [%s - %s]", len(filtered), stockCode, startDate, endDate)
-
-	updateCheckpoint(stockCode, period, adjusted, filtered[len(filtered)-1].TradeDate, len(filtered))
-
-	return nil
 }
 
-// updateCheckpoint updates the sync log checkpoint for a stock.
-func updateCheckpoint(stockCode, period string, adjusted bool, lastDate string, count int) {
+func loadEmptySpans(ctx context.Context, stockCode, period string, adjusted bool) string {
 	var log models.KLineSyncLog
-	err := db.Dao.Where("stock_code = ? AND period = ? AND adjusted = ?", stockCode, period, adjusted).First(&log).Error
-
+	err := db.Dao.WithContext(ctx).
+		Where("stock_code = ? AND period = ? AND adjusted = ?", stockCode, period, adjusted).
+		First(&log).Error
 	if err != nil {
-		if err.Error() != "record not found" {
-			logger.SugaredLogger.Errorf("Failed to query sync log for checkpoint: %v", err)
-		}
+		return ""
+	}
+	return log.EmptySpans
+}
+
+func saveEmptySpan(ctx context.Context, stockCode, period string, adjusted bool, start, end string) {
+	merged := mergeEmptySpan(loadEmptySpans(ctx, stockCode, period, adjusted), start, end)
+	if merged == "" {
 		return
 	}
-
-	updates := map[string]interface{}{
-		"synced_count": log.SyncedCount + count,
-		"updated_at":   time.Now(),
+	if err := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
+		Where("stock_code = ? AND period = ? AND adjusted = ?", stockCode, period, adjusted).
+		Update("empty_spans", merged).Error; err != nil {
+		logger.SugaredLogger.Warnf("save empty span %s [%s-%s]: %v", stockCode, start, end, err)
 	}
-	// 断点前移：YYYY-MM-DD 字典序即时间序，取 max 防止并发区间乱序回退。
-	// 即使任务最终 failed，已落库区间的进度也保留，重启后从断点续传。
-	if lastDate > log.LastSyncDate {
-		updates["last_sync_date"] = lastDate
-	}
+}
 
-	if err := db.Dao.Model(&log).Updates(updates).Error; err != nil {
-		logger.SugaredLogger.Errorf("Failed to update checkpoint for %s: %v", stockCode, err)
+// refreshSyncedCount 用库内实数覆盖 synced_count。重试同一段不能再累加，否则进度和 90% 修复都会失真。
+func refreshSyncedCount(ctx context.Context, stockCode, period string, adjusted bool, startDate, endDate string) {
+	if err := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
+		Where("stock_code = ? AND period = ? AND adjusted = ?", stockCode, period, adjusted).
+		Updates(map[string]interface{}{
+			"synced_count": countStoredBars(ctx, stockCode, period, adjusted, startDate, endDate),
+			"updated_at":   time.Now(),
+		}).Error; err != nil {
+		logger.SugaredLogger.Errorf("Failed to update synced_count for %s: %v", stockCode, err)
+	}
+}
+
+func countStoredBars(ctx context.Context, stockCode, period string, adjusted bool, startDate, endDate string) int {
+	var n int64
+	err := db.Dao.WithContext(ctx).Model(&models.KLineBar{}).
+		Where("stock_code IN ? AND period IN ? AND adjusted = ? AND trade_date >= ? AND trade_date <= ?",
+			stockcode.StockCodeCandidates(stockCode), datasource.KLinePeriodCandidates(period), adjusted, startDate, endDate).
+		Count(&n).Error
+	if err != nil {
+		logger.SugaredLogger.Warnf("count kline bars %s: %v", stockCode, err)
+		return 0
+	}
+	return int(n)
+}
+
+// openGaps 读出任务窗口里还没被空窗记录抵消的工作日缺口。
+func openGaps(ctx context.Context, task *SyncTask) []datasource.DateRange {
+	if task == nil {
+		return nil
+	}
+	store := datasource.NewKLineStore()
+	gaps, err := findMissingRangesLocal(ctx, store, task.StockCode, task.Period, task.StartDate, task.EndDate, task.Adjusted)
+	if err != nil {
+		logger.SugaredLogger.Warnf("checkpoint gaps %s: %v", task.StockCode, err)
+		return []datasource.DateRange{{Start: task.StartDate, End: task.EndDate}}
+	}
+	return subtractEmptySpans(gaps, loadEmptySpans(ctx, task.StockCode, task.Period, task.Adjusted))
+}
+
+// alignDoneTask 成功收口：短历史（次新股、长停牌）把 expected 对齐到实数，
+// 避免 90% 修复每次启动都把已核实的任务打回 pending。
+func alignDoneTask(ctx context.Context, task *SyncTask) {
+	if task == nil {
+		return
+	}
+	n := countStoredBars(ctx, task.StockCode, task.Period, task.Adjusted, task.StartDate, task.EndDate)
+	var log models.KLineSyncLog
+	if err := db.Dao.WithContext(ctx).
+		Where("stock_code = ? AND period = ? AND adjusted = ?", task.StockCode, task.Period, task.Adjusted).
+		First(&log).Error; err != nil {
+		return
+	}
+	expected := log.ExpectedCount
+	if expected <= 0 || int64(n)*10 < int64(expected)*9 {
+		expected = n
+	}
+	if err := db.Dao.WithContext(ctx).Model(&log).Updates(map[string]interface{}{
+		"synced_count":   n,
+		"expected_count": expected,
+	}).Error; err != nil {
+		logger.SugaredLogger.Warnf("align done task %s: %v", task.StockCode, err)
 	}
 }
 
@@ -489,19 +565,19 @@ func validateSyncParams(stockCode, period, startDate, endDate string) error {
 	if endDate == "" {
 		return fmt.Errorf("end date cannot be empty")
 	}
-	
+
 	if _, err := timeutil.ParseDate(startDate); err != nil {
 		return fmt.Errorf("invalid start date format: %s (expected YYYY-MM-DD)", startDate)
 	}
 	if _, err := timeutil.ParseDate(endDate); err != nil {
 		return fmt.Errorf("invalid end date format: %s (expected YYYY-MM-DD)", endDate)
 	}
-	
+
 	start, _ := timeutil.ParseDate(startDate)
 	end, _ := timeutil.ParseDate(endDate)
 	if start.After(end) {
 		return fmt.Errorf("start date cannot be after end date")
 	}
-	
+
 	return nil
 }

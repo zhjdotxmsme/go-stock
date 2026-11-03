@@ -109,7 +109,7 @@ type EndAnchoredKLineProvider interface {
 	GetKLineBefore(ctx context.Context, code, period string, count int, endDate string) (*KLineData, error)
 }
 
-// FetchKLineNoPersistBefore 锚定结束日期取数（不含 endDate 当日及以后）。
+// FetchKLineNoPersistBefore 锚定结束日期取数（含 endDate 当日，不含之后）。
 // 优先走支持锚定的 provider；全部不支持时退化为"取到今天"的窗口拉取，
 // count 按缺口到今天的自然日跨度放大（只对近期缺口有效，远期缺口要求 provider 锚定）。
 func (r *Router) FetchKLineNoPersistBefore(ctx context.Context, code, period string, count int, endDate string) (*KLineData, error) {

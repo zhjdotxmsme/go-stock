@@ -2,12 +2,13 @@ package backtest
 
 import (
 	"bytes"
-	"regexp"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -15,9 +16,11 @@ import (
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/data/history"
 	"go-stock/backend/db"
-	"go-stock/backend/stockcode"
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
+	"go-stock/backend/stockcode"
+
+	"gorm.io/gorm"
 )
 
 // seed log output directory
@@ -242,7 +245,7 @@ func startSyncWorkers() {
 		}()
 
 		var wg sync.WaitGroup
-		for i := 0; i < syncWorkerCount; i++ {
+		for range syncWorkerCount {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -271,14 +274,19 @@ func syncWorkerLoop() {
 // claimNextPendingSyncTask atomically marks the oldest pending task as running
 // and returns it. Returns nil when no pending task is left.
 func claimNextPendingSyncTask(ctx context.Context) *history.SyncTask {
-	// Retry a few times in case several workers race for the same task.
-	for i := 0; i < 10; i++ {
+	// 抢到行但更新失败是并发冲突，继续抢；只有队列空了才退出。
+	// 固定次数用尽就返回会让 worker 提前结束，剩下的 pending 要等下次启动。
+	for range 50 {
 		var log models.KLineSyncLog
 		err := db.Dao.WithContext(ctx).
 			Where("status = ?", history.SyncStatusPending).
 			Order("id ASC").
 			First(&log).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
 		if err != nil {
+			logger.SugaredLogger.Warnf("claim sync task: %v", err)
 			return nil
 		}
 
@@ -306,10 +314,22 @@ func claimNextPendingSyncTask(ctx context.Context) *history.SyncTask {
 
 func (s *Service) GetSyncProgress() ([]syncTaskItem, error) {
 	ctx := context.Background()
-	var logs []models.KLineSyncLog
-	if err := db.Dao.WithContext(ctx).Order("updated_at DESC").Find(&logs).Error; err != nil {
+	var active []models.KLineSyncLog
+	if err := db.Dao.WithContext(ctx).
+		Where("status <> ?", history.SyncStatusDone).
+		Order("updated_at DESC").
+		Find(&active).Error; err != nil {
 		return nil, err
 	}
+	var done []models.KLineSyncLog
+	if err := db.Dao.WithContext(ctx).
+		Where("status = ?", history.SyncStatusDone).
+		Order("updated_at DESC").
+		Limit(100).
+		Find(&done).Error; err != nil {
+		return nil, err
+	}
+	logs := append(active, done...)
 
 	items := make([]syncTaskItem, 0, len(logs))
 	for _, l := range logs {
@@ -340,13 +360,13 @@ func (s *Service) GetSyncProgress() ([]syncTaskItem, error) {
 func (s *Service) GetSeedImportStatus() (map[string]any, error) {
 	ctx := context.Background()
 	result := map[string]any{
-		"seedBars":       int64(0),
-		"seedStocks":     int64(0),
-		"dbPath":         "",
-		"scriptPath":     "",
-		"pythonFound":    false,
-		"pythonPath":     "",
-		"hasSeedData":    false,
+		"seedBars":    int64(0),
+		"seedStocks":  int64(0),
+		"dbPath":      "",
+		"scriptPath":  "",
+		"pythonFound": false,
+		"pythonPath":  "",
+		"hasSeedData": false,
 	}
 
 	// Count existing seed records
@@ -501,7 +521,7 @@ func (s *Service) RunOptimization(input OptimizationInput) ([]OptimizationResult
 // GetOptimizationPresets returns preset parameter spaces and default objective config.
 func (s *Service) GetOptimizationPresets() (map[string]any, error) {
 	return map[string]any{
-		"presets":  PresetParamSpaces(),
+		"presets":   PresetParamSpaces(),
 		"objective": DefaultObjective(),
 	}, nil
 }

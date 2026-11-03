@@ -42,8 +42,8 @@ func parseTencentQuoteResponse(text, code string) (*datasource.QuoteData, error)
 // TencentQuoteProvider provides real-time quotes from qt.gtimg.cn (free, no API key).
 type TencentQuoteProvider struct{}
 
-func (p *TencentQuoteProvider) Name() string                      { return "tencent" }
-func (p *TencentQuoteProvider) Priority() int                     { return 10 }
+func (p *TencentQuoteProvider) Name() string                       { return "tencent" }
+func (p *TencentQuoteProvider) Priority() int                      { return 10 }
 func (p *TencentQuoteProvider) Available(ctx context.Context) bool { return true }
 
 func (p *TencentQuoteProvider) GetQuote(ctx context.Context, code string) (*datasource.QuoteData, error) {
@@ -85,10 +85,11 @@ func parseTencentKLineResponse(body []byte, code, period, tencentCode string) (*
 		return nil, fmt.Errorf("tencent kline: missing %s data", tencentCode)
 	}
 
+	qfqKey, rawKey := tencentKLineFieldKeys(period)
 	var day []any
-	if qfqday, ok := stockData["qfqday"].([]any); ok && len(qfqday) > 0 {
-		day = qfqday
-	} else if d, ok := stockData["day"].([]any); ok && len(d) > 0 {
+	if qfq, ok := stockData[qfqKey].([]any); ok && len(qfq) > 0 {
+		day = qfq
+	} else if d, ok := stockData[rawKey].([]any); ok && len(d) > 0 {
 		day = d
 	}
 
@@ -126,8 +127,8 @@ func parseTencentKLineResponse(body []byte, code, period, tencentCode string) (*
 // TencentKLineProvider provides K-line data from Tencent Finance.
 type TencentKLineProvider struct{}
 
-func (p *TencentKLineProvider) Name() string                      { return "tencent_kline" }
-func (p *TencentKLineProvider) Priority() int                     { return 10 }
+func (p *TencentKLineProvider) Name() string                       { return "tencent_kline" }
+func (p *TencentKLineProvider) Priority() int                      { return 10 }
 func (p *TencentKLineProvider) Available(ctx context.Context) bool { return true }
 
 func (p *TencentKLineProvider) GetKLine(ctx context.Context, code string, period string, count int) (*datasource.KLineData, error) {
@@ -193,6 +194,18 @@ func (p *TencentKLineProvider) getKLineTencent(code, period string, count int, e
 	return kline, nil
 }
 
+// tencentKLineFieldKeys 腾讯 fqkline 的周期字段。周/月不是 qfqday，认错字段会空返回再误降级。
+func tencentKLineFieldKeys(period string) (qfqKey, rawKey string) {
+	switch period {
+	case "week", "102":
+		return "qfqweek", "week"
+	case "month", "103":
+		return "qfqmonth", "month"
+	default:
+		return "qfqday", "day"
+	}
+}
+
 func parseKLineTime(s string) time.Time {
 	// 统一走 timeutil：本地时区解析，避免 UTC 结果与本地语义数据混合比较
 	return timeutil.MustParseDateTime(s)
@@ -203,8 +216,8 @@ func parseKLineTime(s string) time.Time {
 // refers to the mootdx/TDX integration it once used.
 type MootdxQuoteProvider struct{}
 
-func (p *MootdxQuoteProvider) Name() string                      { return "mootdx" }
-func (p *MootdxQuoteProvider) Priority() int                     { return 5 }
+func (p *MootdxQuoteProvider) Name() string                       { return "mootdx" }
+func (p *MootdxQuoteProvider) Priority() int                      { return 5 }
 func (p *MootdxQuoteProvider) Available(ctx context.Context) bool { return true }
 
 func (p *MootdxQuoteProvider) GetQuote(ctx context.Context, code string) (*datasource.QuoteData, error) {
@@ -230,8 +243,8 @@ func (p *MootdxQuoteProvider) GetQuote(ctx context.Context, code string) (*datas
 // MootdxKLineProvider provides K-line data via existing TDX API (free, unlimited).
 type MootdxKLineProvider struct{}
 
-func (p *MootdxKLineProvider) Name() string                      { return "mootdx_kline" }
-func (p *MootdxKLineProvider) Priority() int                     { return 5 }
+func (p *MootdxKLineProvider) Name() string                       { return "mootdx_kline" }
+func (p *MootdxKLineProvider) Priority() int                      { return 5 }
 func (p *MootdxKLineProvider) Available(ctx context.Context) bool { return true }
 
 func (p *MootdxKLineProvider) GetKLine(ctx context.Context, code string, period string, count int) (*datasource.KLineData, error) {
@@ -241,12 +254,12 @@ func (p *MootdxKLineProvider) GetKLine(ctx context.Context, code string, period 
 	if !isAShareCode(code) {
 		return nil, fmt.Errorf("%w: tdx kline only covers A-shares, skipping %s", datasource.ErrUnsupported, code)
 	}
-		tdx := data.NewTdxKLineApi()
-		if tdx == nil {
-			return nil, fmt.Errorf("mootdx kline api not available")
-		}
-		period = datasource.NormalizePeriod(period)
-		kLines := tdx.GetKLineData(code, period, count)
+	tdx := data.NewTdxKLineApi()
+	if tdx == nil {
+		return nil, fmt.Errorf("mootdx kline api not available")
+	}
+	period = datasource.NormalizePeriod(period)
+	kLines := tdx.GetKLineData(code, period, count)
 	if kLines == nil || len(*kLines) == 0 {
 		return nil, fmt.Errorf("mootdx kline: empty for %s", code)
 	}
@@ -257,8 +270,8 @@ func (p *MootdxKLineProvider) GetKLine(ctx context.Context, code string, period 
 // TonghuashunFundamentalProvider provides fundamental data for A-share stocks.
 type TonghuashunFundamentalProvider struct{}
 
-func (p *TonghuashunFundamentalProvider) Name() string                      { return "10jqka" }
-func (p *TonghuashunFundamentalProvider) Priority() int                     { return 15 }
+func (p *TonghuashunFundamentalProvider) Name() string                       { return "10jqka" }
+func (p *TonghuashunFundamentalProvider) Priority() int                      { return 15 }
 func (p *TonghuashunFundamentalProvider) Available(ctx context.Context) bool { return true }
 
 func (p *TonghuashunFundamentalProvider) GetFundamental(ctx context.Context, code string) (*datasource.FundamentalData, error) {

@@ -64,14 +64,20 @@ func RequeueDoneWithMissingBars(ctx context.Context, limit int) (int, error) {
 	requeued := 0
 	for _, log := range logs {
 		missing, err := findMissingRangesLocal(ctx, store, log.StockCode, log.Period, log.StartDate, log.EndDate, log.Adjusted)
-		if err != nil || len(missing) == 0 {
+		if err != nil {
 			continue
 		}
+		missing = blockingGaps(subtractEmptySpans(missing, log.EmptySpans))
+		if len(missing) == 0 {
+			continue
+		}
+		// 清断点：否则 RunSyncTask 从尾部续跑，刚发现的前缀空洞又被跳过。
 		if err := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).Where("id = ?", log.ID).
 			Updates(map[string]interface{}{
-				"status":     SyncStatusPending,
-				"error_msg":  "",
-				"updated_at": time.Now(),
+				"status":         SyncStatusPending,
+				"error_msg":      "",
+				"last_sync_date": "",
+				"updated_at":     time.Now(),
 			}).Error; err != nil {
 			logger.SugaredLogger.Warnf("requeue sync %s: %v", log.StockCode, err)
 			continue
@@ -85,6 +91,7 @@ func RequeueDoneWithMissingBars(ctx context.Context, limit int) (int, error) {
 // "最新 N 根"，过滤后区间内 0 根也返回成功 → 3892 个 done 任务仅落 55/1310 根）。
 //  1. 日志代码统一为内部格式（tushare/bare → sz300780；内部格式行已存在时删旧行）；
 //  2. done 但 synced_count 明显低于 expected 的任务批量重置为 pending 重新补齐。
+//
 // 幂等：修复后的任务只有真正补齐才会再标 done。
 func RepairBrokenSyncTasks(ctx context.Context) (int64, error) {
 	// 1) 代码格式收敛
@@ -107,7 +114,35 @@ func RepairBrokenSyncTasks(ctx context.Context) (int64, error) {
 			continue
 		}
 		if cnt > 0 {
-			// 内部格式行已存在：删除格式错误的旧行，避免重复排队
+			// 内部格式行已存在：把更宽的区间并进去再删旧行。只删不并会留下更窄的那条。
+			var canon models.KLineSyncLog
+			if err := db.Dao.WithContext(ctx).
+				Where("stock_code = ? AND period = ? AND adjusted = ?", norm, row.Period, row.Adjusted).
+				First(&canon).Error; err != nil {
+				continue
+			}
+			expanded := false
+			if row.StartDate != "" && (canon.StartDate == "" || row.StartDate < canon.StartDate) {
+				canon.StartDate = row.StartDate
+				expanded = true
+			}
+			if row.EndDate > canon.EndDate {
+				canon.EndDate = row.EndDate
+				expanded = true
+			}
+			if expanded {
+				canon.LastSyncDate = ""
+				canon.EmptySpans = ""
+				canon.Status = SyncStatusPending
+				canon.SyncedCount = 0
+				canon.ExpectedCount = estimateExpectedCount(canon.Period, canon.StartDate, canon.EndDate)
+				canon.ErrorMsg = "repair: 合并混格式任务，按完整区间重扫"
+				canon.UpdatedAt = time.Now()
+				if err := db.Dao.WithContext(ctx).Save(&canon).Error; err != nil {
+					logger.SugaredLogger.Warnf("repair sync log: merge %s failed: %v", row.StockCode, err)
+					continue
+				}
+			}
 			if err := db.Dao.WithContext(ctx).Delete(&models.KLineSyncLog{}, row.ID).Error; err != nil {
 				logger.SugaredLogger.Warnf("repair sync log: delete %s failed: %v", row.StockCode, err)
 			}
@@ -121,13 +156,17 @@ func RepairBrokenSyncTasks(ctx context.Context) (int64, error) {
 		renamed++
 	}
 
-	// 2) 假完成批量重置（synced_count 低于 expected 90% 视为未完成）
+	// 2) 假完成批量重置。必须清掉 last_sync_date：旧缺陷把断点写在尾部，
+	// 不清的话重跑只扫尾部，历史空洞永远补不上，下次启动再被这条规则打回 pending。
 	res := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
 		Where("status = ? AND expected_count > 0 AND synced_count * 10 < expected_count * 9", SyncStatusDone).
 		Updates(map[string]interface{}{
-			"status":     SyncStatusPending,
-			"error_msg":  "repair: done 但同步条数远低于预期（历史缺口），重新补齐",
-			"updated_at": time.Now(),
+			"status":         SyncStatusPending,
+			"error_msg":      "repair: done 但同步条数远低于预期（历史缺口），重新补齐",
+			"last_sync_date": "",
+			"empty_spans":    "",
+			"synced_count":   0,
+			"updated_at":     time.Now(),
 		})
 	return res.RowsAffected + renamed, res.Error
 }
@@ -172,6 +211,20 @@ func ConvergeKLineBarCodeFormats(ctx context.Context) (int64, error) {
 	return converted, nil
 }
 
+// requeueRetryableFailed 把网络类失败打回 pending。
+// 数据源已确认区间内没有 K 线的任务保持 failed，避免每次启动再打一遍接口。
+// error_msg 为 NULL 时 NOT LIKE 结果是 NULL，必须单独放行。
+func requeueRetryableFailed(ctx context.Context) (int64, error) {
+	res := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
+		Where("status = ? AND (error_msg IS NULL OR error_msg NOT LIKE ?)", SyncStatusFailed, "%未取到任何 K 线%").
+		Updates(map[string]interface{}{
+			"status":     SyncStatusPending,
+			"error_msg":  "requeue: failed task retried after restart",
+			"updated_at": time.Now(),
+		})
+	return res.RowsAffected, res.Error
+}
+
 // PrepareSyncQueueOnStartup 启动时回收僵死任务、延长过期 end_date，并后台扫描缺口。
 func PrepareSyncQueueOnStartup(onMorePending func()) {
 	ctx := context.Background()
@@ -193,19 +246,10 @@ func PrepareSyncQueueOnStartup(onMorePending func()) {
 		}
 	}()
 
-	// failed 任务重置一轮：网络瞬断类失败重启后重试；
-	// "源数据暂缺/长期停牌"类再次失败会继续标 failed，不会死循环（仅启动时重试）。
-	res := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
-		Where("status = ?", SyncStatusFailed).
-		Updates(map[string]interface{}{
-			"status":     SyncStatusPending,
-			"error_msg":  "requeue: failed task retried after restart",
-			"updated_at": time.Now(),
-		})
-	if res.Error != nil {
-		logger.SugaredLogger.Warnf("requeue failed sync tasks: %v", res.Error)
-	} else if res.RowsAffected > 0 {
-		logger.SugaredLogger.Infof("K线同步：%d 条 failed 任务重启后重试", res.RowsAffected)
+	if n, err := requeueRetryableFailed(ctx); err != nil {
+		logger.SugaredLogger.Warnf("requeue failed sync tasks: %v", err)
+	} else if n > 0 {
+		logger.SugaredLogger.Infof("K线同步：%d 条 failed 任务重启后重试", n)
 	}
 
 	if n, err := ReclaimStaleRunningSyncTasks(ctx, DefaultStaleRunningAge); err != nil {

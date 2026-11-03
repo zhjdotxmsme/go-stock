@@ -26,7 +26,10 @@ var (
 	emKlineLastFetch  time.Time
 )
 
-func emKlineThrottle(ctx context.Context) {
+func emKlineThrottle(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emKlineThrottleMu.Lock()
 	wait := 300*time.Millisecond - time.Since(emKlineLastFetch)
 	if wait > 0 {
@@ -34,19 +37,21 @@ func emKlineThrottle(ctx context.Context) {
 		emKlineThrottleMu.Unlock()
 		select {
 		case <-ctx.Done():
+			return ctx.Err()
 		case <-time.After(wait):
+			return nil
 		}
-		return
 	}
 	emKlineLastFetch = time.Now()
 	emKlineThrottleMu.Unlock()
+	return nil
 }
 
 // EastMoneyKLineProvider wraps EastMoney K-line data source (fallback).
 type EastMoneyKLineProvider struct{}
 
-func (p *EastMoneyKLineProvider) Name() string                      { return "eastmoney_kline" }
-func (p *EastMoneyKLineProvider) Priority() int                     { return 20 }
+func (p *EastMoneyKLineProvider) Name() string                       { return "eastmoney_kline" }
+func (p *EastMoneyKLineProvider) Priority() int                      { return 20 }
 func (p *EastMoneyKLineProvider) Available(ctx context.Context) bool { return true }
 
 func (p *EastMoneyKLineProvider) GetKLine(ctx context.Context, code string, period string, count int) (*datasource.KLineData, error) {
@@ -71,9 +76,11 @@ func (p *EastMoneyKLineProvider) GetKLine(ctx context.Context, code string, peri
 // GetKLineBefore 取 endDate（YYYY-MM-DD）当日及之前的 count 根 K 线。
 // 历史缺口回补用：东财 kline 接口原生支持 end+lmt 锚定语义。
 // 粘性节流：批量回补时 6 个 worker 并发打同一域名，高频会触发限流掐连接
-//（CLAUDE.md 已知噪音），最小间隔 300ms 串行化对东财 kline 域的请求。
+// （CLAUDE.md 已知噪音），最小间隔 300ms 串行化对东财 kline 域的请求。
 func (p *EastMoneyKLineProvider) GetKLineBefore(ctx context.Context, code string, period string, count int, endDate string) (*datasource.KLineData, error) {
-	emKlineThrottle(ctx)
+	if err := emKlineThrottle(ctx); err != nil {
+		return nil, err
+	}
 	em := data.NewEastMoneyKLineApi(data.GetSettingConfig())
 	if em == nil {
 		return nil, fmt.Errorf("eastmoney kline api not available")

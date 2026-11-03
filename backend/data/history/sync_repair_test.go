@@ -21,7 +21,8 @@ func TestRepairBrokenSyncTasks(t *testing.T) {
 		StockCode: "300780.SZ", Period: "day", Adjusted: true,
 		StartDate: "2021-10-20", EndDate: "2026-10-29",
 		SyncedCount: 55, ExpectedCount: 1310,
-		Status: SyncStatusDone, UpdatedAt: time.Now(),
+		LastSyncDate: "2026-10-29",
+		Status:       SyncStatusDone, UpdatedAt: time.Now(),
 	})
 	// 真 done：同步条数达标，不应被动
 	db.Dao.Create(&models.KLineSyncLog{
@@ -52,6 +53,9 @@ func TestRepairBrokenSyncTasks(t *testing.T) {
 	if fixed.Status != SyncStatusPending {
 		t.Fatalf("假 done 应重置为 pending，实际 %q", fixed.Status)
 	}
+	if fixed.LastSyncDate != "" {
+		t.Fatalf("假 done 的尾部断点必须清掉，实际 %q", fixed.LastSyncDate)
+	}
 
 	// 真 done 行：保持 done
 	var good models.KLineSyncLog
@@ -76,5 +80,42 @@ func TestCreateSyncTaskNormalizesCode(t *testing.T) {
 	}
 	if want := stockcode.Normalize("300780.SZ"); log.StockCode != want {
 		t.Fatalf("stock_code = %q, want %q", log.StockCode, want)
+	}
+}
+
+func TestRequeueRetryableFailedSkipsConfirmedEmpty(t *testing.T) {
+	setupSyncTestDB(t)
+	ctx := context.Background()
+	db.Dao.Create(&models.KLineSyncLog{
+		StockCode: "sz000001", Period: "day", Adjusted: true,
+		Status: SyncStatusFailed, ErrorMsg: "区间未取到任何 K 线（源数据暂缺或长期停牌）",
+		UpdatedAt: time.Now(),
+	})
+	db.Dao.Create(&models.KLineSyncLog{
+		StockCode: "sz000002", Period: "day", Adjusted: true,
+		Status: SyncStatusFailed, ErrorMsg: "dial tcp: i/o timeout",
+		UpdatedAt: time.Now(),
+	})
+
+	n, err := requeueRetryableFailed(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("应只重排网络失败，实际 %d", n)
+	}
+	var kept models.KLineSyncLog
+	if err := db.Dao.Where("stock_code = ?", "sz000001").First(&kept).Error; err != nil {
+		t.Fatal(err)
+	}
+	if kept.Status != SyncStatusFailed {
+		t.Fatalf("源确认无数据应保持 failed，实际 %s", kept.Status)
+	}
+	var retried models.KLineSyncLog
+	if err := db.Dao.Where("stock_code = ?", "sz000002").First(&retried).Error; err != nil {
+		t.Fatal(err)
+	}
+	if retried.Status != SyncStatusPending {
+		t.Fatalf("网络失败应回到 pending，实际 %s", retried.Status)
 	}
 }
