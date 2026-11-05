@@ -9,6 +9,7 @@ package datasource
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -18,6 +19,14 @@ import (
 	"go-stock/backend/stockcode"
 	"go-stock/backend/util/timeutil"
 )
+
+// ErrNoBarsBefore 锚定源成功返回，但 endDate 及之前没有 K 线。
+// 次新股的上市前缀是这种结果，不是接口失败。调用方应记空窗，不能改拉最新一段。
+var ErrNoBarsBefore = errors.New("no bars on or before anchor")
+
+// anchorTailFallbackDays 只有结束日落在最近这段里，锚定失败才允许退回「最新 N 根」。
+// 更早的缺口用最新一段会把 2026 年的 K 线填进 2022 年的窗口，随后被判定为锚定未被遵守。
+const anchorTailFallbackDays = 14
 
 // maxKLineFetchCount 单次拉取上限，与 handler 侧分页上限保持一致。
 const maxKLineFetchCount = 5000
@@ -110,8 +119,9 @@ type EndAnchoredKLineProvider interface {
 }
 
 // FetchKLineNoPersistBefore 锚定结束日期取数（含 endDate 当日，不含之后）。
-// 优先走支持锚定的 provider；全部不支持时退化为"取到今天"的窗口拉取，
-// count 按缺口到今天的自然日跨度放大（只对近期缺口有效，远期缺口要求 provider 锚定）。
+// 优先走支持锚定的 provider。历史结束日不再退回「最新 N 根」：那段 K 线在结束日之后，
+// 同步侧会判成锚定未被遵守，而且尾部链路先打通达信，单次就要等满 25 秒。
+// 最近 anchorTailFallbackDays 天内锚定源都失败时，才退回尾部窗口。
 func (r *Router) FetchKLineNoPersistBefore(ctx context.Context, code, period string, count int, endDate string) (*KLineData, error) {
 	normalized := stockcode.Normalize(code)
 	canonical := CanonicalKLinePeriod(period)
@@ -121,22 +131,39 @@ func (r *Router) FetchKLineNoPersistBefore(ctx context.Context, code, period str
 	r.mu.RUnlock()
 
 	var lastErr error
+	anchored := 0
+	confirmedEmpty := 0
 	for _, p := range provs {
 		ap, ok := p.(EndAnchoredKLineProvider)
 		if !ok {
 			continue
 		}
+		anchored++
 		k, err := ap.GetKLineBefore(ctx, normalized, canonical, count, endDate)
 		if err == nil && k != nil && len(k.Bars) > 0 {
 			return k, nil
+		}
+		if errors.Is(err, ErrNoBarsBefore) {
+			confirmedEmpty++
+			continue
 		}
 		if err != nil {
 			lastErr = err
 			logger.SugaredLogger.Warnf("kline anchored fetch via %s failed for %s before %s: %v", p.Name(), normalized, endDate, err)
 		}
 	}
+	// 每个锚定源都明确说没有 K 线，才是上市前空窗。有任一源请求失败就原样返回，留给下次重试。
+	if anchored > 0 && confirmedEmpty == anchored {
+		return nil, ErrNoBarsBefore
+	}
+	if !anchorAllowsTailFallback(endDate) {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return nil, ErrNoBarsBefore
+	}
 
-	// 退化路径：窗口拉到今天，覆盖近期缺口
+	// 近期缺口：锚定源都失败时，窗口拉到今天。
 	if endT, e := timeutil.ParseDate(endDate); e == nil {
 		days := int(time.Since(endT).Hours()/24) + 1
 		count += days*5/7 + 10
@@ -149,6 +176,19 @@ func (r *Router) FetchKLineNoPersistBefore(ctx context.Context, code, period str
 		return nil, fmt.Errorf("anchored providers failed (%v) and tail fetch failed: %w", lastErr, err)
 	}
 	return k, err
+}
+
+// anchorAllowsTailFallback 报告结束日是否近到可以用「最新一段」补。
+func anchorAllowsTailFallback(endDate string) bool {
+	endT, err := timeutil.ParseDate(endDate)
+	if err != nil {
+		return false
+	}
+	today, err := timeutil.ParseDate(timeutil.TodayStr())
+	if err != nil {
+		return false
+	}
+	return !endT.Before(today.AddDate(0, 0, -anchorTailFallbackDays))
 }
 
 // getKLineNoPersist 与 GetKLine 相同的 fallback 链，但不触发异步落库。

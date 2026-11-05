@@ -88,15 +88,20 @@ func (p *EastMoneyKLineProvider) GetKLineBefore(ctx context.Context, code string
 	period = datasource.NormalizePeriod(period)
 	// 东财 end 参数格式 YYYYMMDD；锚定语义为"取 end 之前的 limit 根"（含 end 当日）
 	end := strings.ReplaceAll(endDate, "-", "")
-	adjustFlag := "1" // 前复权
-	kLines := em.GetKLineDataBefore(code, period, adjustFlag, count, end)
-	if kLines == nil || len(*kLines) == 0 {
-		kLines = em.GetKLineDataBefore(code, period, "", count, end)
+	bars, err := em.GetKLineDataBeforeErr(code, period, "1", count, end)
+	if err != nil || len(bars) == 0 {
+		bars2, err2 := em.GetKLineDataBeforeErr(code, period, "", count, end)
+		if len(bars2) > 0 {
+			bars, err = bars2, nil
+		} else if err != nil {
+			return nil, fmt.Errorf("eastmoney kline before %s: %w", endDate, err)
+		} else if err2 != nil {
+			return nil, fmt.Errorf("eastmoney kline before %s: %w", endDate, err2)
+		} else {
+			return nil, fmt.Errorf("%w: eastmoney %s before %s", datasource.ErrNoBarsBefore, code, endDate)
+		}
 	}
-	if kLines == nil || len(*kLines) == 0 {
-		return nil, fmt.Errorf("eastmoney kline before %s: empty result for %s", endDate, code)
-	}
-	out := ConvertKLineData(code, period, *kLines)
+	out := ConvertKLineData(code, period, bars)
 	// 统一接口语义：只保留 endDate 当日及之前的 bars
 	kept := make([]datasource.KLineBar, 0, len(out.Bars))
 	for _, b := range out.Bars {
@@ -106,7 +111,7 @@ func (p *EastMoneyKLineProvider) GetKLineBefore(ctx context.Context, code string
 	}
 	out.Bars = kept
 	if len(out.Bars) == 0 {
-		return nil, fmt.Errorf("eastmoney kline before %s: no bars on/before anchor for %s", endDate, code)
+		return nil, fmt.Errorf("%w: eastmoney %s before %s", datasource.ErrNoBarsBefore, code, endDate)
 	}
 	logger.SugaredLogger.Infof("datasource: kline %s before %s from eastmoney (%d bars)", code, endDate, len(out.Bars))
 	return out, nil

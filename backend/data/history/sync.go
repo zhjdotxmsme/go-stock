@@ -322,6 +322,11 @@ func syncDateRange(ctx context.Context, router *datasource.Router, store *dataso
 		// 落库时机由本函数控制（先做除权检测），不走 GetKLine 的异步持久化。
 		// 锚定 cursorEnd：历史中段缺口用「最新 N 根」永远覆盖不到。
 		data, err := router.FetchKLineNoPersistBefore(ctx, stockCode, period, count, cursorEnd)
+		if errors.Is(err, datasource.ErrNoBarsBefore) {
+			// 上市前或整段无交易。记空窗后继续后面的缺口，不要拿最新 K 线冒充这段。
+			logger.SugaredLogger.Infof("区间 [%s - %s] 锚定源确认没有 K 线，记为空窗 %s", startDate, cursorEnd, stockCode)
+			return startDate, cursorEnd, nil
+		}
 		if err != nil {
 			return "", "", fmt.Errorf("failed to fetch K-line data from router: %w", err)
 		}

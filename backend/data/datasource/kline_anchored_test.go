@@ -2,6 +2,7 @@ package datasource
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ type fakeAnchoredProvider struct {
 	countArg   int
 	calls      int32
 	fail       bool
+	empty      bool
 }
 
 func (p *fakeAnchoredProvider) Name() string                     { return "fake-anchored" }
@@ -32,6 +34,9 @@ func (p *fakeAnchoredProvider) GetKLineBefore(_ context.Context, code, period st
 	atomic.AddInt32(&p.calls, 1)
 	p.endDateArg = endDate
 	p.countArg = count
+	if p.empty {
+		return nil, ErrNoBarsBefore
+	}
 	if p.fail {
 		return nil, context.DeadlineExceeded
 	}
@@ -87,14 +92,14 @@ func TestFetchKLineNoPersistBefore_PrefersAnchored(t *testing.T) {
 	}
 }
 
-// 锚定 provider 失败时退化为尾部窗口拉取，count 按缺口到今天的跨度放大。
+// 锚定 provider 失败时，只有最近两周的结束日才退化为尾部窗口拉取。
 func TestFetchKLineNoPersistBefore_FallsBackOnAnchorFailure(t *testing.T) {
 	setupAnchoredTestDB(t)
 	anchored := &fakeAnchoredProvider{fail: true}
 	plain := &fakeKLineProvider{close: 100}
 	r := &Router{klineProviders: []KLineProvider{plain, anchored}}
 
-	endDate := "2025-06-30"
+	endDate := time.Now().Format("2006-01-02")
 	k, err := r.FetchKLineNoPersistBefore(context.Background(), "sh600519", "day", 10, endDate)
 	if err != nil {
 		t.Fatalf("退化路径不应报错: %v", err)
@@ -107,5 +112,37 @@ func TestFetchKLineNoPersistBefore_FallsBackOnAnchorFailure(t *testing.T) {
 	}
 	if len(k.Bars) == 0 {
 		t.Fatal("退化路径应返回尾部 bars")
+	}
+}
+
+// 历史结束日锚定失败时不能改拉最新一段。生产上这段会先卡通达信 25 秒，再被判成锚定未被遵守。
+func TestFetchKLineNoPersistBefore_HistoricalMissDoesNotFetchTail(t *testing.T) {
+	setupAnchoredTestDB(t)
+	anchored := &fakeAnchoredProvider{fail: true}
+	plain := &fakeKLineProvider{close: 100}
+	r := &Router{klineProviders: []KLineProvider{plain, anchored}}
+
+	_, err := r.FetchKLineNoPersistBefore(context.Background(), "sz301248", "day", 130, "2022-04-19")
+	if err == nil {
+		t.Fatal("历史锚定失败应返回错误")
+	}
+	if plain.calls != 0 {
+		t.Fatalf("历史缺口不应走尾部拉取，实际 %d 次", plain.calls)
+	}
+}
+
+// 锚定源确认没有 K 线（上市前）时返回 ErrNoBarsBefore，同样不拉最新一段。
+func TestFetchKLineNoPersistBefore_ConfirmedEmpty(t *testing.T) {
+	setupAnchoredTestDB(t)
+	anchored := &fakeAnchoredProvider{empty: true}
+	plain := &fakeKLineProvider{close: 100}
+	r := &Router{klineProviders: []KLineProvider{plain, anchored}}
+
+	_, err := r.FetchKLineNoPersistBefore(context.Background(), "sz301248", "day", 130, "2022-04-19")
+	if !errors.Is(err, ErrNoBarsBefore) {
+		t.Fatalf("want ErrNoBarsBefore, got %v", err)
+	}
+	if plain.calls != 0 {
+		t.Fatalf("确认空窗不应走尾部拉取，实际 %d 次", plain.calls)
 	}
 }

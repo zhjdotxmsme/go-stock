@@ -145,6 +145,9 @@ func (p *TencentKLineProvider) GetKLine(ctx context.Context, code string, period
 func (p *TencentKLineProvider) GetKLineBefore(ctx context.Context, code string, period string, count int, endDate string) (*datasource.KLineData, error) {
 	k, err := p.getKLineTencent(code, period, count, endDate)
 	if err != nil {
+		if strings.Contains(err.Error(), "no bars") {
+			return nil, fmt.Errorf("%w: %s", datasource.ErrNoBarsBefore, code)
+		}
 		return nil, err
 	}
 	// 统一接口语义：只保留 endDate 当日及之前的 bars
@@ -156,7 +159,7 @@ func (p *TencentKLineProvider) GetKLineBefore(ctx context.Context, code string, 
 	}
 	k.Bars = kept
 	if len(k.Bars) == 0 {
-		return nil, fmt.Errorf("tencent kline before %s: no bars on/before anchor for %s", endDate, code)
+		return nil, fmt.Errorf("%w: tencent %s before %s", datasource.ErrNoBarsBefore, code, endDate)
 	}
 	logger.SugaredLogger.Infof("datasource: kline %s before %s from tencent (%d bars)", code, endDate, len(k.Bars))
 	return k, nil
@@ -177,8 +180,9 @@ func (p *TencentKLineProvider) getKLineTencent(code, period string, count int, e
 	case "103", "month":
 		period = "month"
 	}
-	// param 段：code,period,start,end,count,qfq；start 留空由 end+count 锚定
-	url := fmt.Sprintf("http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,%s,,%s,%d,qfq", tencentCode, period, endDate, count)
+	// param 段：code,period,start,end,count,qfq；start 留空由 end+count 锚定。
+	// 必须走 https。http 只回 302，客户端拿到的是跳转页 HTML，解析必失败，锚定源等于没有。
+	url := fmt.Sprintf("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,%s,,%s,%d,qfq", tencentCode, period, endDate, count)
 	resp, err := data.CreateHTTPClientWithTimeout(15*time.Second).R().
 		SetHeader("Host", "web.ifzq.gtimg.cn").
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").

@@ -264,18 +264,27 @@ func (receiver *EastMoneyKLineApi) GetKLineData2(stockCode, kLineType, adjustFla
 
 // GetKLineDataBefore 获取 end 时间点之前的 limit 根 K 线。
 // end 为空或 "20500101" 表示取到最新；否则为东方财富格式：日/周等为 YYYYMMDD，分钟线多为 YYYYMMDDHHmmss（与 f51 字段一致即可）。
+// 请求失败和「成功但没有 K 线」都返回空切片，供旧调用方继续按空结果降级。
 func (receiver *EastMoneyKLineApi) GetKLineDataBefore(stockCode, kLineType, adjustFlag string, limit int, end string) *[]KLineData {
-	kLines := &[]KLineData{}
+	bars, err := receiver.GetKLineDataBeforeErr(stockCode, kLineType, adjustFlag, limit, end)
+	if err != nil || bars == nil {
+		return &[]KLineData{}
+	}
+	return &bars
+}
 
+// GetKLineDataBeforeErr 与 GetKLineDataBefore 相同，但把网络/协议失败和「rc=0 且 klines 为空」分开。
+// 空切片且 err==nil 表示接口确认这段没有 K 线（次新股上市前）。err!=nil 不能当成没有交易日。
+func (receiver *EastMoneyKLineApi) GetKLineDataBeforeErr(stockCode, kLineType, adjustFlag string, limit int, end string) ([]KLineData, error) {
 	// 转换股票代码格式
 	secid := receiver.convertStockCode(stockCode)
 	if secid == "" {
 		logger.SugaredLogger.Errorf("invalid stock code: %s", stockCode)
-		return kLines
+		return nil, fmt.Errorf("invalid stock code: %s", stockCode)
 	}
 
 	if limit <= 0 {
-		return kLines
+		return nil, fmt.Errorf("invalid kline limit %d", limit)
 	}
 	if strings.TrimSpace(end) == "" {
 		end = "20500101"
@@ -325,7 +334,7 @@ func (receiver *EastMoneyKLineApi) GetKLineDataBefore(stockCode, kLineType, adju
 
 	if fetchErr != nil {
 		logger.SugaredLogger.Errorf("GetKLineData error: %v", fetchErr)
-		return kLines
+		return nil, fetchErr
 	}
 	var response EastMoneyKLineResponse
 	err := json.Unmarshal(body, &response)
@@ -335,28 +344,26 @@ func (receiver *EastMoneyKLineApi) GetKLineDataBefore(stockCode, kLineType, adju
 			preview = preview[:400]
 		}
 		logger.SugaredLogger.Errorf("json.Unmarshal error: %v body_prefix=%q", err, string(preview))
-		return kLines
+		return nil, fmt.Errorf("eastmoney kline json: %w", err)
 	}
 
 	if response.Rc != 0 {
 		logger.SugaredLogger.Errorf("东财K线API错误 stock=%s rc=%d code=%d message=%s secid=%s", stockCode, response.Rc, response.Code, response.Message, secid)
-		return kLines
+		return nil, fmt.Errorf("eastmoney kline rc=%d", response.Rc)
 	}
 	if response.Code != 0 {
 		logger.SugaredLogger.Errorf("API error: code=%d, message=%s", response.Code, response.Message)
-		return kLines
+		return nil, fmt.Errorf("eastmoney kline code=%d", response.Code)
 	}
 
-	// 解析 K 线数据
+	kLines := make([]KLineData, 0, len(response.Data.Klines))
 	for _, klineStr := range response.Data.Klines {
 		kline := receiver.parseKLine(klineStr, adjustFlag)
 		if kline != nil {
-			*kLines = append(*kLines, *kline)
+			kLines = append(kLines, *kline)
 		}
 	}
-
-	//logger.SugaredLogger.Infof("GetKLineData success, count: %d", len(*kLines))
-	return kLines
+	return kLines, nil
 }
 
 // GetMinuteKLine 获取分时 K 线数据 (1 分钟、5 分钟等)
