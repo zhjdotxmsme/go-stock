@@ -199,6 +199,34 @@ func (s *Service) StartHistoricalSync(years int) error {
 	return nil
 }
 
+// RetryFailedSync 只把 failed 和僵死 running 重新排队。
+// 不扫描全市场，也不把已完成任务的 end_date 延长到今天。
+func (s *Service) RetryFailedSync() (int64, error) {
+	ctx := context.Background()
+	res := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
+		Where("status = ?", history.SyncStatusFailed).
+		Updates(map[string]interface{}{
+			"status":         history.SyncStatusPending,
+			"error_msg":      "",
+			"last_sync_date": "",
+			"updated_at":     time.Now(),
+		})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	n := res.RowsAffected
+	if reclaimed, err := history.ReclaimStaleRunningSyncTasks(ctx, history.DefaultStaleRunningAge); err != nil {
+		return n, err
+	} else {
+		n += reclaimed
+	}
+	logger.SugaredLogger.Infof("retry failed sync: requeued %d", n)
+	if n > 0 {
+		startSyncWorkers()
+	}
+	return n, nil
+}
+
 // ResumePendingSyncTasks 应用启动时恢复 K 线同步：回收僵死 running、延长过期 end_date、
 // 后台扫描 done 但本地仍有缺口的任务；仅 pending 时也会拉起 workers。
 func (s *Service) ResumePendingSyncTasks() {

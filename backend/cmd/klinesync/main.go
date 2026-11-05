@@ -62,6 +62,7 @@ func main() {
 	dbPath := flag.String("db", "", "SQLite 路径（如 D:\\_installers\\go-stock\\data\\stock.db）")
 	years := flag.Int("years", 5, "历史同步年数")
 	wait := flag.Duration("wait", 90*time.Minute, "最长等待 worker 清空 pending/running")
+	retryFailed := flag.Bool("retry-failed", false, "只重试 failed 和僵死 running，不扫描全市场、不延长已完成任务")
 	flag.Parse()
 	if strings.TrimSpace(*dbPath) == "" {
 		fmt.Fprintln(os.Stderr, "必须指定 -db")
@@ -72,15 +73,23 @@ func main() {
 	initRouter()
 
 	svc := backtest.NewService()
-	history.PrepareSyncQueueOnStartup(func() {
+	if *retryFailed {
+		n, err := svc.RetryFailedSync()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "RetryFailedSync: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("已重新排队 %d 条 failed/僵死任务\n", n)
+	} else {
+		history.PrepareSyncQueueOnStartup(func() {
+			svc.ResumePendingSyncTasks()
+		})
+		if err := svc.StartHistoricalSync(*years); err != nil {
+			fmt.Fprintf(os.Stderr, "StartHistoricalSync: %v\n", err)
+			os.Exit(1)
+		}
 		svc.ResumePendingSyncTasks()
-	})
-
-	if err := svc.StartHistoricalSync(*years); err != nil {
-		fmt.Fprintf(os.Stderr, "StartHistoricalSync: %v\n", err)
-		os.Exit(1)
 	}
-	svc.ResumePendingSyncTasks()
 
 	deadline := time.Now().Add(*wait)
 	for time.Now().Before(deadline) {

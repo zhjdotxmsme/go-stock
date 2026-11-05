@@ -181,21 +181,42 @@ func (p *TencentKLineProvider) getKLineTencent(code, period string, count int, e
 		period = "month"
 	}
 	// param 段：code,period,start,end,count,qfq；start 留空由 end+count 锚定。
-	// 必须走 https。http 只回 302，客户端拿到的是跳转页 HTML，解析必失败，锚定源等于没有。
-	url := fmt.Sprintf("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,%s,,%s,%d,qfq", tencentCode, period, endDate, count)
-	resp, err := data.CreateHTTPClientWithTimeout(15*time.Second).R().
-		SetHeader("Host", "web.ifzq.gtimg.cn").
-		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
-		Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("tencent kline: %w", err)
+	// web.ifzq 的 fqkline 现已整段 501，正文是 HTML。newfqkline 仍返回 JSON。
+	param := fmt.Sprintf("%s,%s,,%s,%d,qfq", tencentCode, period, endDate, count)
+	urls := []string{
+		"https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get?param=" + param,
+		"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=" + param,
 	}
-
-	kline, err := parseTencentKLineResponse(resp.Body(), code, period, tencentCode)
-	if err != nil {
-		return nil, err
+	client := data.CreateHTTPClientWithTimeout(15 * time.Second)
+	var lastErr error
+	for _, url := range urls {
+		resp, err := client.R().
+			SetHeader("Referer", "https://gu.qq.com/").
+			SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").
+			Get(url)
+		if err != nil {
+			lastErr = fmt.Errorf("tencent kline: %w", err)
+			continue
+		}
+		if resp.StatusCode() != 200 {
+			lastErr = fmt.Errorf("tencent kline: HTTP %d for %s", resp.StatusCode(), code)
+			continue
+		}
+		kline, err := parseTencentKLineResponse(resp.Body(), code, period, tencentCode)
+		if err != nil {
+			// 接口明确没有 K 线，不要再换域名把空结果当成故障。
+			if strings.Contains(err.Error(), "no bars") {
+				return nil, err
+			}
+			lastErr = err
+			continue
+		}
+		return kline, nil
 	}
-	return kline, nil
+	if lastErr == nil {
+		lastErr = fmt.Errorf("tencent kline: no response for %s", code)
+	}
+	return nil, lastErr
 }
 
 // tencentKLineFieldKeys 腾讯 fqkline 的周期字段。周/月不是 qfqday，认错字段会空返回再误降级。

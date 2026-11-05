@@ -146,3 +146,20 @@ func TestFetchKLineNoPersistBefore_ConfirmedEmpty(t *testing.T) {
 		t.Fatalf("确认空窗不应走尾部拉取，实际 %d 次", plain.calls)
 	}
 }
+
+// 一个锚定源确认没有 K 线，另一个只是页面/501。历史结束日应记空窗，不能把传输错误当成整段失败。
+func TestFetchKLineNoPersistBefore_EmptyWinsOverHistoricalTransportError(t *testing.T) {
+	setupAnchoredTestDB(t)
+	bad := &fakeAnchoredProvider{fail: true}
+	empty := &fakeAnchoredProvider{empty: true}
+	plain := &fakeKLineProvider{close: 100}
+	r := &Router{klineProviders: []KLineProvider{bad, empty, plain}}
+
+	_, err := r.FetchKLineNoPersistBefore(context.Background(), "sz001395", "day", 200, "2025-01-26")
+	if !errors.Is(err, ErrNoBarsBefore) {
+		t.Fatalf("want ErrNoBarsBefore, got %v", err)
+	}
+	if plain.calls != 0 {
+		t.Fatalf("历史空窗不应走尾部拉取，实际 %d 次", plain.calls)
+	}
+}

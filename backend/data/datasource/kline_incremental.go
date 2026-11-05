@@ -131,14 +131,12 @@ func (r *Router) FetchKLineNoPersistBefore(ctx context.Context, code, period str
 	r.mu.RUnlock()
 
 	var lastErr error
-	anchored := 0
 	confirmedEmpty := 0
 	for _, p := range provs {
 		ap, ok := p.(EndAnchoredKLineProvider)
 		if !ok {
 			continue
 		}
-		anchored++
 		k, err := ap.GetKLineBefore(ctx, normalized, canonical, count, endDate)
 		if err == nil && k != nil && len(k.Bars) > 0 {
 			return k, nil
@@ -152,8 +150,13 @@ func (r *Router) FetchKLineNoPersistBefore(ctx context.Context, code, period str
 			logger.SugaredLogger.Warnf("kline anchored fetch via %s failed for %s before %s: %v", p.Name(), normalized, endDate, err)
 		}
 	}
-	// 每个锚定源都明确说没有 K 线，才是上市前空窗。有任一源请求失败就原样返回，留给下次重试。
-	if anchored > 0 && confirmedEmpty == anchored {
+	// 全部成功的锚定源都说没有 K 线。
+	if confirmedEmpty > 0 && lastErr == nil {
+		return nil, ErrNoBarsBefore
+	}
+	// 历史结束日：另一源只是 501/HTML。东财已经确认上市前没有 K 线，不能因此整只失败，也不许改拉最新一段。
+	if confirmedEmpty > 0 && !anchorAllowsTailFallback(endDate) {
+		logger.SugaredLogger.Infof("kline anchor %s before %s: %d source(s) confirmed empty, ignore %v", normalized, endDate, confirmedEmpty, lastErr)
 		return nil, ErrNoBarsBefore
 	}
 	if !anchorAllowsTailFallback(endDate) {
