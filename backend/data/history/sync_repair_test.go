@@ -12,6 +12,66 @@ import (
 
 // 回归：历史假完成修复——syncDateRange 旧缺陷只落尾部 55/1310 根却标 done，
 // RepairBrokenSyncTasks 应重置此类任务并把混格式代码收敛为内部格式。
+func TestSyncCheckpointCaughtUp(t *testing.T) {
+	friday := time.Date(2026, 11, 6, 10, 0, 0, 0, time.Local)
+	if !syncCheckpointCaughtUpAt("2026-11-06", "2026-11-06", friday) {
+		t.Fatal("断点覆盖结束日应视为已齐")
+	}
+	if syncCheckpointCaughtUpAt("2026-11-05", "2026-11-06", friday) {
+		t.Fatal("交易日盘中断点停在昨天不算齐")
+	}
+	if syncCheckpointCaughtUpAt("", "2026-11-06", friday) {
+		t.Fatal("空断点不算齐")
+	}
+	saturday := time.Date(2026, 11, 7, 11, 0, 0, 0, time.Local)
+	if !syncCheckpointCaughtUpAt("2026-11-06", "2026-11-07", saturday) {
+		t.Fatal("周末断点停在周五应视为已齐")
+	}
+}
+
+func TestRequeueDoneBehindCheckpoint(t *testing.T) {
+	setupSyncTestDB(t)
+	ctx := context.Background()
+	db.Dao.Create(&models.KLineSyncLog{
+		StockCode: "sh600519", Period: "day", Adjusted: true,
+		StartDate: "2021-10-20", EndDate: "2026-11-06", LastSyncDate: "2026-11-05",
+		Status: SyncStatusDone, UpdatedAt: time.Now(),
+	})
+	db.Dao.Create(&models.KLineSyncLog{
+		StockCode: "sz000001", Period: "day", Adjusted: true,
+		StartDate: "2021-10-20", EndDate: "2026-11-06", LastSyncDate: "2026-11-06",
+		Status: SyncStatusDone, UpdatedAt: time.Now(),
+	})
+	db.Dao.Create(&models.KLineSyncLog{
+		StockCode: "sh600636", Period: "day", Adjusted: true,
+		StartDate: "2021-10-20", EndDate: "2026-11-06", LastSyncDate: "2026-06-24",
+		Status: SyncStatusFailed, UpdatedAt: time.Now(),
+	})
+
+	n, err := RequeueDoneBehindCheckpoint(ctx, "2026-11-06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("只应重排断点落后的 done 任务, got %d", n)
+	}
+	var behind models.KLineSyncLog
+	_ = db.Dao.First(&behind, "stock_code = ?", "sh600519").Error
+	if behind.Status != SyncStatusPending || behind.LastSyncDate != "2026-11-05" {
+		t.Fatalf("落后任务应 pending 且保留断点, got %s %s", behind.Status, behind.LastSyncDate)
+	}
+	var caught models.KLineSyncLog
+	_ = db.Dao.First(&caught, "stock_code = ?", "sz000001").Error
+	if caught.Status != SyncStatusDone {
+		t.Fatalf("已追上的任务不应重排, got %s", caught.Status)
+	}
+	var failed models.KLineSyncLog
+	_ = db.Dao.First(&failed, "stock_code = ?", "sh600636").Error
+	if failed.Status != SyncStatusFailed {
+		t.Fatalf("failed 停牌任务不应被这条规则改掉, got %s", failed.Status)
+	}
+}
+
 func TestRepairBrokenSyncTasks(t *testing.T) {
 	setupSyncTestDB(t)
 	ctx := context.Background()

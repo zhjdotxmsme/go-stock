@@ -285,6 +285,13 @@ func DetectAdjustedSeriesShift(stored, incoming []models.KLineBar, overlapLimit 
 	return false
 }
 
+// ExpectedLatestTradeDate 按当前时间推算本地应有的最新交易日。
+// 当日 09:15 起盘中/收盘均应为今天（盘中是持续变动的当日 bar，靠尾部补拉刷新）；
+// 未开盘（<09:15）与周末回退到上一个工作日。节假日盘中多一次空补拉，无副作用。
+func ExpectedLatestTradeDate(now time.Time) string {
+	return expectedLatestTradeDate(now)
+}
+
 // expectedLatestTradeDate 按当前时间推算本地应有的最新交易日：
 // 当日 09:15 起盘中/收盘均应为今天（盘中是持续变动的当日 bar，靠尾部补拉刷新）；
 // 未开盘（<09:15）与周末回退到上一个工作日。节假日盘中多一次空补拉，无副作用。

@@ -183,7 +183,8 @@ func (s *Service) StartHistoricalSync(years int) error {
 			Where("stock_code = ? AND period = ? AND adjusted = ?", code, "day", true).
 			First(&prior).Error; err == nil &&
 			prior.Status == history.SyncStatusDone &&
-			prior.EndDate >= endDate && prior.StartDate <= startDate {
+			prior.EndDate >= endDate && prior.StartDate <= startDate &&
+			history.SyncCheckpointCaughtUp(prior.LastSyncDate, endDate) {
 			skipped++
 			continue
 		}
@@ -593,7 +594,14 @@ func (s *Service) GetKLineCacheStats() (map[string]any, error) {
 
 	db.Dao.WithContext(ctx).Model(&models.KLineBar{}).Select("COUNT(*)").Scan(&totalBars)
 	db.Dao.WithContext(ctx).Model(&models.KLineBar{}).Select("COUNT(DISTINCT stock_code)").Scan(&uniqueStocks)
-	db.Dao.WithContext(ctx).Model(&models.KLineBar{}).Select("MIN(trade_date)").Row().Scan(&minDate)
+	// 零值日期 0001-01-01 和未来脏日期不参与起止；结束日取覆盖面接近峰值的最近交易日，
+	// 而不是股票数最多的那一天（那一天会停在节后首个交易日）。
+	tomorrow := timeutil.DateStr(time.Now().AddDate(0, 0, 1))
+	db.Dao.WithContext(ctx).Raw(`
+SELECT MIN(substr(trade_date, 1, 10)) FROM kline_bars
+WHERE period IN ('day','101')
+  AND substr(trade_date, 1, 10) >= '1990-01-01'
+  AND substr(trade_date, 1, 10) <= ?`, tomorrow).Row().Scan(&minDate)
 	maxDate = datasource.NewKLineStore().LatestMarketTradeDate(ctx, 45, 500)
 
 	var latest models.KLineSyncLog

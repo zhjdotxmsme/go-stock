@@ -254,7 +254,8 @@ func CreateSyncTask(ctx context.Context, stockCode, period, startDate, endDate s
 			return nil
 		}
 		if existing.Status == SyncStatusDone &&
-			existing.EndDate >= endDate && existing.StartDate <= startDate {
+			existing.EndDate >= endDate && existing.StartDate <= startDate &&
+			SyncCheckpointCaughtUp(existing.LastSyncDate, endDate) {
 			return nil
 		}
 		if startDate < existing.StartDate || existing.StartDate == "" {

@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"go-stock/backend/data/datasource"
@@ -26,6 +27,45 @@ func ReclaimStaleRunningSyncTasks(ctx context.Context, maxAge time.Duration) (in
 		Updates(map[string]interface{}{
 			"status":     SyncStatusPending,
 			"error_msg":  "recovered: stale running after restart",
+			"updated_at": time.Now(),
+		})
+	return res.RowsAffected, res.Error
+}
+
+// SyncCheckpointCaughtUp 断点已经覆盖请求的结束日，或已经覆盖到当前应有的最近交易日。
+// 结束日落在周末或未开盘时，断点停在上一个交易日也算齐，避免每次点击都把全市场再拉一遍。
+// 断点为空不算齐：窗口盖住今天不代表 K 线已经落到这一天。
+func SyncCheckpointCaughtUp(lastSync, endDate string) bool {
+	return syncCheckpointCaughtUpAt(lastSync, endDate, time.Now())
+}
+
+func syncCheckpointCaughtUpAt(lastSync, endDate string, now time.Time) bool {
+	if lastSync == "" {
+		return false
+	}
+	if endDate != "" && lastSync >= endDate {
+		return true
+	}
+	expected := datasource.ExpectedLatestTradeDate(now)
+	return expected != "" && lastSync >= expected
+}
+
+// RequeueDoneBehindCheckpoint 把已完成、但断点仍早于通过日（且早于任务 end_date）的任务重新排队。
+// 不清 last_sync_date：只从断点补尾部。停在上一个交易日、end 又被延到今天的任务，
+// 否则会被「窗口已覆盖」跳过，盘中永远补不到当天。
+func RequeueDoneBehindCheckpoint(ctx context.Context, through string) (int64, error) {
+	through = strings.TrimSpace(through)
+	if through == "" {
+		through = datasource.ExpectedLatestTradeDate(time.Now())
+	}
+	res := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
+		Where(`status = ? AND (
+			IFNULL(last_sync_date, '') = '' OR
+			(IFNULL(last_sync_date, '') < end_date AND IFNULL(last_sync_date, '') < ?)
+		)`, SyncStatusDone, through).
+		Updates(map[string]interface{}{
+			"status":     SyncStatusPending,
+			"error_msg":  "",
 			"updated_at": time.Now(),
 		})
 	return res.RowsAffected, res.Error
@@ -262,6 +302,19 @@ func PrepareSyncQueueOnStartup(onMorePending func()) {
 		logger.SugaredLogger.Warnf("bump sync end_date: %v", err)
 	} else if n > 0 {
 		logger.SugaredLogger.Infof("K线同步：%d 条 done 任务延长 end_date 至 %s", n, today)
+	}
+
+	through := datasource.ExpectedLatestTradeDate(time.Now())
+	if n, err := RequeueDoneBehindCheckpoint(ctx, through); err != nil {
+		logger.SugaredLogger.Warnf("requeue done behind checkpoint: %v", err)
+	} else if n > 0 {
+		logger.SugaredLogger.Infof("K线同步：%d 条 done 任务断点早于 %s，重新排队补尾部", n, through)
+	}
+
+	if n, err := datasource.NewKLineStore().PurgeInvalidTradeDates(ctx); err != nil {
+		logger.SugaredLogger.Warnf("purge invalid kline dates: %v", err)
+	} else if n > 0 {
+		logger.SugaredLogger.Infof("K线同步：删除 %d 条非法交易日（0001-01-01 或未来日期）", n)
 	}
 
 	go func() {

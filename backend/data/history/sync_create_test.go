@@ -34,17 +34,38 @@ func TestCreateSyncTask_SkipsUpToDateDone(t *testing.T) {
 	setupSyncTestDB(t)
 	ctx := context.Background()
 	_ = db.Dao.Create(&models.KLineSyncLog{
-		StockCode: "600519.SH", Period: "day", Adjusted: true,
-		StartDate: "2024-01-01", EndDate: "2026-10-20", Status: SyncStatusDone,
-		UpdatedAt: time.Now(),
+		StockCode: "sh600519", Period: "day", Adjusted: true,
+		StartDate: "2024-01-01", EndDate: "2026-10-20", LastSyncDate: "2026-10-20",
+		Status: SyncStatusDone, UpdatedAt: time.Now(),
 	}).Error
 	if err := CreateSyncTask(ctx, "600519.SH", "day", "2024-01-01", "2026-10-20", true); err != nil {
 		t.Fatal(err)
 	}
 	var log models.KLineSyncLog
-	_ = db.Dao.First(&log, "stock_code = ?", "600519.SH").Error
+	_ = db.Dao.First(&log, "stock_code = ?", "sh600519").Error
 	if log.Status != SyncStatusDone {
 		t.Fatalf("expected still done, got %s", log.Status)
+	}
+}
+
+func TestCreateSyncTask_RequeuesWhenCheckpointBehind(t *testing.T) {
+	setupSyncTestDB(t)
+	ctx := context.Background()
+	_ = db.Dao.Create(&models.KLineSyncLog{
+		StockCode: "sh600519", Period: "day", Adjusted: true,
+		StartDate: "2021-10-20", EndDate: "2026-11-06", LastSyncDate: "2026-10-09",
+		Status: SyncStatusDone, UpdatedAt: time.Now(),
+	}).Error
+	if err := CreateSyncTask(ctx, "sh600519", "day", "2021-11-06", "2026-11-06", true); err != nil {
+		t.Fatal(err)
+	}
+	var log models.KLineSyncLog
+	_ = db.Dao.First(&log, "stock_code = ?", "sh600519").Error
+	if log.Status != SyncStatusPending {
+		t.Fatalf("断点停在 2026-10-09 应重新排队, got %s", log.Status)
+	}
+	if log.LastSyncDate != "2026-10-09" {
+		t.Fatalf("补尾部不应清断点, got %s", log.LastSyncDate)
 	}
 }
 

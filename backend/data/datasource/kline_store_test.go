@@ -2,7 +2,9 @@ package datasource
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -11,6 +13,7 @@ import (
 
 	"go-stock/backend/db"
 	"go-stock/backend/models"
+	"go-stock/backend/util/timeutil"
 )
 
 func setupInMemoryDB(t *testing.T) *gorm.DB {
@@ -69,6 +72,7 @@ func TestUpsertSanitizesDirtyBars(t *testing.T) {
 	bars := []models.KLineBar{
 		{StockCode: "sz399006", Period: "day", TradeDate: "2099-02-11", Close: -3.39, Source: "mootdx_kline"},
 		{StockCode: "sz399006", Period: "day", TradeDate: "not-a-date", Close: 1, Source: "mootdx_kline"},
+		{StockCode: "sz399006", Period: "day", TradeDate: "0001-01-01", Close: 6.72, Source: "mootdx_kline"},
 		{StockCode: "sz399006", Period: "day", TradeDate: "2024-01-03", Close: 1800, Source: "test"},
 	}
 	require.NoError(t, store.UpsertKLines(ctx, bars))
@@ -81,6 +85,55 @@ func TestUpsertSanitizesDirtyBars(t *testing.T) {
 	require.NoError(t, db.Dao.Model(&models.KLineBar{}).Where("period = ?", "day").
 		Select("MAX(trade_date)").Scan(&latest).Error)
 	assert.Equal(t, "2024-01-03", latest)
+}
+
+func TestLatestMarketTradeDatePrefersLatestBroadDay(t *testing.T) {
+	orig := db.Dao
+	db.Dao = setupInMemoryDB(t)
+	defer func() { db.Dao = orig }()
+
+	older := timeutil.DateStr(time.Now().AddDate(0, 0, -3))
+	newer := timeutil.DateStr(time.Now().AddDate(0, 0, -1))
+	outlier := timeutil.TodayStr()
+	for i := 0; i < 10; i++ {
+		code := fmt.Sprintf("sh6000%02d", i)
+		require.NoError(t, db.Dao.Create(&models.KLineBar{
+			StockCode: code, Period: "day", TradeDate: older, Adjusted: true, Close: 1,
+		}).Error)
+		if i < 9 {
+			require.NoError(t, db.Dao.Create(&models.KLineBar{
+				StockCode: code, Period: "day", TradeDate: newer, Adjusted: true, Close: 1,
+			}).Error)
+		}
+	}
+	require.NoError(t, db.Dao.Create(&models.KLineBar{
+		StockCode: "sh600519", Period: "day", TradeDate: outlier, Adjusted: true, Close: 1,
+	}).Error)
+	require.NoError(t, db.Dao.Create(&models.KLineBar{
+		StockCode: "sh601108", Period: "day", TradeDate: "0001-01-01", Adjusted: true, Close: 6.72,
+	}).Error)
+
+	got := NewKLineStore().LatestMarketTradeDate(context.Background(), 45, 1)
+	assert.Equal(t, newer, got, "覆盖面接近峰值时取最近一天，而不是股票数略多的更早一天，也不是单只离群或 0001-01-01")
+}
+
+func TestPurgeInvalidTradeDates(t *testing.T) {
+	orig := db.Dao
+	db.Dao = setupInMemoryDB(t)
+	defer func() { db.Dao = orig }()
+
+	require.NoError(t, db.Dao.Create(&models.KLineBar{StockCode: "sh601108", Period: "day", TradeDate: "0001-01-01", Adjusted: true, Close: 6}).Error)
+	require.NoError(t, db.Dao.Create(&models.KLineBar{StockCode: "sz399006", Period: "day", TradeDate: "2099-02-11", Adjusted: true, Close: 1}).Error)
+	require.NoError(t, db.Dao.Create(&models.KLineBar{StockCode: "sh600519", Period: "day", TradeDate: "2024-01-03", Adjusted: true, Close: 1}).Error)
+
+	n, err := NewKLineStore().PurgeInvalidTradeDates(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n)
+
+	var left []models.KLineBar
+	require.NoError(t, db.Dao.Find(&left).Error)
+	require.Len(t, left, 1)
+	assert.Equal(t, "2024-01-03", left[0].TradeDate)
 }
 
 func TestFindMissingDateRanges(t *testing.T) {

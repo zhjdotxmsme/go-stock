@@ -61,8 +61,11 @@ func (s *KLineStore) QueryKLinesPreferAdjusted(ctx context.Context, stockCode, p
 	return s.QueryKLines(ctx, stockCode, period, startDate, endDate, false)
 }
 
-// LatestMarketTradeDate 返回近 lookbackDays 内「覆盖 distinct 股票数最多」的交易日。
-// 避免全局 MAX(trade_date) 被个别离群同步拉高，导致狩猎场等逻辑误判「无当日数据」。
+// LatestMarketTradeDate 返回近 lookbackDays 内、覆盖面接近峰值的最近一个交易日。
+// 不用全局 MAX：个别代码的脏日期或单只超前同步会把「市场日」拉到未来。
+// 也不用「股票数最多的那一天」：国庆后首日往往比随后每个交易日多十几只（停牌/退市），
+// 峰值会停在几周前，数据管理就会显示成数据只到那天。
+// 规则：计数达到 minDistinct，且不少于峰值的 90%，这些日子里取最晚的一个。
 func (s *KLineStore) LatestMarketTradeDate(ctx context.Context, lookbackDays, minDistinct int) string {
 	if lookbackDays <= 0 {
 		lookbackDays = 45
@@ -76,19 +79,51 @@ func (s *KLineStore) LatestMarketTradeDate(ctx context.Context, lookbackDays, mi
 		TradeDate string
 		C         int64
 	}
-	var best row
+	var rows []row
 	err := db.Dao.WithContext(ctx).Raw(`
-SELECT trade_date, COUNT(DISTINCT stock_code) AS c
+SELECT substr(trade_date, 1, 10) AS trade_date, COUNT(DISTINCT stock_code) AS c
 FROM kline_bars
 WHERE period IN ('day','101') AND adjusted = 1
-  AND trade_date BETWEEN ? AND ?
-GROUP BY trade_date
-ORDER BY c DESC, trade_date DESC
-LIMIT 1`, start, end).Scan(&best).Error
-	if err != nil || best.TradeDate == "" || best.C < int64(minDistinct) {
+  AND substr(trade_date, 1, 10) >= ?
+  AND substr(trade_date, 1, 10) <= ?
+  AND substr(trade_date, 1, 10) >= '1990-01-01'
+GROUP BY 1`, start, end).Scan(&rows).Error
+	if err != nil || len(rows) == 0 {
 		return fallbackLastWeekday()
 	}
-	return best.TradeDate
+	var peak int64
+	for _, r := range rows {
+		if r.C > peak {
+			peak = r.C
+		}
+	}
+	need := int64(minDistinct)
+	if floor := peak * 9 / 10; floor > need {
+		need = floor
+	}
+	best := ""
+	for _, r := range rows {
+		if r.TradeDate == "" || r.C < need {
+			continue
+		}
+		if r.TradeDate > best {
+			best = r.TradeDate
+		}
+	}
+	if best == "" {
+		return fallbackLastWeekday()
+	}
+	return best
+}
+
+// PurgeInvalidTradeDates 删掉无法当作交易日的存量行。
+// mootdx 曾写入 time.Time 零值，落成 0001-01-01，MIN(trade_date) 就被它拉到公元元年。
+func (s *KLineStore) PurgeInvalidTradeDates(ctx context.Context) (int64, error) {
+	cutoff := timeutil.DateStr(time.Now().AddDate(0, 0, 1))
+	res := db.Dao.WithContext(ctx).Exec(
+		`DELETE FROM kline_bars WHERE trade_date < ? OR trade_date > ?`,
+		"1990-01-01", cutoff)
+	return res.RowsAffected, res.Error
 }
 
 func fallbackLastWeekday() string {
@@ -164,7 +199,7 @@ func sanitizeBars(bars []models.KLineBar) []models.KLineBar {
 			d = d[:len(timeutil.DateLayout)] // 容忍 "2006-01-02 15:04:05" 截断为日期
 		}
 		t, err := timeutil.ParseDate(d)
-		if err != nil || timeutil.DateStr(t) > cutoff {
+		if err != nil || timeutil.DateStr(t) > cutoff || timeutil.DateStr(t) < "1990-01-01" {
 			if dropped == 0 {
 				firstBad = b
 			}
