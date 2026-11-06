@@ -19,6 +19,7 @@ import (
 	"go-stock/backend/logger"
 	"go-stock/backend/models"
 	"go-stock/backend/stockcode"
+	"go-stock/backend/util/timeutil"
 
 	"gorm.io/gorm"
 )
@@ -225,6 +226,35 @@ func (s *Service) RetryFailedSync() (int64, error) {
 		startSyncWorkers()
 	}
 	return n, nil
+}
+
+// CatchUpSync 把截止日或断点早于 through 的已完成任务重新排队，只从断点补尾部。
+// 不清 last_sync_date、不清空窗。through 为空时用今天。
+func (s *Service) CatchUpSync(through string) (int64, error) {
+	through = strings.TrimSpace(through)
+	if through == "" {
+		through = timeutil.TodayStr()
+	}
+	if _, err := timeutil.ParseDate(through); err != nil {
+		return 0, fmt.Errorf("invalid through date %q", through)
+	}
+	ctx := context.Background()
+	res := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
+		Where("status = ? AND (end_date < ? OR IFNULL(last_sync_date, '') < ?)", history.SyncStatusDone, through, through).
+		Updates(map[string]interface{}{
+			"status":     history.SyncStatusPending,
+			"error_msg":  "",
+			"updated_at": time.Now(),
+			"end_date":   gorm.Expr("CASE WHEN end_date < ? THEN ? ELSE end_date END", through, through),
+		})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	logger.SugaredLogger.Infof("catch-up sync through %s: requeued %d", through, res.RowsAffected)
+	if res.RowsAffected > 0 {
+		startSyncWorkers()
+	}
+	return res.RowsAffected, nil
 }
 
 // ResumePendingSyncTasks 应用启动时恢复 K 线同步：回收僵死 running、延长过期 end_date、

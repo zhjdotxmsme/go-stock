@@ -63,6 +63,8 @@ func main() {
 	years := flag.Int("years", 5, "历史同步年数")
 	wait := flag.Duration("wait", 90*time.Minute, "最长等待 worker 清空 pending/running")
 	retryFailed := flag.Bool("retry-failed", false, "只重试 failed 和僵死 running，不扫描全市场、不延长已完成任务")
+	catchUp := flag.Bool("catch-up", false, "把断点或截止日早于 -through 的已完成任务重新排队，只补尾部")
+	through := flag.String("through", "", "catch-up 截止日 YYYY-MM-DD，默认今天")
 	flag.Parse()
 	if strings.TrimSpace(*dbPath) == "" {
 		fmt.Fprintln(os.Stderr, "必须指定 -db")
@@ -73,7 +75,18 @@ func main() {
 	initRouter()
 
 	svc := backtest.NewService()
-	if *retryFailed {
+	if *catchUp {
+		n, err := svc.CatchUpSync(*through)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "CatchUpSync: %v\n", err)
+			os.Exit(1)
+		}
+		label := strings.TrimSpace(*through)
+		if label == "" {
+			label = "今天"
+		}
+		fmt.Printf("已重新排队 %d 条需要补到 %s 的任务\n", n, label)
+	} else if *retryFailed {
 		n, err := svc.RetryFailedSync()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "RetryFailedSync: %v\n", err)

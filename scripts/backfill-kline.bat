@@ -6,7 +6,7 @@ rem 跑之前先关掉 go-stock，否则桌面进程会用旧逻辑把任务又�
 cd /d "%~dp0\.."
 set PATH=D:\go\bin;C:\Users\54389\go\bin;%PATH%
 set GOCACHE=%CD%\.gocache
-echo 补齐失败的 K 线同步任务，库：D:\_installers\go-stock\data\stock.db
-go run ./backend/cmd/klinesync -db "D:\_installers\go-stock\data\stock.db" -retry-failed -wait 60m
+echo 把断点早于今天的已完成任务补到最新，库：D:\_installers\go-stock\data\stock.db
+go run ./backend/cmd/klinesync -db "D:\_installers\go-stock\data\stock.db" -catch-up -wait 60m
 echo exit=%ERRORLEVEL%
 pause
