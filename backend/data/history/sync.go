@@ -65,6 +65,7 @@ func SyncKLineForStock(ctx context.Context, stockCode, period, startDate, endDat
 	}
 
 	logger.SugaredLogger.Infof("Found %d missing range(s) for %s %s", len(missingRanges), stockCode, period)
+	verifiedTailEmptySpans := ""
 
 	for i, rng := range missingRanges {
 		if !shouldSyncGap(rng, startDate, endDate) {
@@ -82,13 +83,15 @@ func SyncKLineForStock(ctx context.Context, stockCode, period, startDate, endDat
 				return fmt.Errorf("sync failed for range [%s - %s]: %w", rng.Start, rng.End, err)
 			}
 			// 贴着任务结束日的空窗不落库。否则数据源少给的尾部会被当成永久停牌，断点再跳过去就补不回来。
-			if emptyStart != "" && emptyEnd != "" && emptyEnd < endDate {
-				saveEmptySpan(ctx, stockCode, period, adjusted, emptyStart, emptyEnd)
+			if emptyStart != "" && emptyEnd != "" {
+				if emptyEnd < endDate {
+					saveEmptySpan(ctx, stockCode, period, adjusted, emptyStart, emptyEnd)
+				} else {
+					verifiedTailEmptySpans = mergeEmptySpan(verifiedTailEmptySpans, emptyStart, emptyEnd)
+				}
 			}
 		}
 	}
-
-	logger.SugaredLogger.Infof("Successfully completed K-line sync for %s %s [%s - %s]", stockCode, period, startDate, endDate)
 
 	// 完成前只拦截「长于长假、且没有被数据源核实为空窗」的缺口。
 	// 周末之外的法定假日、上市前工作日不是失败：假完成的根因是拉错窗口后把 0 根当成功，
@@ -98,6 +101,8 @@ func SyncKLineForStock(ctx context.Context, stockCode, period, startDate, endDat
 		return fmt.Errorf("verify gaps after sync: %w", err)
 	}
 	remaining = subtractEmptySpans(remaining, loadEmptySpans(ctx, stockCode, period, adjusted))
+	// 尾部空窗只用于本次收尾；不持久化，openGaps 仍会把断点留在其前面以便后续重扫。
+	remaining = subtractEmptySpans(remaining, verifiedTailEmptySpans)
 	blocking := blockingGaps(remaining)
 	if len(blocking) > 0 {
 		first, last := blocking[0], blocking[len(blocking)-1]
@@ -108,6 +113,7 @@ func SyncKLineForStock(ctx context.Context, stockCode, period, startDate, endDat
 		return fmt.Errorf("补齐后仍有缺口未覆盖（%s），源数据暂缺或连续拉取失败", summary)
 	}
 
+	logger.SugaredLogger.Infof("Successfully completed K-line sync for %s %s [%s - %s]", stockCode, period, startDate, endDate)
 	return nil
 }
 
@@ -199,6 +205,8 @@ func RunSyncTask(ctx context.Context, task *SyncTask) error {
 	err := SyncKLineForStock(ctx, task.StockCode, task.Period, startDate, task.EndDate, task.Adjusted)
 
 	if err != nil {
+		// 续跑只扫描断点后的子窗口，但失败进度必须展示整个任务的库内实数。
+		refreshSyncedCount(ctx, task.StockCode, task.Period, task.Adjusted, task.StartDate, task.EndDate)
 		task.Status = SyncStatusFailed
 		task.ErrorMsg = err.Error()
 		logger.SugaredLogger.Errorf("Sync task failed: %s - %v", task.StockCode, err)

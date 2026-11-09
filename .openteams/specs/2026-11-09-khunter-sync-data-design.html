@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>狩猎场数据覆盖与同步完成判定修复设计</title>
+  <style>
+    :root{color-scheme:light dark;--fg:#182235;--muted:#63718a;--line:#dbe3ef;--surface:#f5f7fb;--accent:#2563eb}@media(prefers-color-scheme:dark){:root{--fg:#e6ebf3;--muted:#a4b0c2;--line:#354158;--surface:#151c29;--accent:#82aaff}}
+    body{margin:0;background:var(--surface);color:var(--fg);font:15px/1.75 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}main{max-width:960px;margin:36px auto;padding:0 24px 56px}header,section{background:Canvas;border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:16px}h1{font-size:27px;line-height:1.4;margin:0 0 8px}h2{font-size:19px;margin:0 0 12px}p{margin:8px 0}.muted{color:var(--muted)}.badge{color:var(--accent);border:1px solid var(--accent);border-radius:99px;padding:2px 10px;font-size:13px}table{width:100%;border-collapse:collapse}th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}th{color:var(--muted)}code{background:var(--surface);padding:2px 5px;border-radius:4px}ol,ul{padding-left:22px}.decision{border-left:3px solid var(--accent);padding-left:16px}
+  </style>
+</head>
+<body><main>
+<header><span class="badge">已确认方案</span><h1>狩猎场数据覆盖与同步完成判定修复</h1><p class="muted">日期：2026-11-09 · 范围：历史同步收尾、失败进度统计、狩猎场覆盖提示</p><p>目标：区分真实下载失败、长期停牌/退市造成的尾部空窗、近期上市造成的短历史，以及盘中当日日 K 未完整，消除“有数据却提示不足”的误导。</p></header>
+<section><h2>1. 已核实事实</h2><table><tr><th>检查项</th><th>部署库结果</th></tr><tr><td>K 线总量</td><td>13,899,294 根；5,179 个任务完成，12 个失败。</td></tr><tr><td>当前 SH/SZ 股票池</td><td>5,184 只；5,145 只至少 130 根，32 只为 30–129 根，7 只少于 30 根，无零数据股票。</td></tr><tr><td>少于 30 根的股票</td><td>均为近期上市，库内日期覆盖其实际上市以来的交易日。</td></tr><tr><td>12 个失败任务</td><td>均不属于当前狩猎场股票池；历史 K 线存在，HTTP 请求成功，尾部无新数据与长期停牌/退市一致。</td></tr><tr><td>盘中运行</td><td>2026-11-06 覆盖 5,177 只；2026-11-09 盘中仅约 100 只有当日日 K，触发固定阈值提示。</td></tr></table></section>
+<section><h2>2. 同步尾部空窗</h2><p class="decision">数据源已核实、且贴着任务结束日的空窗，在本次最终校验中使用临时空窗集合抵消，不记为失败。</p><ul><li>仍不持久化贴着任务结束日的空窗，避免数据源暂时少给尾部后被永久跳过。</li><li><code>openGaps</code> 和断点计算仍读取持久化空窗，因此尾部缺口会把断点留在缺口前，后续运行可以重扫复牌数据。</li><li>非尾部空窗维持现有持久化规则；未核实、锚定错误和拉取错误仍然失败。</li></ul></section>
+<section><h2>3. 失败任务计数</h2><p>当 <code>RunSyncTask</code> 返回失败时，以 <code>task.StartDate/task.EndDate</code> 的整个任务窗口重新统计 <code>synced_count</code>，不再保留续跑子窗口的计数。成功路径继续由现有 <code>alignDoneTask</code> 收口，避免增加重复查询。</p></section>
+<section><h2>4. 狩猎场提示</h2><ul><li>保留用户选择的运行日期，不自动回退，不使用盘中不完整日 K 计算信号。</li><li>运行结果返回总股票数、当日有 K 线数、历史不足数、所选日期缺 K 线数和查询失败数，替代仅依赖 <code>freshStocks &lt; 100</code> 的不可诊断提示。</li><li>选择今天且覆盖不足时，明确说明“今日日 K 尚未完整”，展示实际覆盖数，并建议等待收盘同步或选择最近完整交易日。</li><li>历史日期覆盖不足时展示所选日期及缺失统计；只有确实存在历史不足或查询失败时才建议检查同步。</li></ul></section>
+<section><h2>5. 非目标</h2><p>不自动补造停牌/退市期间 K 线；不改变近期上市股票的最低样本规则；不修改策略阈值；不自动切换狩猎场日期；不扩大为历史指标或回测窗口重构。</p></section>
+<section><h2>6. 测试与验收</h2><ol><li>复现尾部空窗在旧逻辑下报错；修复后同步成功、尾部空窗不持久化、断点保留。</li><li>验证断点续跑失败后的计数来自整个任务窗口。</li><li>验证覆盖统计能区分历史不足、所选日期无 bar 和查询错误。</li><li>执行定向 Go 测试、<code>go build ./...</code>、<code>go vet ./backend/...</code>、前端生产构建和桌面构建。</li><li>实际页面验证今日盘中提示及 2026-11-06 正常扫描；构建部署后确认日志不再出现旧股票尾部空窗误报。</li></ol></section>
+</main></body></html>

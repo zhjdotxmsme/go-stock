@@ -473,10 +473,19 @@ EventsOn('khunter:progress', (msg: any) => {
   const td = r.TradeDate ?? r.tradeDate
   const fresh = r.FreshStocks ?? r.freshStocks ?? 0
   const total = r.StockTotal ?? r.stockTotal ?? 0
+  const insufficient = r.InsufficientHistory ?? r.insufficientHistory ?? 0
+  const missingDate = r.MissingTradeDate ?? r.missingTradeDate ?? 0
+  const queryFailed = r.QueryFailed ?? r.queryFailed ?? 0
   const sigN = r.Signals ?? 0
-  lastRunText.value = `最近运行(${td || '-'}): 新鲜K线 ${fresh}/${total} · 信号 ${sigN} · 入池 ${r.Hunted ?? 0}`
+  lastRunText.value = `最近运行(${td || '-'}): 当日K线 ${fresh}/${total} · 信号 ${sigN} · 入池 ${r.Hunted ?? 0}`
   if (fresh < 100) {
-    message.warning('本地日K覆盖不足，请到「数据管理」启动历史同步后再跑狩猎场')
+    if (td === today) {
+      message.warning(`今日日K尚未完整：当前覆盖 ${fresh}/${total} 只。请等待收盘同步，或选择最近完整交易日；无需重跑五年历史同步`)
+    } else if (insufficient > 0 || queryFailed > 0) {
+      message.warning(`${td} 数据检查：当日K线 ${fresh}/${total}，历史不足 ${insufficient} 只，查询失败 ${queryFailed} 只；请到「数据管理」检查对应任务`)
+    } else {
+      message.warning(`${td} 当日K线仅覆盖 ${fresh}/${total} 只，${missingDate} 只当日无K线（停牌或尚未同步）；已保留所选日期`)
+    }
   }
   if (sigN === 0) {
     message.warning(`${td || '当日'} 策略扫描完成但信号为 0，评分表不会生成；可切换到有历史信号的交易日查看`)

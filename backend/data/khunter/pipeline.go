@@ -42,15 +42,18 @@ func HuntingThreshold(lv risk.Level) float64 { return 60 + lv.ScoreExtra }
 
 // PipelineResult 流水线执行结果
 type PipelineResult struct {
-	Signals     int
-	Candidates  int
-	Scored      int
-	Hunted      int
-	Removed     int
-	RiskLevel   string
-	TradeDate   string
-	StockTotal  int `json:"stockTotal"`
-	FreshStocks int `json:"freshStocks"`
+	Signals             int
+	Candidates          int
+	Scored              int
+	Hunted              int
+	Removed             int
+	RiskLevel           string
+	TradeDate           string
+	StockTotal          int `json:"stockTotal"`
+	FreshStocks         int `json:"freshStocks"`
+	InsufficientHistory int `json:"insufficientHistory"`
+	MissingTradeDate    int `json:"missingTradeDate"`
+	QueryFailed         int `json:"queryFailed"`
 }
 
 // resolveTradeDate 解析流水线交易日：显式传入则照用；为空时取本地日 K 最新交易日
@@ -121,6 +124,9 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 	hits := map[string][]scorer.Hit{}
 	lastBars := map[string][]models.KLineBar{}
 	sem := make(chan struct{}, 8)
+	insufficientHistory := 0
+	missingTradeDate := 0
+	queryFailed := 0
 	var wg sync.WaitGroup
 	for _, st := range stocks {
 		if strategy.IsInvalidName(st.Name) {
@@ -132,10 +138,22 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			bars, err := strategy.LoadDailyBars(ctx, code, 30)
-			if err != nil || len(bars) == 0 {
+			if err != nil {
+				mu.Lock()
+				queryFailed++
+				mu.Unlock()
+				return
+			}
+			if len(bars) == 0 {
+				mu.Lock()
+				insufficientHistory++
+				mu.Unlock()
 				return
 			}
 			if !hasBarOnDate(bars, tradeDate) {
+				mu.Lock()
+				missingTradeDate++
+				mu.Unlock()
 				return // 停牌/本地 K 未同步到 tradeDate
 			}
 			mu.Lock()
@@ -164,10 +182,13 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 	}
 	wg.Wait()
 	res.FreshStocks = len(lastBars)
-	logger.SugaredLogger.Infof("khunter pipeline scan done: %d/%d 只本地K线在 %s 有 bar，信号 %d 条",
-		len(lastBars), len(stocks), tradeDate, len(signals))
+	res.InsufficientHistory = insufficientHistory
+	res.MissingTradeDate = missingTradeDate
+	res.QueryFailed = queryFailed
+	logger.SugaredLogger.Infof("khunter pipeline scan done: %d/%d 只本地K线在 %s 有 bar，历史不足 %d，当日无 bar %d，查询失败 %d，信号 %d 条",
+		len(lastBars), len(stocks), tradeDate, insufficientHistory, missingTradeDate, queryFailed, len(signals))
 	if len(lastBars) < 100 {
-		logger.SugaredLogger.Warnf("khunter 本地日K覆盖不足：请在「数据管理」执行历史同步，或等待 15:30 K线同步任务")
+		logger.SugaredLogger.Warnf("khunter 所选日期本地日K覆盖较低：%s，当日有 bar %d/%d", tradeDate, len(lastBars), len(stocks))
 	}
 	if err := repo.SaveSignals(signals); err != nil {
 		return res, err
