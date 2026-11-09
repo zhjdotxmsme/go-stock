@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>数据管理历史数据与同步状态优化设计</title>
+  <style>
+    :root { color-scheme: light dark; --fg:#172033; --muted:#617089; --line:#dce3ee; --surface:#f6f8fc; --accent:#2563eb; --success:#15803d; }
+    @media (prefers-color-scheme: dark) { :root { --fg:#e5eaf3; --muted:#a2aec2; --line:#354056; --surface:#171e2c; --accent:#7aa7ff; --success:#74d69a; } }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--fg); background:var(--surface); font:15px/1.75 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+    main { max-width:980px; margin:40px auto; padding:0 24px 56px; }
+    header { padding:32px; border:1px solid var(--line); border-radius:16px; background:Canvas; }
+    h1 { margin:0 0 8px; font-size:28px; line-height:1.35; }
+    h2 { margin-top:32px; font-size:20px; border-bottom:1px solid var(--line); padding-bottom:8px; }
+    h3 { margin-bottom:4px; font-size:16px; }
+    p { margin:8px 0; }
+    .meta,.note { color:var(--muted); }
+    .badge { display:inline-block; padding:2px 10px; border-radius:999px; color:var(--accent); border:1px solid var(--accent); font-size:13px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
+    section.card { padding:20px; border:1px solid var(--line); border-radius:12px; background:Canvas; }
+    ul { padding-left:22px; }
+    code { padding:2px 5px; border-radius:4px; background:var(--surface); }
+    table { width:100%; border-collapse:collapse; background:Canvas; }
+    th,td { padding:10px 12px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--muted); }
+    .flow { padding:16px 20px; border-left:3px solid var(--accent); background:Canvas; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <span class="badge">已确认设计</span>
+    <h1>数据管理：历史 K 线分页搜索与同步状态优化</h1>
+    <p class="meta">日期：2026-11-08 · 范围：桌面端数据管理页面及其查询接口</p>
+    <p>目标是在不改动同步执行、断点与重试逻辑的前提下，让历史 K 线可检索、可分页，并让同步进度更清晰、及时。</p>
+  </header>
+
+  <h2>1. 方案与边界</h2>
+  <div class="grid">
+    <section class="card"><h3>采用</h3><p>服务端 SQL 分页，使用 <code>Count + Order + Offset/Limit</code>。将当前“个股数据浏览”替换为“历史 K 线数据”，避免同一页面出现两个易混淆的数据表。</p></section>
+    <section class="card"><h3>不做</h3><p>不全量加载后前端分页；不新增股票基础信息浏览区；不调整同步 Worker、缺口修复、断点、复权或重试行为。</p></section>
+  </div>
+
+  <h2>2. 历史 K 线数据</h2>
+  <ul>
+    <li>默认按交易日期倒序展示，并使用稳定的次级排序避免翻页重复或遗漏。</li>
+    <li>每页默认 20 条，可切换 20、50、100 条；页码、总条数和总页数来自后端响应。</li>
+    <li>一个关键词输入框支持股票代码或名称搜索；提交搜索和改变每页条数时回到第 1 页。</li>
+    <li>表格列：股票代码、股票名称、交易日期、周期、复权、开盘、最高、最低、收盘、成交量、成交额。</li>
+    <li>代码条件复用 <code>stockcode.StockCodeCandidates</code> 与现有周期候选规则，兼容数据库中的历史混合格式。</li>
+    <li>名称搜索先通过 <code>AllStockInfo</code> 找到匹配股票代码，经 <code>stockcode.Normalize</code> 和 <code>StockCodeCandidates</code> 转换后查询 K 线；代码搜索与名称搜索使用同一套候选代码规则。</li>
+  </ul>
+  <p class="flow">DataManager.vue → api/backtest.ts → 手工 Wails 绑定 → backtest.Service → KLineStore 分页查询 → kline_bars</p>
+
+  <h2>3. 同步状态</h2>
+  <table>
+    <thead><tr><th>区域</th><th>行为</th></tr></thead>
+    <tbody>
+      <tr><td>状态汇总</td><td>展示待同步、进行中、已完成、失败、部分完成的数量；汇总来自数据库，而非仅统计当前表格行。</td></tr>
+      <tr><td>任务明细</td><td>英文状态映射为中文标签；数字进度改为带百分比的进度条；失败原因可查看，避免长文本撑坏布局。</td></tr>
+      <tr><td>刷新</td><td>进入页面、启动同步后立即刷新；存在进行中任务时每 5 秒轮询，离开后清理；保留手动刷新按钮。</td></tr>
+      <tr><td>缓存统计</td><td>同步进度刷新后联动更新缓存统计，使总 K 线数、股票数和日期范围保持接近实时。</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. 接口与组件</h2>
+  <ul>
+    <li><code>KLineStore</code> 新增分页查询，不把现有全量 <code>QueryKLines</code> 结果放入内存分页。</li>
+    <li><code>backtest.Service</code> 暴露历史 K 线分页查询；响应沿用 <code>list/total/page/pageSize/totalPages</code> 结构。</li>
+    <li>调整 <code>GetSyncProgress</code> 返回 <code>summary/tasks</code>：汇总由数据库分组统计，任务明细保留现有活动任务及最近完成任务语义，页面表格固定高度滚动。</li>
+    <li>同步更新 <code>Service.js</code>、<code>Service.d.ts</code>、<code>models.ts</code> 与 <code>src/api/backtest.ts</code>，遵守项目 <code>-skipbindings</code> 构建约定。</li>
+    <li><code>DataManager.vue</code> 复用现有 Naive UI 表格、分页、标签和进度条模式。</li>
+  </ul>
+
+  <h2>5. 异常与空状态</h2>
+  <ul>
+    <li>查询失败时提示错误并保留当前已展示数据，避免翻页失败清空页面。</li>
+    <li>无匹配结果时显示明确空状态；空关键词表示浏览全部历史 K 线。</li>
+    <li>页码或每页条数统一在后端限制合法范围，防止负数偏移和超大查询。</li>
+    <li>轮询失败不清空同步状态；后续活动轮询或手动刷新可恢复。</li>
+  </ul>
+
+  <h2>6. 验证与交付</h2>
+  <ol>
+    <li>定向 Go 测试覆盖总数、首页/中间页/末页边界、合法化参数和混合格式代码搜索。</li>
+    <li>执行 <code>go build ./...</code>、<code>go vet ./backend/...</code> 与相关定向测试。</li>
+    <li>使用 <code>node node_modules\vite\bin\vite.js build</code> 构建前端。</li>
+    <li>构建并启动实际桌面程序，验证空搜索、代码/名称搜索、翻页、每页条数、启动同步、中文状态、进度条、自动刷新和离开页面停止轮询。</li>
+  </ol>
+  <p class="note">验收以实际页面行为和定向测试结果为准；编译通过不替代运行时验证。</p>
+</main>
+</body>
+</html>

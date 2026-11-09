@@ -6,6 +6,7 @@
 import { callApi } from './client'
 import * as BacktestService from '../../wailsjs/go/backtest/Service'
 import * as DailyPickBacktestService from '../../wailsjs/go/service/DailyPickBacktestService'
+import type { backtest } from '../../wailsjs/go/models'
 
 // ========== 单次/批量回测 ==========
 
@@ -75,6 +76,15 @@ export async function getKLineCacheStats(): Promise<any> {
 }
 
 /**
+ * 分页查询历史 K 线
+ */
+export async function getKLineHistory(keyword: string, page: number, pageSize: number): Promise<backtest.KLineHistoryPageData> {
+  const r = await callApi(BacktestService.GetKLineHistory, keyword, page, pageSize)
+  if (!r?.success) throw new Error(r?.message || "调用失败")
+  return r.data
+}
+
+/**
  * 启动历史数据同步
  */
 export async function startHistoricalSync(...args: any[]): Promise<any> {
@@ -86,7 +96,7 @@ export async function startHistoricalSync(...args: any[]): Promise<any> {
 /**
  * 获取同步进度
  */
-export async function getSyncProgress(): Promise<any> {
+export async function getSyncProgress(): Promise<backtest.SyncProgressData> {
   const r = await callApi(BacktestService.GetSyncProgress)
   if (!r?.success) throw new Error(r?.message || "调用失败")
   return r.data
@@ -127,6 +137,7 @@ export default {
   getOptimizationPresets,
   runBacktestForDailyPicks,
   getKLineCacheStats,
+  getKLineHistory,
   startHistoricalSync,
   getSyncProgress,
   getSeedImportStatus,

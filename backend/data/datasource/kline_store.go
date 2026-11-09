@@ -49,6 +49,41 @@ func (s *KLineStore) QueryKLines(ctx context.Context, stockCode, period, startDa
 	return sanitizeBars(bars), nil
 }
 
+// QueryKLinePage returns a page of bars, newest first. A nil stockCodes slice
+// queries all stocks; a non-nil empty slice intentionally matches no rows.
+func (s *KLineStore) QueryKLinePage(ctx context.Context, stockCodes []string, page, pageSize int) ([]models.KLineBar, int64, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	q := db.Dao.WithContext(ctx).Model(&models.KLineBar{})
+	if stockCodes != nil {
+		if len(stockCodes) == 0 {
+			return []models.KLineBar{}, 0, nil
+		}
+		q = q.Where("stock_code IN ?", stockCodes)
+	}
+
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	bars := make([]models.KLineBar, 0, pageSize)
+	if err := q.Order("trade_date DESC, stock_code ASC, period ASC, adjusted DESC, id DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&bars).Error; err != nil {
+		return nil, 0, err
+	}
+	return bars, total, nil
+}
+
 // QueryKLinesPreferAdjusted 先查前复权日K，无数据时回退不复权（兼容历史导入）。
 func (s *KLineStore) QueryKLinesPreferAdjusted(ctx context.Context, stockCode, period, startDate, endDate string) ([]models.KLineBar, error) {
 	bars, err := s.QueryKLines(ctx, stockCode, period, startDate, endDate, true)

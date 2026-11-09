@@ -223,17 +223,141 @@ export namespace backtest {
 	
 	
 	
-	export class syncTaskItem {
+	export class KLineHistoryItem {
+	    id: number;
+	    stockCode: string;
+	    stockName: string;
+	    period: string;
+	    tradeDate: string;
+	    adjusted: boolean;
+	    open: number;
+	    high: number;
+	    low: number;
+	    close: number;
+	    volume: number;
+	    amount: number;
+
+	    static createFrom(source: any = {}) {
+	        return new KLineHistoryItem(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.stockCode = source["stockCode"];
+	        this.stockName = source["stockName"];
+	        this.period = source["period"];
+	        this.tradeDate = source["tradeDate"];
+	        this.adjusted = source["adjusted"];
+	        this.open = source["open"];
+	        this.high = source["high"];
+	        this.low = source["low"];
+	        this.close = source["close"];
+	        this.volume = source["volume"];
+	        this.amount = source["amount"];
+	    }
+	}
+	export class KLineHistoryPageData {
+	    list: KLineHistoryItem[];
+	    total: number;
+	    page: number;
+	    pageSize: number;
+	    totalPages: number;
+
+	    static createFrom(source: any = {}) {
+	        return new KLineHistoryPageData(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.list = this.convertValues(source["list"], KLineHistoryItem);
+	        this.total = source["total"];
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.totalPages = source["totalPages"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SyncProgressSummary {
+	    pending: number;
+	    running: number;
+	    done: number;
+	    failed: number;
+	    partial: number;
+
+	    static createFrom(source: any = {}) {
+	        return new SyncProgressSummary(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pending = source["pending"];
+	        this.running = source["running"];
+	        this.done = source["done"];
+	        this.failed = source["failed"];
+	        this.partial = source["partial"];
+	    }
+	}
+	export class SyncProgressData {
+	    summary: SyncProgressSummary;
+	    tasks: SyncTaskItem[];
+
+	    static createFrom(source: any = {}) {
+	        return new SyncProgressData(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.summary = this.convertValues(source["summary"], SyncProgressSummary);
+	        this.tasks = this.convertValues(source["tasks"], SyncTaskItem);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SyncTaskItem {
 	    stockCode: string;
 	    period: string;
 	    status: string;
 	    progress: number;
 	    errorMsg: string;
-	
+
 	    static createFrom(source: any = {}) {
-	        return new syncTaskItem(source);
+	        return new SyncTaskItem(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.stockCode = source["stockCode"];

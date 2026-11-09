@@ -1,19 +1,18 @@
 <script setup>
-import { h, ref, onMounted, computed } from 'vue'
+import { h, ref, onMounted, onUnmounted, computed } from 'vue'
 import {
-  getKLineCacheStats, startHistoricalSync, getSyncProgress,
+  getKLineCacheStats, getKLineHistory, startHistoricalSync, getSyncProgress,
   getSeedImportStatus, runSeedImport as runSeedImportApi, getLastSeedImportOutput,
 } from '../api/backtest'
-import * as stockApi from '../api/stock'
 import { VacuumDatabase } from '../../wailsjs/go/handler/SystemHandler'
 import {
   NAlert, NButton, NCard, NDataTable, NDivider,
   NGi, NGrid, NSpin, NStatistic, NTag, NText, NFlex,
   NInput, NInputNumber, NPopconfirm, NIcon, NEmpty, NCode,
-  NCollapse, NCollapseItem,
+  NCollapse, NCollapseItem, NPagination, NProgress,
 } from 'naive-ui'
 import { useMessage } from 'naive-ui'
-import { SearchOutline, TrashOutline } from '@vicons/ionicons5'
+import { SearchOutline } from '@vicons/ionicons5'
 
 const message = useMessage()
 
@@ -61,18 +60,49 @@ async function loadStats() {
 const syncLoading = ref(false)
 const progressLoading = ref(false)
 const progressItems = ref([])
+const progressSummary = ref({ pending: 0, running: 0, done: 0, failed: 0, partial: 0 })
+let progressTimer = null
+let disposed = false
+
+const hasActiveSync = computed(() => progressSummary.value.pending + progressSummary.value.running > 0)
+const syncSummaryMetrics = computed(() => [
+  { label: '待同步', key: 'pending' },
+  { label: '进行中', key: 'running' },
+  { label: '已完成', key: 'done' },
+  { label: '失败', key: 'failed' },
+  { label: '部分完成', key: 'partial' },
+])
+
+const syncStatusMeta = {
+  pending: { label: '待同步', type: 'default' },
+  running: { label: '进行中', type: 'info' },
+  done: { label: '已完成', type: 'success' },
+  failed: { label: '失败', type: 'error' },
+  partial: { label: '部分完成', type: 'warning' },
+  error: { label: '异常', type: 'error' },
+}
 
 const progressColumns = [
   { title: '股票代码', key: 'stockCode', width: 110, ellipsis: true },
-  { title: '周期', key: 'period', width: 70 },
+  { title: '周期', key: 'period', width: 70, render: (row) => formatPeriod(row.period) },
   {
-    title: '状态', key: 'status', width: 90,
+    title: '状态', key: 'status', width: 100,
     render(row) {
-      const type = row.status === 'done' ? 'success' : (row.status === 'failed' || row.status === 'error') ? 'error' : 'info'
-      return h(NTag, { type, bordered: false, size: 'small' }, { default: () => row.status })
+      const meta = syncStatusMeta[row.status] || { label: row.status || '未知', type: 'default' }
+      return h(NTag, { type: meta.type, bordered: false, size: 'small' }, { default: () => meta.label })
     },
   },
-  { title: '进度', key: 'progress', width: 80 },
+  {
+    title: '进度', key: 'progress', width: 180,
+    render(row) {
+      const percentage = Math.max(0, Math.min(100, Number(row.progress) || 0))
+      const status = row.status === 'done' ? 'success' : row.status === 'failed' || row.status === 'error' ? 'error' : row.status === 'partial' ? 'warning' : 'default'
+      return h(NProgress, {
+        type: 'line', percentage, status, height: 14,
+        indicatorPlacement: 'inside', processing: row.status === 'running',
+      })
+    },
+  },
   { title: '错误信息', key: 'errorMsg', ellipsis: { tooltip: true } },
 ]
 
@@ -80,7 +110,8 @@ async function startSync() {
   syncLoading.value = true
   try {
     await startHistoricalSync(5)
-    message.success('历史数据同步已启动，稍后刷新进度查看')
+    message.success('历史数据同步已启动，进度将自动刷新')
+    await refreshProgress()
   } catch (e) {
     message.error('启动同步失败: ' + String(e))
   } finally {
@@ -88,62 +119,80 @@ async function startSync() {
   }
 }
 
-async function refreshProgress() {
-  progressLoading.value = true
+async function refreshProgress(silent = false) {
+  if (progressTimer) {
+    clearTimeout(progressTimer)
+    progressTimer = null
+  }
+  const resumeAfterError = hasActiveSync.value
+  if (!silent) progressLoading.value = true
   try {
-    progressItems.value = await getSyncProgress()
+    const res = await getSyncProgress()
+    progressSummary.value = { pending: 0, running: 0, done: 0, failed: 0, partial: 0, ...res?.summary }
+    progressItems.value = res?.tasks || []
+    await loadStats()
   } catch (e) {
-    message.error('获取进度失败: ' + String(e))
+    if (!silent) message.error('获取进度失败: ' + String(e))
   } finally {
-    progressLoading.value = false
+    if (!silent) progressLoading.value = false
+    if (!disposed && (hasActiveSync.value || resumeAfterError)) {
+      progressTimer = setTimeout(() => refreshProgress(true), 5000)
+    }
   }
 }
 
-// ── Stock Browser ──
-const stockSearch = ref('')
-const stockList = ref([])
-const stockLoading = ref(false)
-const stockError = ref('')
-const selectedStockIds = ref([])
+// ── Historical K-line Browser ──
+const historySearch = ref('')
+const historyData = ref(null)
+const historyPageSize = ref(20)
+const historyLoading = ref(false)
+const historyError = ref('')
 
-const stockColumns = [
-  { type: 'selection', width: 40 },
-  { title: '代码', key: 'SECUCODE', width: 120 },
-  { title: '名称', key: 'SECURITY_NAME_ABBR', width: 130 },
-  { title: '市场', key: 'MARKET', width: 70 },
-  { title: '数据日期', key: 'MAX_TRADE_DATE', width: 100 },
+function formatPeriod(period) {
+  return { day: '日线', '101': '日线', week: '周线', month: '月线' }[period] || period || '-'
+}
+
+function formatPrice(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number.toFixed(2) : '-'
+}
+
+function formatNumber(value, maximumFractionDigits = 0) {
+  const number = Number(value)
+  return Number.isFinite(number)
+    ? number.toLocaleString('zh-CN', { maximumFractionDigits })
+    : '-'
+}
+
+const historyColumns = [
+  { title: '股票代码', key: 'stockCode', width: 110, fixed: 'left' },
+  { title: '股票名称', key: 'stockName', width: 110, fixed: 'left', render: (row) => row.stockName || '-' },
+  { title: '交易日期', key: 'tradeDate', width: 105 },
+  { title: '周期', key: 'period', width: 70, render: (row) => formatPeriod(row.period) },
+  { title: '复权', key: 'adjusted', width: 65, render: (row) => row.adjusted ? '是' : '否' },
+  { title: '开盘', key: 'open', width: 90, render: (row) => formatPrice(row.open) },
+  { title: '最高', key: 'high', width: 90, render: (row) => formatPrice(row.high) },
+  { title: '最低', key: 'low', width: 90, render: (row) => formatPrice(row.low) },
+  { title: '收盘', key: 'close', width: 90, render: (row) => formatPrice(row.close) },
+  { title: '成交量', key: 'volume', width: 120, render: (row) => formatNumber(row.volume) },
+  { title: '成交额', key: 'amount', width: 140, render: (row) => formatNumber(row.amount, 2) },
 ]
 
-async function searchStocks() {
-  if (!stockSearch.value.trim()) {
-    message.warning('请输入搜索关键词')
-    return
-  }
-  stockLoading.value = true
-  stockError.value = ''
+async function loadHistory(page = 1) {
+  historyLoading.value = true
+  historyError.value = ''
   try {
-    const {data: res} = await stockApi.getAllStockInfoList({ searchKeyWord: stockSearch.value, page: 1, pageSize: 50 })
-    stockList.value = res?.list || []
+    historyData.value = await getKLineHistory(historySearch.value.trim(), page, historyPageSize.value)
   } catch (e) {
-    stockError.value = String(e)
+    historyError.value = String(e)
   } finally {
-    stockLoading.value = false
+    historyLoading.value = false
   }
 }
 
-async function batchDeleteStocks() {
-  if (selectedStockIds.value.length === 0) {
-    message.warning('请先选择要删除的股票')
-    return
-  }
-  try {
-    await stockApi.batchDeleteAllStockInfo(selectedStockIds.value)
-    message.success(`已删除 ${selectedStockIds.value.length} 只股票信息`)
-    selectedStockIds.value = []
-    await searchStocks()
-  } catch (e) {
-    message.error('删除失败: ' + String(e))
-  }
+function changeHistoryPageSize(size) {
+  historyPageSize.value = size
+  loadHistory(1)
 }
 
 // ── Seed Import ──
@@ -220,9 +269,14 @@ async function runVacuum() {
 
 // ── Lifecycle ──
 onMounted(() => {
-  loadStats()
   refreshProgress()
   loadSeedStatus()
+  loadHistory()
+})
+
+onUnmounted(() => {
+  disposed = true
+  if (progressTimer) clearTimeout(progressTimer)
 })
 </script>
 
@@ -265,10 +319,18 @@ onMounted(() => {
         <n-button type="primary" @click="startSync" :loading="syncLoading">
           启动5年历史数据同步
         </n-button>
-        <n-button @click="refreshProgress" :loading="progressLoading">
+        <n-button @click="refreshProgress()" :loading="progressLoading">
           刷新进度
         </n-button>
+        <n-text v-if="hasActiveSync" depth="3" style="font-size: 12px">每 5 秒自动刷新</n-text>
       </n-flex>
+      <n-grid :cols="5" :x-gap="12" :y-gap="12" style="margin-bottom: 16px">
+        <n-gi v-for="metric in syncSummaryMetrics" :key="metric.key">
+          <n-statistic :label="metric.label" :tabular-nums="true">
+            {{ progressSummary[metric.key] || 0 }}
+          </n-statistic>
+        </n-gi>
+      </n-grid>
       <n-data-table
         :columns="progressColumns"
         :data="progressItems"
@@ -301,52 +363,50 @@ onMounted(() => {
 
     <n-divider />
 
-    <!-- 个股数据浏览 -->
-    <n-card title="个股数据浏览" size="small">
+    <!-- 历史 K 线数据 -->
+    <n-card title="历史 K 线数据" size="small">
       <n-flex align="center" :size="8" style="margin-bottom: 12px">
         <n-input
-          v-model:value="stockSearch"
-          placeholder="输入股票代码或名称搜索..."
+          v-model:value="historySearch"
+          placeholder="股票代码或名称（留空查看全部）"
           clearable
           style="width: 280px"
-          @keyup.enter="searchStocks"
+          @keyup.enter="loadHistory(1)"
         >
           <template #prefix>
             <n-icon :component="SearchOutline" />
           </template>
         </n-input>
-        <n-button type="primary" size="small" @click="searchStocks" :loading="stockLoading">搜索</n-button>
-        <n-popconfirm
-          v-if="selectedStockIds.length > 0"
-          @positive-click="batchDeleteStocks"
-        >
-          <template #trigger>
-            <n-button size="small" type="error">
-              <template #icon>
-                <n-icon :component="TrashOutline" />
-              </template>
-              删除选中 ({{ selectedStockIds.length }})
-            </n-button>
-          </template>
-          确定要删除选中的 {{ selectedStockIds.length }} 只股票信息吗？
-        </n-popconfirm>
+        <n-button type="primary" size="small" @click="loadHistory(1)" :loading="historyLoading">搜索</n-button>
       </n-flex>
-      <n-alert v-if="stockError" type="error" closable :bordered="false" style="margin-bottom: 8px">
-        {{ stockError }}
+      <n-alert v-if="historyError" type="error" closable :bordered="false" style="margin-bottom: 8px" @close="historyError = ''">
+        {{ historyError }}
       </n-alert>
       <n-data-table
-        :columns="stockColumns"
-        :data="stockList"
-        :loading="stockLoading"
+        :columns="historyColumns"
+        :data="historyData?.list || []"
+        :loading="historyLoading"
         :bordered="true"
         :single-line="false"
+        :scroll-x="1185"
         size="small"
-        :max-height="400"
-        @update:checked-row-keys="selectedStockIds = $event"
-        :row-key="(row) => row.ID"
+        :max-height="480"
+        :row-key="(row) => row.id"
       />
-      <n-text v-if="!stockLoading && stockList.length === 0 && !stockError" depth="3" style="display: block; text-align: center; padding: 24px 0">
-        输入关键词搜索个股数据
+      <n-flex v-if="historyData && historyData.total > 0" justify="flex-end" style="margin-top: 12px">
+        <n-pagination
+          :page="historyData.page"
+          :page-size="historyData.pageSize"
+          :item-count="historyData.total"
+          :page-slot="7"
+          show-size-picker
+          :page-sizes="[20, 50, 100]"
+          @update:page="loadHistory"
+          @update:page-size="changeHistoryPageSize"
+        />
+      </n-flex>
+      <n-text v-if="!historyLoading && (!historyData || historyData.list.length === 0) && !historyError" depth="3" style="display: block; text-align: center; padding: 24px 0">
+        暂无匹配的历史 K 线数据
       </n-text>
     </n-card>
 

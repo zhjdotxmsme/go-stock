@@ -127,12 +127,165 @@ func (s *Service) GetBacktestResults(stockCode string, page, pageSize int) (*mod
 	}, nil
 }
 
-type syncTaskItem struct {
+type KLineHistoryItem struct {
+	ID        uint    `json:"id"`
+	StockCode string  `json:"stockCode"`
+	StockName string  `json:"stockName"`
+	Period    string  `json:"period"`
+	TradeDate string  `json:"tradeDate"`
+	Adjusted  bool    `json:"adjusted"`
+	Open      float64 `json:"open"`
+	High      float64 `json:"high"`
+	Low       float64 `json:"low"`
+	Close     float64 `json:"close"`
+	Volume    int64   `json:"volume"`
+	Amount    float64 `json:"amount"`
+}
+
+type KLineHistoryPageData struct {
+	List       []KLineHistoryItem `json:"list"`
+	Total      int64              `json:"total"`
+	Page       int                `json:"page"`
+	PageSize   int                `json:"pageSize"`
+	TotalPages int                `json:"totalPages"`
+}
+
+type SyncTaskItem struct {
 	StockCode string `json:"stockCode"`
 	Period    string `json:"period"`
 	Status    string `json:"status"`
 	Progress  int    `json:"progress"`
 	ErrorMsg  string `json:"errorMsg"`
+}
+
+type SyncProgressSummary struct {
+	Pending int64 `json:"pending"`
+	Running int64 `json:"running"`
+	Done    int64 `json:"done"`
+	Failed  int64 `json:"failed"`
+	Partial int64 `json:"partial"`
+}
+
+type SyncProgressData struct {
+	Summary SyncProgressSummary `json:"summary"`
+	Tasks   []SyncTaskItem      `json:"tasks"`
+}
+
+// GetKLineHistory returns stored K-line bars with stock code/name search.
+func (s *Service) GetKLineHistory(keyword string, page, pageSize int) (*KLineHistoryPageData, error) {
+	ctx := context.Background()
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	var codes []string
+	keyword = strings.TrimSpace(keyword)
+	if keyword != "" {
+		var err error
+		codes, err = kLineSearchCodes(ctx, keyword)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	bars, total, err := datasource.NewKLineStore().QueryKLinePage(ctx, codes, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	names, err := kLineStockNames(ctx, bars)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]KLineHistoryItem, 0, len(bars))
+	for _, bar := range bars {
+		code := stockcode.Normalize(bar.StockCode)
+		items = append(items, KLineHistoryItem{
+			ID:        bar.ID,
+			StockCode: code,
+			StockName: names[code],
+			Period:    bar.Period,
+			TradeDate: bar.TradeDate,
+			Adjusted:  bar.Adjusted,
+			Open:      bar.Open,
+			High:      bar.High,
+			Low:       bar.Low,
+			Close:     bar.Close,
+			Volume:    bar.Volume,
+			Amount:    bar.Amount,
+		})
+	}
+
+	return &KLineHistoryPageData{
+		List:       items,
+		Total:      total,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int((total + int64(pageSize) - 1) / int64(pageSize)),
+	}, nil
+}
+
+func kLineSearchCodes(ctx context.Context, keyword string) ([]string, error) {
+	set := make(map[string]struct{})
+	addStockCodeCandidates(set, keyword)
+
+	like := "%" + keyword + "%"
+	var infos []models.AllStockInfo
+	if err := db.Dao.WithContext(ctx).Model(&models.AllStockInfo{}).
+		Select("secucode").
+		Where("secucode LIKE ? OR sec_uri_tycode LIKE ? OR sec_uri_tynameabbr LIKE ?", like, like, like).
+		Find(&infos).Error; err != nil {
+		return nil, err
+	}
+	for _, info := range infos {
+		addStockCodeCandidates(set, info.SECUCODE)
+	}
+
+	codes := make([]string, 0, len(set))
+	for code := range set {
+		codes = append(codes, code)
+	}
+	return codes, nil
+}
+
+func kLineStockNames(ctx context.Context, bars []models.KLineBar) (map[string]string, error) {
+	set := make(map[string]struct{})
+	for _, bar := range bars {
+		addStockCodeCandidates(set, bar.StockCode)
+	}
+	if len(set) == 0 {
+		return map[string]string{}, nil
+	}
+
+	codes := make([]string, 0, len(set))
+	for code := range set {
+		codes = append(codes, code)
+	}
+	var infos []models.AllStockInfo
+	if err := db.Dao.WithContext(ctx).Model(&models.AllStockInfo{}).
+		Select("secucode, sec_uri_tynameabbr").
+		Where("secucode IN ? OR sec_uri_tycode IN ?", codes, codes).
+		Find(&infos).Error; err != nil {
+		return nil, err
+	}
+
+	names := make(map[string]string, len(infos))
+	for _, info := range infos {
+		names[stockcode.Normalize(info.SECUCODE)] = info.SECURITYNAMEABBR
+	}
+	return names, nil
+}
+
+func addStockCodeCandidates(set map[string]struct{}, code string) {
+	for _, candidate := range stockcode.StockCodeCandidates(code) {
+		set[candidate] = struct{}{}
+	}
 }
 
 func (s *Service) StartHistoricalSync(years int) error {
@@ -371,8 +524,34 @@ func claimNextPendingSyncTask(ctx context.Context) *history.SyncTask {
 	return nil
 }
 
-func (s *Service) GetSyncProgress() ([]syncTaskItem, error) {
+func (s *Service) GetSyncProgress() (*SyncProgressData, error) {
 	ctx := context.Background()
+	var summary SyncProgressSummary
+	var counts []struct {
+		Status string
+		Count  int64
+	}
+	if err := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
+		Select("status, COUNT(*) AS count").
+		Group("status").
+		Scan(&counts).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range counts {
+		switch row.Status {
+		case history.SyncStatusPending:
+			summary.Pending = row.Count
+		case history.SyncStatusRunning:
+			summary.Running = row.Count
+		case history.SyncStatusDone:
+			summary.Done = row.Count
+		case history.SyncStatusFailed:
+			summary.Failed = row.Count
+		case history.SyncStatusPartial:
+			summary.Partial = row.Count
+		}
+	}
+
 	var active []models.KLineSyncLog
 	if err := db.Dao.WithContext(ctx).
 		Where("status <> ?", history.SyncStatusDone).
@@ -390,7 +569,7 @@ func (s *Service) GetSyncProgress() ([]syncTaskItem, error) {
 	}
 	logs := append(active, done...)
 
-	items := make([]syncTaskItem, 0, len(logs))
+	items := make([]SyncTaskItem, 0, len(logs))
 	for _, l := range logs {
 		progress := 0
 		if l.ExpectedCount > 0 {
@@ -402,7 +581,7 @@ func (s *Service) GetSyncProgress() ([]syncTaskItem, error) {
 			progress = 100
 		}
 
-		items = append(items, syncTaskItem{
+		items = append(items, SyncTaskItem{
 			StockCode: l.StockCode,
 			Period:    l.Period,
 			Status:    l.Status,
@@ -411,7 +590,7 @@ func (s *Service) GetSyncProgress() ([]syncTaskItem, error) {
 		})
 	}
 
-	return items, nil
+	return &SyncProgressData{Summary: summary, Tasks: items}, nil
 }
 
 // GetSeedImportStatus returns information about seed data availability

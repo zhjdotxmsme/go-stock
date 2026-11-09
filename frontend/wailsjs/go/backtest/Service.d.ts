@@ -7,13 +7,15 @@ export function GetBacktestResults(arg1:string,arg2:number,arg3:number):Promise<
 
 export function GetKLineCacheStats():Promise<Record<string, any>>;
 
+export function GetKLineHistory(arg1:string,arg2:number,arg3:number):Promise<backtest.KLineHistoryPageData>;
+
 export function GetLastSeedImportOutput():Promise<string>;
 
 export function GetOptimizationPresets():Promise<Record<string, any>>;
 
 export function GetSeedImportStatus():Promise<Record<string, any>>;
 
-export function GetSyncProgress():Promise<Array<backtest.syncTaskItem>>;
+export function GetSyncProgress():Promise<backtest.SyncProgressData>;
 
 export function ResumePendingSyncTasks():Promise<void>;
 

@@ -13,6 +13,7 @@ import (
 
 	"go-stock/backend/db"
 	"go-stock/backend/models"
+	"go-stock/backend/stockcode"
 	"go-stock/backend/util/timeutil"
 )
 
@@ -57,6 +58,38 @@ func TestQueryUpsertAndMissing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, queried2, 3)
 	assert.Equal(t, float64(999), queried2[1].Open)
+}
+
+func TestQueryKLinePageMixedCodeFormats(t *testing.T) {
+	orig := db.Dao
+	db.Dao = setupInMemoryDB(t)
+	defer func() { db.Dao = orig }()
+
+	ctx := context.Background()
+	store := NewKLineStore()
+	bars := []models.KLineBar{
+		{StockCode: "600519", Period: "day", TradeDate: "2024-01-01", Close: 100},
+		{StockCode: "600519.SH", Period: "day", TradeDate: "2024-01-02", Close: 101},
+		{StockCode: "sh600519", Period: "day", TradeDate: "2024-01-03", Close: 102},
+		{StockCode: "sz000001", Period: "day", TradeDate: "2024-01-04", Close: 10},
+	}
+	for _, bar := range bars {
+		require.NoError(t, db.Dao.Create(&bar).Error)
+	}
+
+	codes := stockcode.StockCodeCandidates("600519")
+	first, total, err := store.QueryKLinePage(ctx, codes, 1, 2)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), total)
+	require.Len(t, first, 2)
+	assert.Equal(t, "2024-01-03", first[0].TradeDate)
+	assert.Equal(t, "2024-01-02", first[1].TradeDate)
+
+	last, total, err := store.QueryKLinePage(ctx, codes, 2, 2)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), total)
+	require.Len(t, last, 1)
+	assert.Equal(t, "2024-01-01", last[0].TradeDate)
 }
 
 // TestUpsertSanitizesDirtyBars 回归：mootdx 指数脏数据（2099 年未来日期/无法解析日期）
