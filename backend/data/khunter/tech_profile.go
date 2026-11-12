@@ -8,6 +8,7 @@ import (
 
 	"go-stock/backend/data"
 	"go-stock/backend/data/datasource"
+	"go-stock/backend/data/datasource/fallback"
 	"go-stock/backend/data/indicator"
 	"go-stock/backend/data/khunter/strategy"
 	"go-stock/backend/db"
@@ -137,7 +138,57 @@ func GetTechProfile(ctx context.Context, stockCode, tradeDate string) (map[strin
 	if err != nil {
 		return nil, err
 	}
+	if len(bars) == 0 {
+		// 场内 ETF/LOF 不在历史同步的 A 股清单里，本地库通常没有行情；
+		// 回退到基金行情接口（交易所数据），避免误报“样本不足”。
+		bars = loadOnExchangeFundBars(ctx, stockCode, end, start)
+	}
 	return BuildTechProfile(bars), nil
+}
+
+// loadOnExchangeFundBars 场内基金回退取数：只接受交易所行情，
+// 净值合成的日线没有成交量，套技术指标会得出误导性结论。
+func loadOnExchangeFundBars(ctx context.Context, stockCode, endDate, startDate string) []models.KLineBar {
+	pure := data.PureFundCode(stockCode)
+	if pure == "" || !data.IsOnExchangeFund(pure) {
+		return nil
+	}
+	result := data.NewFundKLineApi().GetFundKLine(pure, "101", 300)
+	if result == nil || result.Data == nil || len(*result.Data) == 0 {
+		return nil
+	}
+	converted := fallback.ConvertKLineData(stockCode, "day", *result.Data)
+	if converted == nil {
+		return nil
+	}
+	bars := datasource.BarsFromKLineData(stockCode, "day", "fund", false, converted)
+	filtered := make([]models.KLineBar, 0, len(bars))
+	for _, bar := range bars {
+		if bar.TradeDate < startDate || bar.TradeDate > endDate {
+			continue
+		}
+		filtered = append(filtered, bar)
+	}
+	return dropUnfinishedDailyBar(filtered)
+}
+
+// dropUnfinishedDailyBar 丢掉盘中尚未收盘的当日 K 线。
+// 交易所接口盘中会返回一根成交量极小的当日 bar（实测 11-12 仅 625 万，
+// 而前一日 10.5 亿），直接参与计算会把“量能”算成 0.0 倍、把涨跌幅算成半日行情。
+// 判定依据是数据本身（最后一根为今天且成交量不足前一日 20%），不依赖本机时钟。
+func dropUnfinishedDailyBar(bars []models.KLineBar) []models.KLineBar {
+	if len(bars) < 2 {
+		return bars
+	}
+	last := bars[len(bars)-1]
+	if last.TradeDate != timeutil.TodayStr() {
+		return bars
+	}
+	prev := bars[len(bars)-2]
+	if prev.Volume <= 0 || float64(last.Volume) >= float64(prev.Volume)*0.2 {
+		return bars
+	}
+	return bars[:len(bars)-1]
 }
 
 // snapshotFromBars 把本地日 K 收成推荐日指标快照，供技术结论复用。

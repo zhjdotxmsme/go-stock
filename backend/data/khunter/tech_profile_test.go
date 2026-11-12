@@ -8,6 +8,7 @@ import (
 
 	"go-stock/backend/db"
 	"go-stock/backend/models"
+	"go-stock/backend/util/timeutil"
 )
 
 func TestGetTechProfileUsesTradeDateWindow(t *testing.T) {
@@ -44,6 +45,51 @@ func TestGetTechProfileUsesTradeDateWindow(t *testing.T) {
 	}
 	if after == nil || after["momentum"] != "动能数据不足" {
 		t.Fatalf("推荐日之前只用单根K线，动能应样本不足，got %#v", after)
+	}
+}
+
+// 场内基金不在 A 股同步清单里，本地无 K 线时不应判定为“样本不足”，
+// 而应走基金行情回退；场外基金与普通股票则不回退。
+func TestLoadOnExchangeFundBarsGuards(t *testing.T) {
+	setupTestDB(t)
+	if err := db.Dao.AutoMigrate(&models.KLineBar{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []string{"600519", "110022"} {
+		if got := loadOnExchangeFundBars(context.Background(), code, "2026-11-12", "2025-10-01"); got != nil {
+			t.Fatalf("%s 不应走场内基金回退，got %d bars", code, len(got))
+		}
+	}
+	// 场内代码允许回退（网络不可用时返回 nil，但不 panic 且不误判）
+	_ = loadOnExchangeFundBars(context.Background(), "sh510300", "2026-11-12", "2025-10-01")
+}
+
+func TestDropUnfinishedDailyBar(t *testing.T) {
+	today := timeutil.TodayStr()
+	prev := timeutil.DateStr(time.Now().AddDate(0, 0, -1))
+	// 盘中当日 bar 成交量仅为前一日 0.06% → 丢弃
+	partial := []models.KLineBar{
+		{TradeDate: prev, Volume: 1056036324, Close: 4.15},
+		{TradeDate: today, Volume: 6257934, Close: 4.15},
+	}
+	if got := dropUnfinishedDailyBar(partial); len(got) != 1 || got[0].TradeDate != prev {
+		t.Fatalf("盘中未完成K线应被丢弃, got %+v", got)
+	}
+	// 收盘后的正常当日 bar → 保留
+	complete := []models.KLineBar{
+		{TradeDate: prev, Volume: 1000000, Close: 4.1},
+		{TradeDate: today, Volume: 900000, Close: 4.2},
+	}
+	if got := dropUnfinishedDailyBar(complete); len(got) != 2 {
+		t.Fatalf("完整当日K线应保留, got %d", len(got))
+	}
+	// 最后一根不是今天（历史日期查询）→ 不动
+	historical := []models.KLineBar{
+		{TradeDate: prev, Volume: 1000000},
+		{TradeDate: timeutil.DateStr(time.Now().AddDate(0, 0, -2)), Volume: 10},
+	}
+	if got := dropUnfinishedDailyBar(historical); len(got) != 2 {
+		t.Fatalf("历史日期不应裁剪, got %d", len(got))
 	}
 }
 

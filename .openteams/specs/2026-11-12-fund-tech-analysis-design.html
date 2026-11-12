@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>场内基金技术分析支持设计</title>
+<style>:root{color-scheme:light dark;--fg:#182235;--muted:#647089;--line:#dce3ee;--surface:#f5f7fb;--accent:#2563eb}@media(prefers-color-scheme:dark){:root{--fg:#e5eaf3;--muted:#a2aec2;--line:#354158;--surface:#151c29;--accent:#82aaff}}body{margin:0;background:var(--surface);color:var(--fg);font:15px/1.75 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}main{max-width:960px;margin:36px auto;padding:0 24px 56px}header,section{background:Canvas;border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:16px}h1{font-size:27px;margin:0 0 8px}h2{font-size:19px;margin:0 0 12px}.muted{color:var(--muted)}.badge{color:var(--accent);border:1px solid var(--accent);border-radius:99px;padding:2px 10px;font-size:13px}ul,ol{padding-left:22px}code{background:var(--surface);padding:2px 5px;border-radius:4px}table{width:100%;border-collapse:collapse}th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}th{color:var(--muted)}</style></head>
+<body><main>
+<header><span class="badge">已交付</span><h1>场内 ETF/LOF 技术分析支持</h1><p class="muted">日期：2026-11-12</p><p>让场内基金也能用上狩猎场同口径的技术结论；场外基金（只有净值）明确不套用股票技术指标。</p></header>
+
+<section><h2>1. 结论边界</h2><table><tr><th>类型</th><th>数据来源</th><th>技术分析</th></tr>
+<tr><td>场内 ETF/LOF（51x/15x/16x/58x 等）</td><td>交易所行情（新浪/东财/腾讯，日 K）</td><td>支持，四项事实 + 六段结论</td></tr>
+<tr><td>场外基金</td><td>每日净值</td><td>不支持：无量能、无高低价，指标会失真</td></tr>
+</table></section>
+
+<section><h2>2. 后端</h2><ul>
+<li><code>GetTechProfile</code> 本地 <code>kline_bars</code> 无数据时，若代码是场内基金则回退 <code>FundKLineApi.GetFundKLine(code, "101", 300)</code>。</li>
+<li>只接受交易所行情；净值合成日线不参与，避免“量数据不足”被当成有效结论。</li>
+<li>取数结果按任务日期窗口过滤后交给同一套 <code>BuildTechProfile</code>，口径与狩猎场完全一致。</li>
+<li>修复 <code>PureFundCode</code>：原先 <code>510300.SH</code> 被截成 <code>300.SH</code> 导致误判，同时会把 <code>600519.SH</code> 误判成基金。</li>
+<li>新增回归测试：股票/场外基金不走基金回退，场内代码允许回退且不 panic。</li>
+</ul></section>
+
+<section><h2>3. 前端</h2><ul>
+<li>K 线分析页搜索：股票无命中时回退 <code>SearchFundCodes</code>，只把场内基金加入候选，标注“（场内基金）”。</li>
+<li><code>toEastMoneyCode</code> 补全基金号段映射：5x → <code>.SH</code>，1x → <code>.SZ</code>，避免错误落到深市。</li>
+<li>四项事实始终展示；若数据源确实无量能，由后端如实返回“量数据不足”。</li>
+</ul></section>
+
+<section><h2>4. 验证</h2><ol>
+<li>实测取数：<code>510300</code> 与 <code>159915</code> 均从 <code>sina(场内)</code> 得到 61 根日 K（2026-08-12 ~ 2026-11-12）。</li>
+<li>代码判定：<code>510300.SH</code> → 场内基金 true；<code>600519.SH</code> → false；<code>110022</code>（场外）→ false。</li>
+<li>后端 <code>go build</code> / <code>go vet</code>、<code>go test ./backend/data/khunter</code>、前端生产构建通过。</li>
+</ol></section>
+</main></body></html>

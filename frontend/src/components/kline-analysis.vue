@@ -1,5 +1,6 @@
 <script setup>
 import * as stockApi from '../api/stock'
+import * as fundApi from '../api/fund'
 import * as systemApi from '../api/system'
 import { pinyin } from 'pinyin-pro'
 import { EventsOn } from '../../wailsjs/runtime'
@@ -41,6 +42,9 @@ function toEastMoneyCode(code) {
     if (d === '6') return c + '.SH'
     if (d === '0' || d === '3') return c + '.SZ'
     if (d === '8' || d === '9') return c + '.BJ'
+    // 场内基金：5x 沪市（50/51/52/56/58），1x 深市（15/16/18）
+    if (d === '5') return c + '.SH'
+    if (d === '1' && c.length === 6) return c + '.SZ'
     return c + '.SZ'
   }
   // 纯字母代码视为美股（如 AAPL → AAPL.US）
@@ -140,6 +144,31 @@ function findStockList(val) {
     label: item.name + ' - ' + item.ts_code,
     value: item.ts_code,
   }))
+  // 股票里没命中时再补场内基金（ETF/LOF），场外基金不做 K 线技术分析
+  if (filtered.length === 0) searchOnExchangeFunds(val)
+}
+
+let fundSearchSeq = 0
+
+/** 仅把场内基金加入候选：场外基金只有净值，没有可用于技术指标的行情 */
+async function searchOnExchangeFunds(keyword) {
+  const seq = ++fundSearchSeq
+  try {
+    const res = await fundApi.searchFundCodes(keyword.trim())
+    const items = (res?.data || []).filter(f => isOnExchangeFundCode(f.code))
+    if (seq !== fundSearchSeq) return // 输入已变，丢弃过期结果
+    options.value = items.slice(0, 20).map(f => ({
+      label: `${f.name} - ${f.code}（场内基金）`,
+      value: f.code,
+    }))
+  } catch (_) {
+    // 基金搜索失败不影响股票搜索
+  }
+}
+
+const isOnExchangeFundCode = (code) => {
+  const c = String(code || '').trim()
+  return ['15', '16', '50', '51', '52', '56', '58'].includes(c.slice(0, 2))
 }
 
 function handleSearch(value) {
@@ -270,6 +299,7 @@ const techError = ref('')
 const techFacts = computed(() => {
   const p = techProfile.value
   if (!p) return []
+  // 场内基金走交易所行情，量能真实有效；净值合成口径没有成交量时后端会返回“量数据不足”。
   return [
     { label: '趋势', text: p.trend || '数据不足' },
     { label: '量能', text: p.volume || '数据不足' },
@@ -277,6 +307,7 @@ const techFacts = computed(() => {
     { label: '动能', text: p.momentum || '数据不足' },
   ]
 })
+
 
 const techSections = computed(() => {
   const raw = techProfile.value?.sections

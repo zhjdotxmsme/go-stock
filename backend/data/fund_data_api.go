@@ -1367,9 +1367,14 @@ func IsOnExchangeFund(code string) bool {
 	}
 }
 
-// PureFundCode 去掉市场前缀（如 sh510300 → 510300），裸代码原样返回。
+// PureFundCode 去掉市场前缀/后缀（如 sh510300、510300.SH → 510300），裸代码原样返回。
 func PureFundCode(code string) string {
-	c := strings.TrimSpace(code)
+	c := strings.ToUpper(strings.TrimSpace(code))
+	// 东财/Tushare 风格后缀：510300.SH
+	if i := strings.IndexByte(c, '.'); i > 0 {
+		c = c[:i]
+	}
+	// sh510300 / sz159915 前缀
 	if len(c) > 6 {
 		c = c[len(c)-6:]
 	}
