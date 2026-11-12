@@ -47,6 +47,28 @@ export async function getRunSummaries(limit = 30): Promise<models.KhunterRunSumm
   return r.data ?? []
 }
 
+export interface TechAnalysisSection {
+  title: string
+  text: string
+}
+
+export interface TechAnalysisProfile {
+  trend?: string
+  volume?: string
+  position?: string
+  momentum?: string
+  sections?: TechAnalysisSection[]
+}
+
+/**
+ * 任意个股的狩猎场同口径技术结论；tradeDate 为空表示今天。
+ */
+export async function getTechAnalysis(stockCode: string, tradeDate = ''): Promise<TechAnalysisProfile | null> {
+  const r = await callApi(KhunterHandler.GetTechAnalysis, stockCode, tradeDate)
+  if (!r?.success) throw new Error(r?.message || '调用失败')
+  return r.data ?? null
+}
+
 /**
  * 当前风险档位
  */
@@ -80,6 +102,7 @@ export default {
   getScores,
   getHunting,
   getRunSummaries,
+  getTechAnalysis,
   getRiskLevel,
   getKellySuggestions,
   runBacktest,

@@ -56,6 +56,12 @@ func (h *KhunterHandler) GetRunSummaries(limit int) ([]models.KhunterRunSummary,
 	return h.svc.GetRunSummaries(limit)
 }
 
+// GetTechAnalysis 任意个股的狩猎场同口径技术结论（四项事实 + 六段分析），
+// 不依赖是否已关注。tradeDate 为空取今天；传入历史日期只使用该日及之前的 K 线。
+func (h *KhunterHandler) GetTechAnalysis(stockCode string, tradeDate string) (map[string]any, error) {
+	return khunter.GetTechProfile(context.Background(), stockCode, tradeDate)
+}
+
 // GetKellySuggestions 各策略半凯利建议仓位（配置缺失返回空列表）
 func (h *KhunterHandler) GetKellySuggestions() []khunter.KellySuggestion {
 	return h.svc.GetKellySuggestions()

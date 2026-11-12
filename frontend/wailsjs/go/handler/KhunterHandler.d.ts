@@ -17,6 +17,8 @@ export function GetScores(arg1:string):Promise<Array<models.KhunterScore>>;
 
 export function GetSignals(arg1:string):Promise<Array<models.KhunterSignal>>;
 
+export function GetTechAnalysis(arg1:string,arg2:string):Promise<Record<string, any>>;
+
 export function RunBacktestAsync(arg1:Array<string>,arg2:string,arg3:string,arg4:number):Promise<Record<string, any>>;
 
 export function RunPipelineAsync(arg1:string):Promise<Record<string, any>>;

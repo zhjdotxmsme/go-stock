@@ -20,7 +20,7 @@ import {
   WindowFullscreen,
   WindowUnfullscreen
 } from '../../wailsjs/runtime'
-import {Add,} from '@vicons/ionicons5'
+import {Add, AnalyticsOutline,} from '@vicons/ionicons5'
 
 import {keys, padStart} from "lodash";
 import {useRoute, useRouter} from 'vue-router'
@@ -680,6 +680,28 @@ function goKlineAnalysis(code, name) {
   router.push({ path: '/kline-analysis', query: { code: em, name: name || '' } })
 }
 
+/**
+ * 顶部查询框直达技术分析：不要求先关注。
+ * 依次尝试：下拉选中项 → 当前输入能解析出的代码 → 输入框文本。
+ * 解析不出来时提示用户从下拉里选择，避免把中文名当代码打开空白页。
+ */
+function goKlineAnalysisFromSearch() {
+  const raw = String(data.name || '').trim()
+  const selected = stockList.value.find(item => item.ts_code === data.code)
+  if (selected) {
+    goKlineAnalysis(selected.ts_code, selected.name)
+    return
+  }
+  // 输入框里只有代码时，仍按名称列表补全显示名，避免页面标题显示成纯代码
+  const byName = raw ? stockList.value.find(item => toEastMoneyCode(item.ts_code) === toEastMoneyCode(raw)) : undefined
+  const byInput = toEastMoneyCode(resolveFollowCode(raw) || raw)
+  if (byInput) {
+    goKlineAnalysis(byInput, byName?.name || '')
+    return
+  }
+  message.warning('请先在下拉列表中选择一只股票，或输入可识别的股票代码')
+}
+
 async function showLightweightKline(code, name) {
   const em = toEastMoneyCode(code)
   if (!em) {
@@ -1282,6 +1304,16 @@ window.onerror = function (msg, source, lineno, colno, error) {
         </template>
         <span>输入股票名称/代码关键词开始吧~~~</span>
       </n-popover>
+
+      <!-- 未关注也能看技术分析：直接跳到 K 线分析页并加载当前输入的股票 -->
+      <n-tooltip trigger="hover">
+        <template #trigger>
+          <n-button type="info" secondary @click="goKlineAnalysisFromSearch" v-if="addBTN">
+            <n-icon :component="AnalyticsOutline"/> &nbsp;技术分析
+          </n-button>
+        </template>
+        无需先关注，输入代码或名称后直接查看技术分析
+      </n-tooltip>
     </n-input-group>
   </div>
   </div>

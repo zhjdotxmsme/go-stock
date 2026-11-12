@@ -6,8 +6,9 @@ import { EventsOn } from '../../wailsjs/runtime'
 import StockLightweightKlineChart from './StockLightweightKlineChart.vue'
 import { NAutoComplete, NButton, NFlex, NText, NInputGroup } from 'naive-ui'
 import { useMessage } from 'naive-ui'
-import { onBeforeMount, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeMount, onMounted, onBeforeUnmount, ref, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { getTechAnalysis } from '../api/khunter'
 
 const message = useMessage()
 const route = useRoute()
@@ -152,6 +153,7 @@ function handleSearch(value) {
   const found = stockList.value.find(item => item.ts_code === value)
   selectedName.value = found ? found.name : ''
   addToRecent(value, selectedName.value)
+  loadTechAnalysis()
 }
 
 function addToRecent(code, name) {
@@ -181,6 +183,7 @@ function selectRecent(code, name) {
   selectedCode.value = emCode
   selectedName.value = name
   addToRecent(code, name)
+  loadTechAnalysis()
 }
 
 function updateChartHeight() {
@@ -191,6 +194,8 @@ onBeforeMount(() => {
   stockApi.getStockList('').then(({data: result}) => {
     stockList.value = result || []
     buildPinyinIndex()
+    // 列表晚于挂载返回时补全标题名称（入口只传了代码）
+    if (!selectedName.value) selectedName.value = resolveNameByCode(selectedCode.value)
   }).catch(err => { console.error('GetStockList error:', err) })
   systemApi.getConfig().then(({data: result}) => {
     darkTheme.value = !!result.darkTheme
@@ -205,7 +210,7 @@ onMounted(() => {
   // 从 query 参数自动加载股票（来自 stock.vue 的跳转）
   if (route.query.code) {
     selectedCode.value = route.query.code
-    selectedName.value = route.query.name || ''
+    selectedName.value = route.query.name || resolveNameByCode(route.query.code) || ''
     isFromQuery.value = true
     searchQuery.value = selectedName.value
     addToRecent(route.query.code, selectedName.value)
@@ -222,9 +227,11 @@ onMounted(() => {
       selectedCode.value = emCode
       selectedName.value = data.name || ''
       addToRecent(data.ts_code, data.name || '')
+      loadTechAnalysis()
     }
   }
   EventsOn('klineSelectStock', stockChangeHandler)
+  loadTechAnalysis()
 })
 
 onBeforeUnmount(() => {
@@ -235,15 +242,62 @@ onBeforeUnmount(() => {
 watch(() => route.query.code, (newCode) => {
   if (newCode && newCode !== selectedCode.value) {
     selectedCode.value = newCode
-    selectedName.value = route.query.name || ''
+    selectedName.value = route.query.name || resolveNameByCode(newCode) || ''
     isFromQuery.value = true
     searchQuery.value = selectedName.value
     addToRecent(newCode, selectedName.value)
+    loadTechAnalysis()
   }
 })
 
 function goBack() {
   router.push({ path: '/' })
+}
+
+/** 从已加载的股票列表中补全显示名，避免标题只显示代码 */
+function resolveNameByCode(code) {
+  if (!code) return ''
+  const target = toEastMoneyCode(code)
+  const found = stockList.value.find(item => toEastMoneyCode(item.ts_code) === target)
+  return found ? found.name : ''
+}
+
+// ===== 技术分析结论（与狩猎场同口径）=====
+const techProfile = ref(null)
+const techLoading = ref(false)
+const techError = ref('')
+
+const techFacts = computed(() => {
+  const p = techProfile.value
+  if (!p) return []
+  return [
+    { label: '趋势', text: p.trend || '数据不足' },
+    { label: '量能', text: p.volume || '数据不足' },
+    { label: '位置', text: p.position || '数据不足' },
+    { label: '动能', text: p.momentum || '数据不足' },
+  ]
+})
+
+const techSections = computed(() => {
+  const raw = techProfile.value?.sections
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map(s => ({ title: s.title || '', text: s.text || '' }))
+    .filter(s => s.text)
+})
+
+async function loadTechAnalysis() {
+  if (!selectedCode.value) return
+  techLoading.value = true
+  techError.value = ''
+  try {
+    techProfile.value = await getTechAnalysis(selectedCode.value, '')
+  } catch (e) {
+    techError.value = String(e)
+    techProfile.value = null
+  } finally {
+    techLoading.value = false
+  }
 }
 </script>
 
@@ -294,6 +348,41 @@ function goBack() {
       </div>
     </div>
 
+    <!-- 技术分析结论：与狩猎场同口径（四项事实 + 六段分析） -->
+    <n-card size="small" class="kline-tech-card" :title="`技术分析结论${selectedName ? ' · ' + selectedName : ''}`">
+      <template #header-extra>
+        <n-space align="center" :size="8">
+          <n-text depth="3" style="font-size: 12px">与狩猎场同口径，基于本地日 K</n-text>
+          <n-button size="tiny" secondary :loading="techLoading" @click="loadTechAnalysis">刷新</n-button>
+        </n-space>
+      </template>
+      <n-spin :show="techLoading">
+        <n-alert v-if="techError" type="error" :bordered="false" style="margin-bottom: 8px">
+          技术分析加载失败：{{ techError }}
+        </n-alert>
+
+        <template v-if="techProfile">
+          <n-grid :cols="4" :x-gap="12" :y-gap="10" style="margin-bottom: 12px">
+            <n-gi v-for="f in techFacts" :key="f.label">
+              <n-text strong style="font-size: 13px">{{ f.label }}</n-text>
+              <div style="font-size: 13px; line-height: 1.6">{{ f.text }}</div>
+            </n-gi>
+          </n-grid>
+          <n-divider style="margin: 8px 0" />
+          <div v-for="s in techSections" :key="s.title" style="margin-bottom: 8px">
+            <n-text strong style="font-size: 13px">{{ s.title }}</n-text>
+            <div style="font-size: 13px; line-height: 1.65">{{ s.text }}</div>
+          </div>
+        </template>
+
+        <n-empty
+          v-else-if="!techLoading && !techError"
+          description="本地日 K 样本不足，暂无法生成技术分析结论（请先在「数据管理」同步该股历史数据）"
+          style="padding: 16px 0"
+        />
+      </n-spin>
+    </n-card>
+
   </div>
 </template>
 
@@ -325,5 +414,10 @@ function goBack() {
   gap: 4px;
   margin-top: 4px;
   flex-wrap: wrap;
+}
+/* 搜索栏固定在右下角，结论卡片需留出安全距离避免遮挡 */
+.kline-tech-card {
+  margin: 8px 0 90px 0;
+  text-align: left;
 }
 </style>
