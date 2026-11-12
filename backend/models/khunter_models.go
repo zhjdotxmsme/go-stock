@@ -59,14 +59,14 @@ func (KhunterHunting) TableName() string { return "khunter_hunting" }
 
 // KhunterMoneyFlowDaily 资金流历史落库
 type KhunterMoneyFlowDaily struct {
-	ID         uint      `gorm:"primarykey"`
-	Code       string    `gorm:"size:20;index:idx_khmf_code_date,unique"`
-	Date       string    `gorm:"size:10;index:idx_khmf_code_date,unique"`
-	MainNet    float64   // 主力净额（元）
-	MainRatio  float64   // 主力净占比（%）
-	SuperLgNet float64   // 超大单净额
-	LgNet      float64   // 大单净额
-	LgNetRatio float64   // 大单净占比（%）
+	ID         uint    `gorm:"primarykey"`
+	Code       string  `gorm:"size:20;index:idx_khmf_code_date,unique"`
+	Date       string  `gorm:"size:10;index:idx_khmf_code_date,unique"`
+	MainNet    float64 // 主力净额（元）
+	MainRatio  float64 // 主力净占比（%）
+	SuperLgNet float64 // 超大单净额
+	LgNet      float64 // 大单净额
+	LgNetRatio float64 // 大单净占比（%）
 	MdNet      float64
 	SmNet      float64 // 小单净额
 	SmNetRatio float64 // 小单净占比（%）
@@ -74,6 +74,29 @@ type KhunterMoneyFlowDaily struct {
 }
 
 func (KhunterMoneyFlowDaily) TableName() string { return "khunter_money_flow_daily" }
+
+// KhunterRunSummary 每次流水线运行的持久化汇总；同日重跑覆盖更新。
+type KhunterRunSummary struct {
+	ID                  uint      `gorm:"primarykey" json:"id"`
+	TradeDate           string    `gorm:"size:10;uniqueIndex" json:"tradeDate"`
+	StockTotal          int       `json:"stockTotal"`
+	FreshStocks         int       `json:"freshStocks"`
+	InsufficientHistory int       `json:"insufficientHistory"`
+	MissingTradeDate    int       `json:"missingTradeDate"`
+	QueryFailed         int       `json:"queryFailed"`
+	SignalCount         int       `json:"signalCount"`
+	CandidateCount      int       `json:"candidateCount"`
+	ScoredCount         int       `json:"scoredCount"`
+	HuntedCount         int       `json:"huntedCount"`
+	RiskLevel           string    `gorm:"size:20" json:"riskLevel"`
+	Status              string    `gorm:"size:20" json:"status"` // success / failed
+	Message             string    `gorm:"type:text" json:"message"`
+	DurationMs          int64     `json:"durationMs"`
+	CreatedAt           time.Time `json:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
+}
+
+func (KhunterRunSummary) TableName() string { return "khunter_run_summaries" }
 
 // KhunterRiskLevel 每日大盘风险档位
 type KhunterRiskLevel struct {
@@ -91,10 +114,10 @@ func (KhunterRiskLevel) TableName() string { return "khunter_risk_level" }
 
 // KhunterEvent 事件打标结果
 type KhunterEvent struct {
-	ID         uint      `gorm:"primarykey"`
-	Code       string    `gorm:"size:20;index:idx_khev_code_date"`
-	EventType  string    `gorm:"size:30"` // 业绩预增/股东增持/股东减持/...
-	EventDate  string    `gorm:"size:10;index:idx_khev_code_date"`
+	ID         uint   `gorm:"primarykey"`
+	Code       string `gorm:"size:20;index:idx_khev_code_date"`
+	EventType  string `gorm:"size:30"` // 业绩预增/股东增持/股东减持/...
+	EventDate  string `gorm:"size:10;index:idx_khev_code_date"`
 	Score      float64
 	ExpireDate string `gorm:"size:10"`
 	Source     string `gorm:"size:50"`

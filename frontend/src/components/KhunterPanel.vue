@@ -6,44 +6,82 @@
       </template>
       <template #extra>
         <n-space align="center">
+          <n-text depth="3" style="font-size:12px">运行日期</n-text>
+          <n-date-picker v-model:value="runDateTs" type="date" clearable placeholder="运行日期" style="width:150px" @update:value="loadScores" />
           <n-text v-if="lastRunText" depth="3" style="font-size:12px">{{ lastRunText }}</n-text>
           <n-button type="primary" :loading="running" @click="run">
-            <template #icon><n-icon><PlayOutline /></n-icon></template>立即运行
+            <template #icon><n-icon><PlayOutline /></n-icon></template>运行当日策略
           </n-button>
         </n-space>
       </template>
     </n-page-header>
 
+    <n-alert type="info" :bordered="false" collapsible>
+      使用顺序：选择交易日 → 运行当日策略 → 查看「候选评分」；符合风险阈值且站上支撑位的股票进入「狩猎池」。
+      盘中运行时当日日 K 尚未完整，结果只代表已形成的收盘数据。
+    </n-alert>
+
     <n-tabs type="line" animated v-model:value="activeTab">
-      <!-- ========== Tab 1: 评分排行 ========== -->
-      <n-tab-pane name="scores" tab="评分排行">
+      <n-tab-pane name="overview" tab="运行概览">
+        <n-space vertical>
+          <n-grid :cols="6" :x-gap="12" :y-gap="12">
+            <n-gi v-for="m in runSummaryMetrics" :key="m.label">
+              <n-statistic :label="m.label" :tabular-nums="true">{{ m.value }}</n-statistic>
+            </n-gi>
+          </n-grid>
+          <n-alert v-if="overviewIssue" :type="overviewIssue.type" :bordered="false" closable>
+            {{ overviewIssue.text }}
+          </n-alert>
+          <n-card size="small" title="运行记录">
+            <template #header-extra>
+              <n-text depth="3" style="font-size:12px">点击任一行可切换到该交易日</n-text>
+            </template>
+            <n-data-table
+              :columns="runSummaryColumns"
+              :data="runSummaries"
+              :loading="runSummariesLoading"
+              :bordered="true"
+              :single-line="false"
+              size="small"
+              :max-height="380"
+              :row-key="(r: any) => r.id"
+              :row-props="runSummaryRowProps"
+            />
+          </n-card>
+        </n-space>
+      </n-tab-pane>
+
+      <!-- ========== 候选评分 ========== -->
+      <n-tab-pane name="scores" tab="候选评分">
         <n-space vertical>
           <n-space align="center">
-            <n-date-picker v-model:value="scoreDateTs" type="date" clearable placeholder="评分日期" style="width:160px" @update:value="loadScores" />
+            <n-text depth="3" style="font-size:12px">日期：{{ runDateStr() }}</n-text>
             <n-button size="small" :loading="scoresLoading" @click="loadScores">刷新</n-button>
             <n-text depth="3" style="font-size:12px">共 {{ scores.length }} 条</n-text>
           </n-space>
+          <n-alert v-if="scores.length === 0 && scoreEmptyReason" type="warning" :bordered="false">
+            {{ scoreEmptyReason }}
+          </n-alert>
           <n-data-table :columns="scoreColumns" :data="scores" :loading="scoresLoading" :bordered="true"
             :single-line="false" :max-height="560" striped :row-key="(r: any) => r.id" />
         </n-space>
       </n-tab-pane>
 
-      <!-- ========== Tab 2: 策略信号 ========== -->
-      <n-tab-pane name="signals" tab="策略信号">
+      <!-- ========== 狩猎池 ========== -->
+      <n-tab-pane name="hunting" tab="狩猎池">
         <n-space vertical>
           <n-space align="center">
-            <n-date-picker v-model:value="signalDateTs" type="date" clearable placeholder="信号日期" style="width:160px" @update:value="loadSignals" />
-            <n-select v-model:value="strategyFilter" :options="strategyOptions" clearable placeholder="全部策略" style="width:180px" />
-            <n-button size="small" :loading="signalsLoading" @click="loadSignals">刷新</n-button>
-            <n-text depth="3" style="font-size:12px">共 {{ filteredSignals.length }} 条</n-text>
+            <n-select v-model:value="huntingStatus" :options="huntingStatusOptions" style="width:130px" @update:value="loadHunting" />
+            <n-button size="small" :loading="huntingLoading" @click="loadHunting">刷新</n-button>
+            <n-text depth="3" style="font-size:12px">共 {{ hunting.length }} 条；狩猎池用于跟踪和回测</n-text>
           </n-space>
-          <n-data-table :columns="signalColumns" :data="filteredSignals" :loading="signalsLoading" :bordered="true"
+          <n-data-table :columns="huntingColumns" :data="hunting" :loading="huntingLoading" :bordered="true"
             :single-line="false" :max-height="560" striped :row-key="(r: any) => r.id" />
         </n-space>
       </n-tab-pane>
 
       <!-- ========== Tab 3: 回测结果 ========== -->
-      <n-tab-pane name="backtest" tab="回测结果">
+      <n-tab-pane name="backtest" tab="回测验证">
         <n-space vertical>
           <n-space align="center">
             <n-date-picker v-model:value="btForm.startTs" type="date" clearable placeholder="开始日期" style="width:150px" />
@@ -60,7 +98,7 @@
       </n-tab-pane>
 
       <!-- ========== Tab 4: 风险看板 ========== -->
-      <n-tab-pane name="risk" tab="风险看板">
+      <n-tab-pane name="risk" tab="风险与仓位">
         <n-space vertical>
           <n-button size="small" :loading="riskLoading" @click="loadRisk" style="align-self:flex-start">刷新</n-button>
           <n-alert v-if="risk?.level === '崩溃'" type="error" title="崩溃档预警" :bordered="false">
@@ -101,23 +139,39 @@ import { PlayOutline } from '@vicons/ionicons5'
 import { format } from 'date-fns'
 
 import RadarChart from './charts/RadarChart.vue'
-import { runPipeline, getKhunterMeta, getScores, getSignals, getHunting, getRiskLevel, getKellySuggestions, runBacktest } from '../api/khunter'
+import { runPipeline, getKhunterMeta, getScores, getHunting, getRunSummaries, getRiskLevel, getKellySuggestions, runBacktest } from '../api/khunter'
+import type { models } from '../../wailsjs/go/models'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 import { displayStockCode, resolveDisplayName, prepareStockDisplay, fillRowNames } from '../utils/stockDisplay'
 
 const message = useMessage()
 const today = format(new Date(), 'yyyy-MM-dd')
-const activeTab = ref('scores')
+const activeTab = ref('overview')
 
 // ===== 页头：运行流水线 =====
 const running = ref(false)
 const lastRunText = ref('')
+const runDateTs = ref<number | null>(Date.now())
+
+function runDateStr(): string {
+  return runDateTs.value ? format(new Date(runDateTs.value), 'yyyy-MM-dd') : today
+}
+
+function setRunDateFromISO(iso: string) {
+  if (!iso || iso.length < 10) return
+  runDateTs.value = new Date(iso.slice(0, 10) + 'T12:00:00').getTime()
+}
+
+function selectRunDate(iso: string) {
+  setRunDateFromISO(iso)
+  loadScores()
+}
 
 async function run() {
   if (running.value) return
   running.value = true
   lastRunText.value = '流水线运行中...'
-  const reqDate = scoreDateStr()
+  const reqDate = runDateStr()
   try {
     await runPipeline(reqDate)
   } catch (e) {
@@ -127,8 +181,84 @@ async function run() {
   }
 }
 
-// ===== Tab 1: 评分排行 =====
-const scoreDateTs = ref<number | null>(Date.now())
+// ===== 运行概览 =====
+const runSummaries = ref<models.KhunterRunSummary[]>([])
+const runSummariesLoading = ref(false)
+const latestAvailableDate = ref('')
+
+const currentRunSummary = computed(() =>
+  runSummaries.value.find(r => r.tradeDate === runDateStr()) || null
+)
+
+const runSummaryMetrics = computed(() => {
+  const r = currentRunSummary.value
+  return [
+    { label: '运行日期', value: r?.tradeDate || runDateStr() },
+    { label: '当日K线覆盖', value: r ? `${r.freshStocks}/${r.stockTotal}` : '-' },
+    { label: '触发信号', value: r?.signalCount ?? '-' },
+    { label: '候选评分', value: r?.scoredCount ?? '-' },
+    { label: '进入狩猎池', value: r?.huntedCount ?? '-' },
+    { label: '市场风险档', value: r?.riskLevel || '-' },
+  ]
+})
+
+const overviewIssue = computed(() => {
+  const r = currentRunSummary.value
+  if (!r) {
+    const hint = latestAvailableDate.value && latestAvailableDate.value !== runDateStr()
+      ? `库内最近有数据日期为 ${latestAvailableDate.value}。`
+      : ''
+    return { type: 'info' as const, text: `${runDateStr()} 尚无运行记录；在页头运行当日策略后会保存覆盖与结果汇总。${hint}` }
+  }
+  if (r.status === 'failed') return { type: 'error' as const, text: `运行失败：${r.message || '未知错误'}` }
+  if (r.freshStocks < 100 && r.tradeDate === today) {
+    return { type: 'warning' as const, text: `今日日K尚未完整（${r.freshStocks}/${r.stockTotal}）。可等待收盘同步或选择最近完整交易日。` }
+  }
+  if (r.insufficientHistory > 0 || r.queryFailed > 0) {
+    return { type: 'warning' as const, text: `${r.tradeDate} 历史不足 ${r.insufficientHistory} 只，查询失败 ${r.queryFailed} 只；请到「数据管理」检查对应任务。` }
+  }
+  if (r.signalCount === 0) return { type: 'info' as const, text: `${r.tradeDate} 无策略信号，因此没有候选评分。` }
+  return null
+})
+
+const runSummaryColumns: any[] = [
+  { title: '交易日', key: 'tradeDate', width: 100, fixed: 'left' },
+  { title: '覆盖', key: 'freshStocks', width: 95, render: (r: any) => `${r.freshStocks}/${r.stockTotal}` },
+  { title: '历史不足', key: 'insufficientHistory', width: 90, align: 'center' },
+  { title: '当日缺K', key: 'missingTradeDate', width: 90, align: 'center' },
+  { title: '查询失败', key: 'queryFailed', width: 90, align: 'center' },
+  { title: '信号', key: 'signalCount', width: 70, align: 'center' },
+  { title: '评分', key: 'scoredCount', width: 70, align: 'center' },
+  { title: '入池', key: 'huntedCount', width: 70, align: 'center' },
+  { title: '风险档', key: 'riskLevel', width: 90, align: 'center', render: (r: any) => r.riskLevel || '-' },
+  {
+    title: '状态', key: 'status', width: 85, align: 'center',
+    render: (r: any) => h(NTag, { type: r.status === 'success' ? 'success' : 'error', bordered: false, size: 'small' }, { default: () => r.status === 'success' ? '成功' : '失败' }),
+  },
+  { title: '耗时', key: 'durationMs', width: 90, render: (r: any) => `${(r.durationMs / 1000).toFixed(1)}s` },
+  { title: '说明', key: 'message', ellipsis: { tooltip: true } },
+]
+
+async function loadRunSummaries() {
+  runSummariesLoading.value = true
+  try {
+    runSummaries.value = await getRunSummaries(30)
+  } catch (e) {
+    message.error('加载运行记录失败: ' + e)
+  } finally {
+    runSummariesLoading.value = false
+  }
+}
+
+// 点击运行记录行切换到该交易日，避免用户手动在两个日期选择器间来回切换。
+function runSummaryRowProps(row: models.KhunterRunSummary) {
+  return {
+    style: 'cursor: pointer;',
+    onClick: () => selectRunDate(row.tradeDate),
+  }
+}
+
+// ===== 候选评分 =====
 const scores = ref<any[]>([])
 const scoresLoading = ref(false)
 
@@ -137,31 +267,31 @@ const scoreIndicators = [
   { name: '板块', max: 100 }, { name: '事件', max: 100 },
 ]
 
-function scoreDateStr(): string {
-  return scoreDateTs.value ? format(new Date(scoreDateTs.value), 'yyyy-MM-dd') : today
-}
-
-function setScoreDateFromISO(iso: string) {
-  if (!iso || iso.length < 10) return
-  scoreDateTs.value = new Date(iso.slice(0, 10) + 'T12:00:00').getTime()
-}
-
 async function loadScores() {
   scoresLoading.value = true
   try {
     await prepareStockDisplay()
-    const d = scoreDateStr()
+    const d = runDateStr()
     scores.value = fillRowNames(await getScores(d), 'code', 'name')
-    if (!scores.value.length) {
-      const meta = await getKhunterMeta().catch(() => ({}))
-      const hint = meta.latestScoreDate && meta.latestScoreDate !== d
-        ? `；库内最新评分日为 ${meta.latestScoreDate}，可切换日期查看`
-        : ''
-      message.info(`${d} 暂无评分（当日可能 0 条策略信号）${hint}`)
-    }
+    if (!scores.value.length) await loadRunSummaries()
   } catch (e) { message.error('加载评分失败: ' + e)
   } finally { scoresLoading.value = false }
 }
+
+const scoreEmptyReason = computed(() => {
+  if (scores.value.length > 0) return ''
+  const r = runSummaries.value.find(item => item.tradeDate === runDateStr())
+  if (!r) {
+    if (latestAvailableDate.value && latestAvailableDate.value !== runDateStr()) {
+      return `${runDateStr()} 尚未运行；库内最近有数据日期为 ${latestAvailableDate.value}，可切换日期查看或重新运行。`
+    }
+    return `${runDateStr()} 尚未运行；可在页头运行当日策略。`
+  }
+  if (r.status === 'failed') return `${runDateStr()} 运行失败：${r.message || '未知错误'}`
+  if (r.signalCount === 0) return `${runDateStr()} 无策略信号，因此没有候选评分。`
+  if (r.scoredCount === 0) return `${runDateStr()} 有 ${r.signalCount} 条信号但未生成评分。`
+  return `${runDateStr()} 暂无候选评分。`
+})
 
 function levelTagType(level: string): 'success' | 'info' | 'default' | 'warning' | 'error' {
   switch (level) {
@@ -294,60 +424,37 @@ const scoreColumns: any[] = [
     render: (r: any) => r.vetoReason ? h(NText, { type: 'error', style: { fontSize: '12px' } }, { default: () => r.vetoReason }) : '-' },
 ]
 
-// ===== Tab 2: 策略信号 =====
-const signalDateTs = ref<number | null>(Date.now())
-const signals = ref<any[]>([])
-const signalsLoading = ref(false)
-const strategyFilter = ref<string | null>(null)
-
-const strategyOptions = computed(() =>
-  Array.from(new Set(signals.value.map((s: any) => s.strategy).filter(Boolean)))
-    .map(s => ({ label: s, value: s }))
-)
-
-const filteredSignals = computed(() =>
-  strategyFilter.value ? signals.value.filter((s: any) => s.strategy === strategyFilter.value) : signals.value
-)
-
-function signalDateStr(): string {
-  return signalDateTs.value ? format(new Date(signalDateTs.value), 'yyyy-MM-dd') : today
-}
-
-async function loadSignals() {
-  signalsLoading.value = true
-  try {
-    await prepareStockDisplay()
-    const d = signalDateStr()
-    signals.value = fillRowNames(await getSignals(d), 'code', 'name')
-    if (!signals.value.length) {
-      message.info(`${d} 暂无策略信号，可先「立即运行」或换一个有数据的交易日`)
-    }
-  } catch (e) { message.error('加载信号失败: ' + e)
-  } finally { signalsLoading.value = false }
-}
-
-function parseReasons(raw: string): string {
-  if (!raw) return '-'
-  try {
-    const arr = JSON.parse(raw)
-    return Array.isArray(arr) ? arr.join('；') : String(raw)
-  } catch { return raw }
-}
-
-const signalColumns: any[] = [
-  { title: '代码', key: 'code', width: 100, render: (r: any) => displayStockCode(r.code) },
-  { title: '名称', key: 'name', width: 110, render: (r: any) => resolveDisplayName(r.code, r.name) || '-' },
-  { title: '策略', key: 'strategy', width: 120,
-    render: (r: any) => h(NTag, { size: 'small', bordered: false }, { default: () => r.strategy }) },
-  { title: '信号日', key: 'signalDate', width: 105 },
-  { title: '关键日', key: 'keyDate', width: 150,
-    render: (r: any) => r.keyDate ? `${r.keyDate}${r.keyDateType ? ' (' + r.keyDateType + ')' : ''}` : '-' },
-  { title: '收盘', key: 'close', width: 80, align: 'right', render: (r: any) => r.close ? r.close.toFixed(2) : '-' },
-  { title: '量比', key: 'volumeRatio', width: 70, align: 'center', render: (r: any) => r.volumeRatio ? r.volumeRatio.toFixed(2) : '-' },
-  { title: '理由', key: 'reasons', ellipsis: { tooltip: true }, render: (r: any) => parseReasons(r.reasons) },
+// ===== 狩猎池 =====
+const hunting = ref<any[]>([])
+const huntingLoading = ref(false)
+const huntingStatus = ref('追踪中')
+const huntingStatusOptions = [
+  { label: '追踪中', value: '追踪中' },
+  { label: '已移除', value: '已移除' },
+  { label: '全部', value: '' },
 ]
 
-// ===== Tab 3: 回测结果 =====
+async function loadHunting() {
+  huntingLoading.value = true
+  try {
+    await prepareStockDisplay()
+    hunting.value = fillRowNames(await getHunting(huntingStatus.value), 'code', 'name')
+  } catch (e) { message.error('加载狩猎池失败: ' + e)
+  } finally { huntingLoading.value = false }
+}
+
+const huntingColumns: any[] = [
+  { title: '代码', key: 'code', width: 100, render: (r: any) => displayStockCode(r.code) },
+  { title: '名称', key: 'name', width: 110, render: (r: any) => resolveDisplayName(r.code, r.name) || '-' },
+  { title: '入选日', key: 'enterDate', width: 105 },
+  { title: '入选分', key: 'enterScore', width: 90, align: 'center', render: (r: any) => (r.enterScore ?? 0).toFixed(1) },
+  { title: '支撑价', key: 'supportPrice', width: 90, align: 'right', render: (r: any) => (r.supportPrice ?? 0).toFixed(2) },
+  { title: '状态', key: 'status', width: 90, align: 'center',
+    render: (r: any) => h(NTag, { type: r.status === '追踪中' ? 'success' : 'default', bordered: false, size: 'small' }, { default: () => r.status || '-' }) },
+  { title: '跟踪天数', key: 'trackDays', width: 90, align: 'center' },
+]
+
+// ===== 回测结果 =====
 const btForm = reactive({
   startTs: Date.now() - 180 * 24 * 3600 * 1000,
   endTs: Date.now(),
@@ -478,9 +585,10 @@ EventsOn('khunter:progress', (msg: any) => {
   const queryFailed = r.QueryFailed ?? r.queryFailed ?? 0
   const sigN = r.Signals ?? 0
   lastRunText.value = `最近运行(${td || '-'}): 当日K线 ${fresh}/${total} · 信号 ${sigN} · 入池 ${r.Hunted ?? 0}`
+  if (td) setRunDateFromISO(td)
   if (fresh < 100) {
     if (td === today) {
-      message.warning(`今日日K尚未完整：当前覆盖 ${fresh}/${total} 只。请等待收盘同步，或选择最近完整交易日；无需重跑五年历史同步`)
+      message.warning(`今日日K尚未完整：当前覆盖 ${fresh}/${total} 只。可等待收盘同步或选择最近完整交易日`)
     } else if (insufficient > 0 || queryFailed > 0) {
       message.warning(`${td} 数据检查：当日K线 ${fresh}/${total}，历史不足 ${insufficient} 只，查询失败 ${queryFailed} 只；请到「数据管理」检查对应任务`)
     } else {
@@ -488,11 +596,11 @@ EventsOn('khunter:progress', (msg: any) => {
     }
   }
   if (sigN === 0) {
-    message.warning(`${td || '当日'} 策略扫描完成但信号为 0，评分表不会生成；可切换到有历史信号的交易日查看`)
+    message.warning(`${td || '当日'} 策略扫描完成但信号为 0；运行记录会保留本次覆盖和原因`)
   } else {
     message.success('狩猎场流水线运行完成')
   }
-  loadScores(); loadSignals(); loadRisk()
+  loadRunSummaries(); loadScores(); loadHunting(); loadRisk()
 })
 
 EventsOn('khunter:backtest_progress', (msg: any) => {
@@ -521,10 +629,11 @@ onUnmounted(() => {
 onMounted(async () => {
   try {
     const meta = await getKhunterMeta()
-    if (meta.latestScoreDate) setScoreDateFromISO(meta.latestScoreDate)
-    else if (meta.latestSignalDate) setScoreDateFromISO(meta.latestSignalDate)
+    latestAvailableDate.value = meta.latestScoreDate || meta.latestSignalDate || ''
+    const preferred = meta.latestScoreDate || meta.latestSignalDate || meta.latestRunDate
+    if (preferred) setRunDateFromISO(preferred)
   } catch { /* ignore */ }
-  loadScores(); loadSignals(); loadRisk(); loadKelly()
+  loadRunSummaries(); loadScores(); loadHunting(); loadRisk(); loadKelly()
 })
 </script>
 

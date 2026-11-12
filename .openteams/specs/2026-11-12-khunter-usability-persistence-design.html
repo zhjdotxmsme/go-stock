@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>狩猎场易用性与运行结果落库设计</title>
+<style>:root{color-scheme:light dark;--fg:#182235;--muted:#647089;--line:#dce3ee;--surface:#f5f7fb;--accent:#2563eb}@media(prefers-color-scheme:dark){:root{--fg:#e5eaf3;--muted:#a2aec2;--line:#354158;--surface:#151c29;--accent:#82aaff}}body{margin:0;background:var(--surface);color:var(--fg);font:15px/1.75 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}main{max-width:960px;margin:36px auto;padding:0 24px 56px}header,section{background:Canvas;border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:16px}h1{font-size:27px;margin:0 0 8px}h2{font-size:19px;margin:0 0 12px}.muted{color:var(--muted)}.badge{color:var(--accent);border:1px solid var(--accent);border-radius:99px;padding:2px 10px;font-size:13px}ul,ol{padding-left:22px}code{background:var(--surface);padding:2px 5px;border-radius:4px}table{width:100%;border-collapse:collapse}th,td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}th{color:var(--muted)}</style></head>
+<body><main>
+<header><span class="badge">已确认</span><h1>狩猎场易用性与运行结果落库</h1><p class="muted">日期：2026-11-12</p><p>解决三个问题：每次运行的覆盖与结果没有持久化、策略信号被当成独立查询入口、页面信息层级不清导致不直观。</p></header>
+
+<section><h2>1. 落库</h2><table><tr><th>数据</th><th>修改前</th><th>修改后</th></tr>
+<tr><td>运行汇总</td><td>只在返回值和日志中，无记录</td><td>新增 <code>khunter_run_summaries</code>，按交易日覆盖更新；含覆盖数、历史不足、当日缺 K、查询失败、信号/候选/评分/入池数、风险档、状态、耗时、错误信息</td></tr>
+<tr><td>策略信号</td><td>仅非空时追加，同日重跑会重复累积</td><td><code>ReplaceSignalsForDate</code> 同日先删后写</td></tr>
+<tr><td>候选评分</td><td>无候选时直接返回，旧评分残留</td><td><code>ReplaceScoresForDate</code> 完整替换；无候选时清空当日</td></tr>
+<tr><td>风险档</td><td>0 信号时不计算不落库</td><td>与候选解耦，每次运行都计算并落库</td></tr>
+</table></section>
+
+<section><h2>2. 并发保护</h2><p>实测重复点击会并发启动两条流水线，同时写同一 SQLite，日志出现 <code>database is locked (SQLITE_BUSY)</code>，页面表现为卡住。新增进程内原子互斥：第二次运行立即返回“流水线正在运行”，不进入扫描。</p></section>
+
+<section><h2>3. 页面结构</h2><ul>
+<li>页头统一“运行日期 + 运行当日策略”，评分与概览共用同一日期，去掉两个各自独立的日期选择器。</li>
+<li>页签：运行概览、候选评分、狩猎池、回测验证、风险与仓位。移除独立“策略信号”页签；信号理由保留在评分展开中。</li>
+<li>运行概览显示六项指标卡、问题提示，以及可点击切换日期的运行记录表。</li>
+<li>候选评分为空时说明具体原因（未运行 / 无信号 / 运行失败 / 未生成评分），并提示库内最近有数据日期。</li>
+</ul></section>
+
+<section><h2>4. 验证</h2><ol><li>单测覆盖同日重跑去重、无候选清空评分、汇总按日覆盖、并发运行拒绝。</li><li>实际部署库运行一次：汇总表新增当日记录（5,235 只覆盖、0 信号、风险档“注意”、耗时约 131 秒），风险档表同日写入。</li><li>页面验证五个页签、指标卡与“今日日K尚未完整”提示，浏览器无运行时错误。</li></ol></section>
+</main></body></html>

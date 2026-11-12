@@ -3,8 +3,10 @@ package khunter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go-stock/backend/data/datasource"
@@ -82,8 +84,40 @@ func hasBarOnDate(bars []models.KLineBar, tradeDate string) bool {
 	return false
 }
 
+// ErrPipelineRunning 表示已有流水线在跑。并发扫描会重复写库并触发 SQLITE_BUSY，
+// 因此同一进程内只允许一个运行实例。
+var ErrPipelineRunning = errors.New("狩猎场流水线正在运行，请等待当前运行结束")
+
+var pipelineRunning atomic.Bool
+
+// marketRisk 计算并返回当日沪深300风险档；数据不足时按保守默认档处理。
+func marketRisk(ctx context.Context, tradeDate string) (risk.Level, float64) {
+	lv := risk.LevelOf(0)
+	var1d := 0.0
+	if bars, err := datasource.NewKLineStore().QueryKLines(ctx, "sh000300", "day",
+		time.Now().AddDate(0, 0, -750).Format("2006-01-02"), tradeDate, false); err == nil && len(bars) > 100 {
+		returns := make([]float64, 0, len(bars)-1)
+		for i := 1; i < len(bars); i++ {
+			if bars[i-1].Close > 0 {
+				returns = append(returns, (bars[i].Close-bars[i-1].Close)/bars[i-1].Close)
+			}
+		}
+		_, _, hybrid := risk.VaR(returns, 0.99)
+		var1d = hybrid
+		lv = risk.LevelOf(hybrid)
+	}
+	return lv, var1d
+}
+
 // RunPipeline 每日流水线（spec 第 7 节 8 步）。tradeDate 为空取最近交易日。
-func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error) {
+func RunPipeline(ctx context.Context, tradeDate string) (res *PipelineResult, err error) {
+	if !pipelineRunning.CompareAndSwap(false, true) {
+		return nil, ErrPipelineRunning
+	}
+	// 互斥标志必须在此释放：后面的 defer 依赖 res，而 res 要到迁移成功后才赋值。
+	defer pipelineRunning.Store(false)
+
+	started := time.Now()
 	input := tradeDate
 	tradeDate = resolveTradeDate(tradeDate)
 	logger.SugaredLogger.Infof("khunter pipeline start: tradeDate=%s (input=%q)", tradeDate, input)
@@ -91,7 +125,35 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 		return nil, err
 	}
 	repo := NewRepo()
-	res := &PipelineResult{TradeDate: tradeDate}
+	res = &PipelineResult{TradeDate: tradeDate}
+	defer func() {
+		duration := time.Since(started)
+		status := "success"
+		message := "运行完成"
+		if err != nil {
+			status = "failed"
+			message = err.Error()
+		}
+		summary := &models.KhunterRunSummary{
+			TradeDate:           tradeDate,
+			StockTotal:          res.StockTotal,
+			FreshStocks:         res.FreshStocks,
+			InsufficientHistory: res.InsufficientHistory,
+			MissingTradeDate:    res.MissingTradeDate,
+			QueryFailed:         res.QueryFailed,
+			SignalCount:         res.Signals,
+			CandidateCount:      res.Candidates,
+			ScoredCount:         res.Scored,
+			HuntedCount:         res.Hunted,
+			RiskLevel:           res.RiskLevel,
+			Status:              status,
+			Message:             message,
+			DurationMs:          duration.Milliseconds(),
+		}
+		if serr := repo.UpsertRunSummary(summary); serr != nil {
+			logger.SugaredLogger.Errorf("khunter save run summary failed for %s: %v", tradeDate, serr)
+		}
+	}()
 
 	// 1. 全市场股票清单（A 股）
 	var infos []models.AllStockInfo
@@ -190,7 +252,7 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 	if len(lastBars) < 100 {
 		logger.SugaredLogger.Warnf("khunter 所选日期本地日K覆盖较低：%s，当日有 bar %d/%d", tradeDate, len(lastBars), len(stocks))
 	}
-	if err := repo.SaveSignals(signals); err != nil {
+	if err := repo.ReplaceSignalsForDate(tradeDate, signals); err != nil {
 		return res, err
 	}
 	res.Signals = len(signals)
@@ -205,7 +267,22 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 		}
 	}
 	res.Candidates = len(candidates)
+
+	// 风险档与候选无关：无信号也要持久化，避免运行记录缺当日市场状态。
+	lv, var1d := marketRisk(ctx, tradeDate)
+	if err := repo.SaveRiskLevel(&models.KhunterRiskLevel{
+		Date: tradeDate, Var1d: var1d, Var5d: risk.MultiDay(var1d, 5),
+		Level: lv.Name, PositionLimit: lv.PositionLimit, ScoreExtra: lv.ScoreExtra,
+	}); err != nil {
+		logger.SugaredLogger.Warnf("khunter 保存风险档失败 %s: %v", tradeDate, err)
+	}
+	res.RiskLevel = lv.Name
+
 	if len(candidates) == 0 {
+		// 重跑同日且本次无候选：清空旧评分，保证库内结果和本次扫描一致。
+		if err := repo.ReplaceScoresForDate(tradeDate, nil); err != nil {
+			return res, err
+		}
 		return res, nil
 	}
 
@@ -255,31 +332,10 @@ func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error)
 			VetoReason: r.VetoReason, Degraded: r.Degraded, Details: string(details),
 		})
 	}
-	if err := repo.SaveScores(scores); err != nil {
+	if err := repo.ReplaceScoresForDate(tradeDate, scores); err != nil {
 		return res, err
 	}
 	res.Scored = len(scores)
-
-	// 6. 大盘风险档位（沪深300；取不到数据按 LevelOf(0) 保守"注意"档，同样落库）
-	lv := risk.LevelOf(0)
-	var1d := 0.0
-	if bars, err := datasource.NewKLineStore().QueryKLines(ctx, "sh000300", "day",
-		time.Now().AddDate(0, 0, -750).Format("2006-01-02"), tradeDate, false); err == nil && len(bars) > 100 {
-		returns := make([]float64, 0, len(bars)-1)
-		for i := 1; i < len(bars); i++ {
-			if bars[i-1].Close > 0 {
-				returns = append(returns, (bars[i].Close-bars[i-1].Close)/bars[i-1].Close)
-			}
-		}
-		_, _, hybrid := risk.VaR(returns, 0.99)
-		var1d = hybrid
-		lv = risk.LevelOf(hybrid)
-	}
-	_ = repo.SaveRiskLevel(&models.KhunterRiskLevel{
-		Date: tradeDate, Var1d: var1d, Var5d: risk.MultiDay(var1d, 5),
-		Level: lv.Name, PositionLimit: lv.PositionLimit, ScoreExtra: lv.ScoreExtra,
-	})
-	res.RiskLevel = lv.Name
 
 	// 7. 狩猎场筛选：总分 ≥ 阈值 且 现价 ≥ 支撑位×0.98
 	threshold := HuntingThreshold(lv)

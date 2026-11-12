@@ -2,6 +2,7 @@ package khunter
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -49,6 +50,19 @@ func TestHuntingThreshold(t *testing.T) {
 	}
 }
 
+func TestRunPipelineRejectsConcurrentRuns(t *testing.T) {
+	setupTestDB(t)
+	if err := db.Dao.AutoMigrate(&models.AllStockInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	pipelineRunning.Store(true)
+	defer pipelineRunning.Store(false)
+
+	if _, err := RunPipeline(context.Background(), "2026-11-06"); !errors.Is(err, ErrPipelineRunning) {
+		t.Fatalf("并发运行应被拒绝，got %v", err)
+	}
+}
+
 func TestRunPipelineReportsLocalCoverageBreakdown(t *testing.T) {
 	setupTestDB(t)
 	if err := db.Dao.AutoMigrate(&models.AllStockInfo{}, &models.KLineBar{}); err != nil {
@@ -85,6 +99,14 @@ func TestRunPipelineReportsLocalCoverageBreakdown(t *testing.T) {
 	}
 	if result.StockTotal != 3 || result.FreshStocks != 1 || result.InsufficientHistory != 1 || result.MissingTradeDate != 1 || result.QueryFailed != 0 {
 		t.Fatalf("覆盖统计不符: %+v", result)
+	}
+	summaries, err := NewRepo().GetRunSummaries(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summaries) != 1 || summaries[0].TradeDate != "2026-11-06" || summaries[0].Status != "success" ||
+		summaries[0].StockTotal != 3 || summaries[0].FreshStocks != 1 || summaries[0].SignalCount != 0 {
+		t.Fatalf("运行汇总未按本次扫描落库: %+v", summaries)
 	}
 }
 

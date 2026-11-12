@@ -5,6 +5,7 @@
 
 import { callApi } from './client'
 import * as KhunterHandler from '../../wailsjs/go/handler/KhunterHandler'
+import type { models } from '../../wailsjs/go/models'
 
 /**
  * 异步执行狩猎场流水线（结果经 khunter:progress 事件推送）
@@ -32,19 +33,16 @@ export async function getScores(date: string): Promise<any[]> {
 }
 
 /**
- * 策略信号
- */
-export async function getSignals(date: string): Promise<any[]> {
-  const r = await callApi(KhunterHandler.GetSignals, date)
-  if (!r?.success) throw new Error(r?.message || '调用失败')
-  return r.data ?? []
-}
-
-/**
  * 狩猎场追踪列表（status: 追踪中 / 已移除 / 空=全部）
  */
 export async function getHunting(status: string): Promise<any[]> {
   const r = await callApi(KhunterHandler.GetHunting, status)
+  if (!r?.success) throw new Error(r?.message || '调用失败')
+  return r.data ?? []
+}
+
+export async function getRunSummaries(limit = 30): Promise<models.KhunterRunSummary[]> {
+  const r = await callApi(KhunterHandler.GetRunSummaries, limit)
   if (!r?.success) throw new Error(r?.message || '调用失败')
   return r.data ?? []
 }
@@ -80,8 +78,8 @@ export default {
   runPipeline,
   getKhunterMeta,
   getScores,
-  getSignals,
   getHunting,
+  getRunSummaries,
   getRiskLevel,
   getKellySuggestions,
   runBacktest,

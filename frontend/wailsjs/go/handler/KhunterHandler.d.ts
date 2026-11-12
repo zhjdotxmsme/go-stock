@@ -11,6 +11,8 @@ export function GetMeta():Promise<khunter.KhunterMeta>;
 
 export function GetRiskLevel():Promise<models.KhunterRiskLevel>;
 
+export function GetRunSummaries(arg1:number):Promise<Array<models.KhunterRunSummary>>;
+
 export function GetScores(arg1:string):Promise<Array<models.KhunterScore>>;
 
 export function GetSignals(arg1:string):Promise<Array<models.KhunterSignal>>;

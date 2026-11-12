@@ -18,6 +18,10 @@ export function GetRiskLevel() {
   return window['go']['handler']['KhunterHandler']['GetRiskLevel']();
 }
 
+export function GetRunSummaries(arg1) {
+  return window['go']['handler']['KhunterHandler']['GetRunSummaries'](arg1);
+}
+
 export function GetScores(arg1) {
   return window['go']['handler']['KhunterHandler']['GetScores'](arg1);
 }

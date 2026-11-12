@@ -30,12 +30,18 @@ func (s *Service) RunPipeline(tradeDate string) (*PipelineResult, error) {
 type KhunterMeta struct {
 	LatestScoreDate  string `json:"latestScoreDate"`
 	LatestSignalDate string `json:"latestSignalDate"`
+	LatestRunDate    string `json:"latestRunDate"`
 }
 
 func (s *Service) GetMeta() KhunterMeta {
 	scoreDate, _ := s.repo.GetLatestScoreDate()
 	sigDate, _ := s.repo.GetLatestSignalDate()
-	return KhunterMeta{LatestScoreDate: scoreDate, LatestSignalDate: sigDate}
+	runDate, _ := s.repo.GetLatestRunSummaryDate()
+	return KhunterMeta{LatestScoreDate: scoreDate, LatestSignalDate: sigDate, LatestRunDate: runDate}
+}
+
+func (s *Service) GetRunSummaries(limit int) ([]models.KhunterRunSummary, error) {
+	return s.repo.GetRunSummaries(limit)
 }
 
 func (s *Service) GetScores(date string) ([]models.KhunterScore, error) {

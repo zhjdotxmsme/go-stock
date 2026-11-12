@@ -31,14 +31,66 @@ func setupTestDB(t *testing.T) {
 	}
 }
 
+func TestReplaceRunResultsDeduplicatesReruns(t *testing.T) {
+	setupTestDB(t)
+	r := NewRepo()
+	sig := models.KhunterSignal{Code: "600519", Name: "贵州茅台", Strategy: "仙人指路",
+		SignalDate: "2026-09-24", Close: 1700.5, VolumeRatio: 2.1, Reasons: `["冲高8%","反包确认"]`}
+	if err := r.ReplaceSignalsForDate("2026-09-24", []models.KhunterSignal{sig}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ReplaceSignalsForDate("2026-09-24", []models.KhunterSignal{sig}); err != nil {
+		t.Fatal(err)
+	}
+	sigs, err := r.GetSignalsByDate("2026-09-24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sigs) != 1 {
+		t.Fatalf("同日重跑应替换而非追加，got %d", len(sigs))
+	}
+
+	if err := r.ReplaceScoresForDate("2026-09-24", nil); err != nil {
+		t.Fatal(err)
+	}
+	scores, err := r.GetScoresByDate("2026-09-24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(scores) != 0 {
+		t.Fatalf("无候选重跑应清空当日评分，got %d", len(scores))
+	}
+}
+
+func TestRunSummaryUpsertsByTradeDate(t *testing.T) {
+	setupTestDB(t)
+	r := NewRepo()
+	row := &models.KhunterRunSummary{TradeDate: "2026-11-11", StockTotal: 10, FreshStocks: 9, Status: "success"}
+	if err := r.UpsertRunSummary(row); err != nil {
+		t.Fatal(err)
+	}
+	row = &models.KhunterRunSummary{TradeDate: "2026-11-11", StockTotal: 10, FreshStocks: 8,
+		SignalCount: 1, ScoredCount: 1, HuntedCount: 1, Status: "success", DurationMs: 120}
+	if err := r.UpsertRunSummary(row); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := r.GetRunSummaries(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].FreshStocks != 8 || rows[0].SignalCount != 1 || rows[0].DurationMs != 120 {
+		t.Fatalf("汇总应按交易日覆盖更新, got %+v", rows)
+	}
+}
+
 func TestRepoSignalAndScoreRoundTrip(t *testing.T) {
 	setupTestDB(t)
 	r := NewRepo()
 
 	sig := models.KhunterSignal{Code: "600519", Name: "贵州茅台", Strategy: "仙人指路",
 		SignalDate: "2026-09-24", Close: 1700.5, VolumeRatio: 2.1, Reasons: `["冲高8%","反包确认"]`}
-	if err := r.SaveSignals([]models.KhunterSignal{sig}); err != nil {
-		t.Fatalf("SaveSignals: %v", err)
+	if err := r.ReplaceSignalsForDate("2026-09-24", []models.KhunterSignal{sig}); err != nil {
+		t.Fatalf("ReplaceSignalsForDate: %v", err)
 	}
 	sigs, err := r.GetSignalsByDate("2026-09-24")
 	if err != nil || len(sigs) != 1 || sigs[0].Strategy != "仙人指路" {
@@ -47,8 +99,8 @@ func TestRepoSignalAndScoreRoundTrip(t *testing.T) {
 
 	sc := models.KhunterScore{Code: "600519", ScoreDate: "2026-09-24", Technical: 70, Moneyflow: 40,
 		Fundamental: 60, Sector: 50, Event: 50, Total: 52.5, Level: "中性"}
-	if err := r.SaveScores([]models.KhunterScore{sc}); err != nil {
-		t.Fatalf("SaveScores: %v", err)
+	if err := r.ReplaceScoresForDate("2026-09-24", []models.KhunterScore{sc}); err != nil {
+		t.Fatalf("ReplaceScoresForDate: %v", err)
 	}
 	scores, err := r.GetScoresByDate("2026-09-24")
 	if err != nil || len(scores) != 1 || scores[0].Total != 52.5 {

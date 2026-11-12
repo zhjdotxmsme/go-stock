@@ -36,7 +36,6 @@ func (h *KhunterHandler) RunPipelineAsync(tradeDate string) map[string]any {
 	}()
 	return map[string]any{"started": true}
 }
-
 func (h *KhunterHandler) GetMeta() khunter.KhunterMeta {
 	return h.svc.GetMeta()
 }
@@ -51,6 +50,10 @@ func (h *KhunterHandler) GetSignals(date string) ([]models.KhunterSignal, error)
 
 func (h *KhunterHandler) GetHunting(status string) ([]models.KhunterHunting, error) {
 	return h.svc.GetHunting(status)
+}
+
+func (h *KhunterHandler) GetRunSummaries(limit int) ([]models.KhunterRunSummary, error) {
+	return h.svc.GetRunSummaries(limit)
 }
 
 // GetKellySuggestions 各策略半凯利建议仓位（配置缺失返回空列表）
