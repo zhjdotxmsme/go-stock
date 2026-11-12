@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"go-stock/backend/data"
+	"go-stock/backend/data/khunter"
 	"go-stock/backend/emitter"
 	"go-stock/backend/models"
 )
@@ -63,6 +64,12 @@ func (h *DailyPickHandler) GetReviewSummary(tradeDate string) map[string]interfa
 
 func (h *DailyPickHandler) GetDailyPicks(query models.DailyPickQuery) models.DailyPickPageData {
 	return h.svc.GetDailyPicks(query)
+}
+
+// GetDailyPickTechProfile returns khunter-compatible trend/volume/position/momentum
+// facts computed from local K-lines up to the pick date.
+func (h *DailyPickHandler) GetDailyPickTechProfile(stockCode, tradeDate string) (map[string]any, error) {
+	return khunter.GetTechProfile(context.Background(), stockCode, tradeDate)
 }
 
 func (h *DailyPickHandler) GetLatestPicks(topN int) []models.DailyPick {

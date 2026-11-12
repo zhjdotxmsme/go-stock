@@ -9,7 +9,7 @@ import {
   NAlert, NButton, NCard, NDataTable, NDivider,
   NGi, NGrid, NSpin, NStatistic, NTag, NText, NFlex,
   NInput, NInputNumber, NPopconfirm, NIcon, NEmpty, NCode,
-  NCollapse, NCollapseItem, NPagination, NProgress,
+  NCollapse, NCollapseItem, NPagination, NProgress, NDatePicker,
 } from 'naive-ui'
 import { useMessage } from 'naive-ui'
 import { SearchOutline } from '@vicons/ionicons5'
@@ -61,6 +61,7 @@ const syncLoading = ref(false)
 const progressLoading = ref(false)
 const progressItems = ref([])
 const progressSummary = ref({ pending: 0, running: 0, done: 0, failed: 0, partial: 0 })
+const hiddenSyncTasks = ref(0)
 let progressTimer = null
 let disposed = false
 
@@ -125,12 +126,16 @@ async function refreshProgress(silent = false) {
     progressTimer = null
   }
   const resumeAfterError = hasActiveSync.value
+  const wasActive = resumeAfterError
   if (!silent) progressLoading.value = true
   try {
     const res = await getSyncProgress()
     progressSummary.value = { pending: 0, running: 0, done: 0, failed: 0, partial: 0, ...res?.summary }
     progressItems.value = res?.tasks || []
-    await loadStats()
+    hiddenSyncTasks.value = res?.hiddenTasks || 0
+    // Cache stats scans the full K-line table; refresh it only for explicit
+    // refreshes or when an active run finishes, never on every 5s poll.
+    if (!silent || (wasActive && !hasActiveSync.value)) await loadStats()
   } catch (e) {
     if (!silent) message.error('获取进度失败: ' + String(e))
   } finally {
@@ -143,10 +148,19 @@ async function refreshProgress(silent = false) {
 
 // ── Historical K-line Browser ──
 const historySearch = ref('')
+const historyStartDate = ref(dateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
+const historyEndDate = ref(dateStr(new Date()))
 const historyData = ref(null)
 const historyPageSize = ref(20)
 const historyLoading = ref(false)
 const historyError = ref('')
+
+function dateStr(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 function formatPeriod(period) {
   return { day: '日线', '101': '日线', week: '周线', month: '月线' }[period] || period || '-'
@@ -182,7 +196,13 @@ async function loadHistory(page = 1) {
   historyLoading.value = true
   historyError.value = ''
   try {
-    historyData.value = await getKLineHistory(historySearch.value.trim(), page, historyPageSize.value)
+    historyData.value = await getKLineHistory(
+      historySearch.value.trim(),
+      historyStartDate.value || '',
+      historyEndDate.value || '',
+      page,
+      historyPageSize.value,
+    )
   } catch (e) {
     historyError.value = String(e)
   } finally {
@@ -331,6 +351,9 @@ onUnmounted(() => {
           </n-statistic>
         </n-gi>
       </n-grid>
+      <n-text v-if="hiddenSyncTasks > 0" depth="3" style="display: block; margin-bottom: 8px; font-size: 12px">
+        当前仅展示最近更新的 {{ progressItems.length }} 条任务，另有 {{ hiddenSyncTasks }} 条未完成任务。
+      </n-text>
       <n-data-table
         :columns="progressColumns"
         :data="progressItems"
@@ -368,15 +391,31 @@ onUnmounted(() => {
       <n-flex align="center" :size="8" style="margin-bottom: 12px">
         <n-input
           v-model:value="historySearch"
-          placeholder="股票代码或名称（留空查看全部）"
+          placeholder="股票代码或名称（留空查看范围）"
           clearable
-          style="width: 280px"
+          style="width: 260px"
           @keyup.enter="loadHistory(1)"
         >
           <template #prefix>
             <n-icon :component="SearchOutline" />
           </template>
         </n-input>
+        <n-date-picker
+          v-model:formatted-value="historyStartDate"
+          type="date"
+          value-format="yyyy-MM-dd"
+          clearable
+          placeholder="开始日期"
+          style="width: 145px"
+        />
+        <n-date-picker
+          v-model:formatted-value="historyEndDate"
+          type="date"
+          value-format="yyyy-MM-dd"
+          clearable
+          placeholder="结束日期"
+          style="width: 145px"
+        />
         <n-button type="primary" size="small" @click="loadHistory(1)" :loading="historyLoading">搜索</n-button>
       </n-flex>
       <n-alert v-if="historyError" type="error" closable :bordered="false" style="margin-bottom: 8px" @close="historyError = ''">

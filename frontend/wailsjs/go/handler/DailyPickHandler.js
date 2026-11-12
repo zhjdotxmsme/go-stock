@@ -14,6 +14,10 @@ export function GetDailyPicks(arg1) {
   return window['go']['handler']['DailyPickHandler']['GetDailyPicks'](arg1);
 }
 
+export function GetDailyPickTechProfile(arg1, arg2) {
+  return window['go']['handler']['DailyPickHandler']['GetDailyPickTechProfile'](arg1, arg2);
+}
+
 export function GetDateRange() {
   return window['go']['handler']['DailyPickHandler']['GetDateRange']();
 }

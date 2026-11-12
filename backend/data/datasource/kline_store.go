@@ -51,7 +51,9 @@ func (s *KLineStore) QueryKLines(ctx context.Context, stockCode, period, startDa
 
 // QueryKLinePage returns a page of bars, newest first. A nil stockCodes slice
 // queries all stocks; a non-nil empty slice intentionally matches no rows.
-func (s *KLineStore) QueryKLinePage(ctx context.Context, stockCodes []string, page, pageSize int) ([]models.KLineBar, int64, error) {
+// Empty dates fall back to the last 30 days so callers cannot accidentally scan
+// the multi-million-row history table.
+func (s *KLineStore) QueryKLinePage(ctx context.Context, stockCodes []string, startDate, endDate string, page, pageSize int) ([]models.KLineBar, int64, error) {
 	if page <= 0 {
 		page = 1
 	}
@@ -61,6 +63,10 @@ func (s *KLineStore) QueryKLinePage(ctx context.Context, stockCodes []string, pa
 	if pageSize > 100 {
 		pageSize = 100
 	}
+	if startDate == "" && endDate == "" {
+		endDate = timeutil.TodayStr()
+		startDate = timeutil.DaysAgoStr(30)
+	}
 
 	q := db.Dao.WithContext(ctx).Model(&models.KLineBar{})
 	if stockCodes != nil {
@@ -68,6 +74,12 @@ func (s *KLineStore) QueryKLinePage(ctx context.Context, stockCodes []string, pa
 			return []models.KLineBar{}, 0, nil
 		}
 		q = q.Where("stock_code IN ?", stockCodes)
+	}
+	if startDate != "" {
+		q = q.Where("trade_date >= ?", startDate)
+	}
+	if endDate != "" {
+		q = q.Where("trade_date <= ?", endDate)
 	}
 
 	var total int64

@@ -318,6 +318,7 @@ export namespace backtest {
 	export class SyncProgressData {
 	    summary: SyncProgressSummary;
 	    tasks: SyncTaskItem[];
+	    hiddenTasks: number;
 
 	    static createFrom(source: any = {}) {
 	        return new SyncProgressData(source);
@@ -327,6 +328,7 @@ export namespace backtest {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.summary = this.convertValues(source["summary"], SyncProgressSummary);
 	        this.tasks = this.convertValues(source["tasks"], SyncTaskItem);
+	        this.hiddenTasks = source["hiddenTasks"];
 	    }
 
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

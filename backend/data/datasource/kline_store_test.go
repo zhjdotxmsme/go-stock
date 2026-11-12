@@ -78,18 +78,24 @@ func TestQueryKLinePageMixedCodeFormats(t *testing.T) {
 	}
 
 	codes := stockcode.StockCodeCandidates("600519")
-	first, total, err := store.QueryKLinePage(ctx, codes, 1, 2)
+	first, total, err := store.QueryKLinePage(ctx, codes, "2024-01-01", "2024-12-31", 1, 2)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), total)
 	require.Len(t, first, 2)
 	assert.Equal(t, "2024-01-03", first[0].TradeDate)
 	assert.Equal(t, "2024-01-02", first[1].TradeDate)
 
-	last, total, err := store.QueryKLinePage(ctx, codes, 2, 2)
+	last, total, err := store.QueryKLinePage(ctx, codes, "2024-01-01", "2024-12-31", 2, 2)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), total)
 	require.Len(t, last, 1)
 	assert.Equal(t, "2024-01-01", last[0].TradeDate)
+
+	ranged, total, err := store.QueryKLinePage(ctx, codes, "2024-01-02", "2024-01-02", 1, 20)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), total)
+	require.Len(t, ranged, 1)
+	assert.Equal(t, "2024-01-02", ranged[0].TradeDate)
 }
 
 // TestUpsertSanitizesDirtyBars 回归：mootdx 指数脏数据（2099 年未来日期/无法解析日期）

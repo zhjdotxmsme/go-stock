@@ -167,12 +167,14 @@ type SyncProgressSummary struct {
 }
 
 type SyncProgressData struct {
-	Summary SyncProgressSummary `json:"summary"`
-	Tasks   []SyncTaskItem      `json:"tasks"`
+	Summary     SyncProgressSummary `json:"summary"`
+	Tasks       []SyncTaskItem      `json:"tasks"`
+	HiddenTasks int                 `json:"hiddenTasks"`
 }
 
 // GetKLineHistory returns stored K-line bars with stock code/name search.
-func (s *Service) GetKLineHistory(keyword string, page, pageSize int) (*KLineHistoryPageData, error) {
+// Empty dates default to the most recent 30 days.
+func (s *Service) GetKLineHistory(keyword, startDate, endDate string, page, pageSize int) (*KLineHistoryPageData, error) {
 	ctx := context.Background()
 	if page <= 0 {
 		page = 1
@@ -194,7 +196,7 @@ func (s *Service) GetKLineHistory(keyword string, page, pageSize int) (*KLineHis
 		}
 	}
 
-	bars, total, err := datasource.NewKLineStore().QueryKLinePage(ctx, codes, page, pageSize)
+	bars, total, err := datasource.NewKLineStore().QueryKLinePage(ctx, codes, startDate, endDate, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -556,6 +558,7 @@ func (s *Service) GetSyncProgress() (*SyncProgressData, error) {
 	if err := db.Dao.WithContext(ctx).
 		Where("status <> ?", history.SyncStatusDone).
 		Order("updated_at DESC").
+		Limit(200).
 		Find(&active).Error; err != nil {
 		return nil, err
 	}
@@ -590,7 +593,12 @@ func (s *Service) GetSyncProgress() (*SyncProgressData, error) {
 		})
 	}
 
-	return &SyncProgressData{Summary: summary, Tasks: items}, nil
+	activeCount := summary.Pending + summary.Running + summary.Failed + summary.Partial
+	hidden := activeCount - int64(len(active))
+	if hidden < 0 {
+		hidden = 0
+	}
+	return &SyncProgressData{Summary: summary, Tasks: items, HiddenTasks: int(hidden)}, nil
 }
 
 // GetSeedImportStatus returns information about seed data availability

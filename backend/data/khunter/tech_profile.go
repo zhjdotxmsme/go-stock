@@ -7,10 +7,13 @@ import (
 	"math"
 
 	"go-stock/backend/data"
+	"go-stock/backend/data/datasource"
 	"go-stock/backend/data/indicator"
 	"go-stock/backend/data/khunter/strategy"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
+	"go-stock/backend/util/timeutil"
+	"time"
 )
 
 // BuildTechProfile 技术画像：基于本地日 K（近 30 根）计算趋势/量能/位置/动能
@@ -115,6 +118,26 @@ func BuildTechProfile(bars []models.KLineBar) map[string]any {
 		// 与每日选股同一套口径：均线、MACD、RSI、KDJ、布林、量能、波动、回撤。
 		"sections": data.DailyPickTechBrief(snapshotFromBars(bars)),
 	}
+}
+
+// GetTechProfile 按推荐日生成与狩猎场一致的技术画像。
+// 只读取推荐日及之前的本地日 K，避免用最新行情冒充历史画像。
+func GetTechProfile(ctx context.Context, stockCode, tradeDate string) (map[string]any, error) {
+	endT := time.Now()
+	if tradeDate != "" {
+		parsed, err := timeutil.ParseDate(tradeDate)
+		if err != nil {
+			return nil, fmt.Errorf("invalid trade date %q: %w", tradeDate, err)
+		}
+		endT = parsed
+	}
+	end := timeutil.DateStr(endT)
+	start := timeutil.DateStr(endT.AddDate(0, 0, -400))
+	bars, err := datasource.NewKLineStore().QueryKLinesPreferAdjusted(ctx, stockCode, "day", start, end)
+	if err != nil {
+		return nil, err
+	}
+	return BuildTechProfile(bars), nil
 }
 
 // snapshotFromBars 把本地日 K 收成推荐日指标快照，供技术结论复用。

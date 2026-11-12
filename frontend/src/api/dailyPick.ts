@@ -42,6 +42,28 @@ export async function getDailyPicks(query: any): Promise<any> {
   return r.data
 }
 
+export interface PickTechSection {
+  title: string
+  text: string
+}
+
+export interface PickTechProfile {
+  trend?: string
+  volume?: string
+  position?: string
+  momentum?: string
+  sections?: PickTechSection[]
+}
+
+/**
+ * 按推荐日获取与狩猎场一致的技术画像
+ */
+export async function getDailyPickTechProfile(stockCode: string, tradeDate: string): Promise<PickTechProfile | null> {
+  const r = await callApi(DailyPickHandler.GetDailyPickTechProfile, stockCode, tradeDate)
+  if (!r?.success) throw new Error(r?.message || '调用失败')
+  return r.data ?? null
+}
+
 /**
  * 选股统计
  */
@@ -111,6 +133,7 @@ export default {
   runDailyReview,
   getDailyPicks,
   getDailyPickStats,
+  getDailyPickTechProfile,
   updateDailyPickRemarks,
   getReviewTrend,
   getLLMRankingEnabled,

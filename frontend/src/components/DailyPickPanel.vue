@@ -111,10 +111,21 @@
           </n-gi>
         </n-grid>
         <n-card v-if="selectedPick" size="small" title="技术分析" style="margin-top:8px">
-          <div v-for="s in techSections(selectedPick)" :key="s.title" style="margin-bottom:8px">
-            <n-text strong>{{ s.title }}</n-text>
-            <div style="font-size:13px;line-height:1.6">{{ s.text }}</div>
-          </div>
+          <n-spin :show="profileLoading">
+            <n-grid v-if="profileFacts" :cols="2" :x-gap="12" :y-gap="8" style="margin-bottom:10px">
+              <n-gi v-for="item in profileFactItems" :key="item.label">
+                <n-text strong>{{ item.label }}</n-text>
+                <div style="font-size:13px;line-height:1.6">{{ item.text }}</div>
+              </n-gi>
+            </n-grid>
+            <div v-for="s in techSections(selectedPick)" :key="s.title" style="margin-bottom:8px">
+              <n-text strong>{{ s.title }}</n-text>
+              <div style="font-size:13px;line-height:1.6">{{ s.text }}</div>
+            </div>
+            <n-text v-if="!profileLoading && !profileFacts" depth="3" style="font-size:13px">
+              本地日 K 样本不足，暂无法生成狩猎场画像。
+            </n-text>
+          </n-spin>
         </n-card>
         <n-card v-if="selectedPick && otherBrief(selectedPick).length" size="small" title="其他分析" style="margin-top:8px">
           <div v-for="s in otherBrief(selectedPick)" :key="s.title" style="margin-bottom:8px">
@@ -146,6 +157,7 @@ import {
   runDailyPickAsync, getDailyPicks, getDailyPickStats,
   updateDailyPickRemarks, runDailyReview, getReviewTrend,
   getLLMRankingEnabled, setLLMRankingEnabled, getKronosFactorStats,
+  getDailyPickTechProfile, type PickTechProfile,
 } from '../api/dailyPick'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 
@@ -167,6 +179,18 @@ const queryDate = ref<number | null>(null)
 const query = reactive({ page: 1, pageSize: 20, tradeDate: '', reviewed: null })
 const pagination = reactive({ page: 1, pageSize: 20, total: 0, pageCount: 0 })
 const progressText = ref('')
+const profileLoading = ref(false)
+const profileFacts = ref<PickTechProfile | null>(null)
+const profileFactItems = computed(() => {
+  const p = profileFacts.value
+  if (!p) return []
+  return [
+    { label: '趋势', text: p.trend || '数据不足' },
+    { label: '量能', text: p.volume || '数据不足' },
+    { label: '位置', text: p.position || '数据不足' },
+    { label: '动能', text: p.momentum || '数据不足' },
+  ]
+})
 
 // Remote pagination: the table renders one server page at a time.
 const tablePagination = computed(() => ({
@@ -478,8 +502,18 @@ async function loadWinRate() {
   } finally { winRateLoading.value = false }
 }
 
-function showPickDetail(row: any) {
+async function showPickDetail(row: any) {
   selectedPick.value = row; showDetail.value = true
+  profileFacts.value = null
+  profileLoading.value = true
+  try {
+    profileFacts.value = await getDailyPickTechProfile(row.stockCode, row.tradeDate)
+  } catch {
+    // 历史画像缺失不阻塞原有技术简报与详情展示。
+    profileFacts.value = null
+  } finally {
+    profileLoading.value = false
+  }
 }
 
 async function loadPicks() {

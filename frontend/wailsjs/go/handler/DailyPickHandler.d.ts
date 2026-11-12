@@ -9,6 +9,8 @@ export function GetDailyPickStats():Promise<models.DailyPickStats>;
 
 export function GetDailyPicks(arg1:models.DailyPickQuery):Promise<models.DailyPickPageData>;
 
+export function GetDailyPickTechProfile(arg1:string,arg2:string):Promise<Record<string, any>>;
+
 export function GetDateRange():Promise<string|string>;
 
 export function GetKronosFactorStats():Promise<data.KronosFactorStats>;

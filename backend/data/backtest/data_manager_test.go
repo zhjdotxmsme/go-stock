@@ -43,7 +43,7 @@ func TestGetKLineHistorySearchesNamesAndPagesMixedFormats(t *testing.T) {
 	}
 
 	service := NewService()
-	first, err := service.GetKLineHistory("贵州", 1, 2)
+	first, err := service.GetKLineHistory("贵州", "2024-01-01", "2024-12-31", 1, 2)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), first.Total)
 	assert.Equal(t, 2, first.TotalPages)
@@ -52,17 +52,17 @@ func TestGetKLineHistorySearchesNamesAndPagesMixedFormats(t *testing.T) {
 	assert.Equal(t, "贵州茅台", first.List[0].StockName)
 	assert.Equal(t, "sh600519", first.List[0].StockCode)
 
-	last, err := service.GetKLineHistory("贵州", 2, 2)
+	last, err := service.GetKLineHistory("贵州", "2024-01-01", "2024-12-31", 2, 2)
 	require.NoError(t, err)
 	require.Len(t, last.List, 1)
 	assert.Equal(t, "2024-01-01", last.List[0].TradeDate)
 	assert.Equal(t, "贵州茅台", last.List[0].StockName)
 
-	byCode, err := service.GetKLineHistory("600519.SH", 1, 20)
+	byCode, err := service.GetKLineHistory("600519.SH", "2024-01-01", "2024-12-31", 1, 20)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3), byCode.Total)
 
-	all, err := service.GetKLineHistory("", 0, 500)
+	all, err := service.GetKLineHistory("", "2024-01-01", "2024-12-31", 0, 500)
 	require.NoError(t, err)
 	assert.Equal(t, int64(4), all.Total)
 	assert.Equal(t, 1, all.Page)

@@ -7,7 +7,7 @@ export function GetBacktestResults(arg1:string,arg2:number,arg3:number):Promise<
 
 export function GetKLineCacheStats():Promise<Record<string, any>>;
 
-export function GetKLineHistory(arg1:string,arg2:number,arg3:number):Promise<backtest.KLineHistoryPageData>;
+export function GetKLineHistory(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<backtest.KLineHistoryPageData>;
 
 export function GetLastSeedImportOutput():Promise<string>;
 

@@ -10,8 +10,8 @@ export function GetKLineCacheStats() {
   return window['go']['backtest']['Service']['GetKLineCacheStats']();
 }
 
-export function GetKLineHistory(arg1, arg2, arg3) {
-  return window['go']['backtest']['Service']['GetKLineHistory'](arg1, arg2, arg3);
+export function GetKLineHistory(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['backtest']['Service']['GetKLineHistory'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function GetLastSeedImportOutput() {

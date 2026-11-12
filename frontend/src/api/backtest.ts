@@ -78,8 +78,8 @@ export async function getKLineCacheStats(): Promise<any> {
 /**
  * 分页查询历史 K 线
  */
-export async function getKLineHistory(keyword: string, page: number, pageSize: number): Promise<backtest.KLineHistoryPageData> {
-  const r = await callApi(BacktestService.GetKLineHistory, keyword, page, pageSize)
+export async function getKLineHistory(keyword: string, startDate: string, endDate: string, page: number, pageSize: number): Promise<backtest.KLineHistoryPageData> {
+  const r = await callApi(BacktestService.GetKLineHistory, keyword, startDate, endDate, page, pageSize)
   if (!r?.success) throw new Error(r?.message || "调用失败")
   return r.data
 }
