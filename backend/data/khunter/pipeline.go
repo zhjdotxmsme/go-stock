@@ -464,9 +464,8 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 	}
 	res.Observed = len(observations)
 
-	// 8. 旧观察与已有持仓处理：无新信号也必须继续执行（上方不再因无候选提前返回）。
-	//    T+1~T+3 触发价确认与 结构/ATR 失效、1R 锁盈、五日到期 退出引擎由后续任务接入，
-	//    本阶段先保证无信号日流水线不早退、待确认观察与持仓中交易的读取路径稳定。
+	// 8. T+1~T+3 触发价确认引擎：对当日待确认观察重新评估数据闸门、风险画像、
+	//    触发价与跳空约束，确认成功后生成真实不复权交易。
 	pending, err := repo.GetPendingObservations(tradeDate)
 	if err != nil {
 		logger.SugaredLogger.Warnf("khunter 待确认观察读取失败: %v", err)
@@ -478,8 +477,22 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 		return res, nil
 	}
 	if len(pending) > 0 || len(holdings) > 0 {
-		logger.SugaredLogger.Infof("khunter %s 待确认观察 %d 条，持仓中交易 %d 笔（确认/退出引擎待后续任务接入）",
+		logger.SugaredLogger.Infof("khunter %s 待确认观察 %d 条，持仓中交易 %d 笔",
 			tradeDate, len(pending), len(holdings))
+	}
+	if len(pending) > 0 {
+		engine := NewConfirmationEngine(repo)
+		tradeDates, err := repo.GetTradeDates(ctx, daysBefore(tradeDate, 10), tradeDate)
+		if err != nil {
+			logger.SugaredLogger.Warnf("khunter 交易日序列读取失败 %s: %v", tradeDate, err)
+		} else {
+			n, err := engine.ConfirmForDate(ctx, tradeDate, tradeDates, lv, riskCfg, riskCfg.InitialCash)
+			if err != nil {
+				logger.SugaredLogger.Warnf("khunter 确认引擎执行失败 %s: %v", tradeDate, err)
+			} else {
+				res.Hunted += n
+			}
+		}
 	}
 	return res, nil
 }

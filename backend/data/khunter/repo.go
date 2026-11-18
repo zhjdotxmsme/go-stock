@@ -1,6 +1,7 @@
 package khunter
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -182,6 +183,28 @@ func (r *Repo) GetMoneyFlow(code string, days int) ([]models.KhunterMoneyFlowDai
 
 func (r *Repo) SaveHunting(h *models.KhunterHunting) error {
 	return db.Dao.Save(h).Error
+}
+
+// GetTradeDates 返回 [start, end] 区间内真实出现过的交易日（按 sh000300 日K），升序。
+func (r *Repo) GetTradeDates(ctx context.Context, start, end string) ([]string, error) {
+	var dates []string
+	err := db.Dao.Model(&models.KLineBar{}).
+		Where("stock_code = ? AND period = ? AND adjusted = ? AND trade_date BETWEEN ? AND ?",
+			"sh000300", "day", false, start, end).
+		Distinct("trade_date").
+		Order("trade_date ASC").
+		Pluck("trade_date", &dates).Error
+	return dates, err
+}
+
+// GetHoldingExposure 返回所有持仓中交易的 entry_price * shares 之和。
+func (r *Repo) GetHoldingExposure() (float64, error) {
+	var exposure float64
+	err := db.Dao.Model(&models.KhunterHunting{}).
+		Where("status = ?", HuntingStatusHolding).
+		Select("COALESCE(SUM(entry_price * shares), 0)").
+		Scan(&exposure).Error
+	return exposure, err
 }
 
 func (r *Repo) GetHuntingList(status string) ([]models.KhunterHunting, error) {
