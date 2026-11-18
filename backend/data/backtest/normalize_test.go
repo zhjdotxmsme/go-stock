@@ -90,46 +90,53 @@ func TestStockCodeCandidates(t *testing.T) {
 	assert.Equal(t, []string{"mock_win"}, StockCodeCandidates("mock_win"))
 }
 
-// ----- limitUpDown 板块判断 -----
+// ----- signalPriceLimit 板块判断（复用 trading.DailyPriceLimit 的真实涨跌停价）-----
 
-func TestLimitUpDown_Boards(t *testing.T) {
+func TestSignalPriceLimit_Boards(t *testing.T) {
 	engine := NewEngine()
 	cases := []struct {
-		name                string
-		in                  Input
-		wantUp, wantDown    float64
+		name             string
+		in               Input
+		wantUp, wantDown float64
 	}{
 		// 科创板 20%，三种输入格式
-		{"sci-ts", Input{StockCode: "688981.SH"}, 1.199, 0.801},
-		{"sci-prefix", Input{StockCode: "sh688981"}, 1.199, 0.801},
-		{"sci-bare", Input{StockCode: "688981"}, 1.199, 0.801},
+		{"sci-ts", Input{StockCode: "688981.SH"}, 120, 80},
+		{"sci-prefix", Input{StockCode: "sh688981"}, 120, 80},
+		{"sci-bare", Input{StockCode: "688981"}, 120, 80},
 		// 创业板 20%
-		{"gem-300-ts", Input{StockCode: "300750.SZ"}, 1.199, 0.801},
-		{"gem-301-prefix", Input{StockCode: "sz301269"}, 1.199, 0.801},
-		{"gem-bare", Input{StockCode: "301269"}, 1.199, 0.801},
+		{"gem-300-ts", Input{StockCode: "300750.SZ"}, 120, 80},
+		{"gem-301-prefix", Input{StockCode: "sz301269"}, 120, 80},
+		{"gem-bare", Input{StockCode: "301269"}, 120, 80},
 		// 北交所 30%
-		{"bj-43", Input{StockCode: "bj430047"}, 1.299, 0.701},
-		{"bj-43-bare", Input{StockCode: "430047"}, 1.299, 0.701},
-		{"bj-83", Input{StockCode: "830799.BJ"}, 1.299, 0.701},
-		{"bj-87-prefix", Input{StockCode: "bj872808"}, 1.299, 0.701},
-		{"bj-920", Input{StockCode: "920001"}, 1.299, 0.701},
+		{"bj-43", Input{StockCode: "bj430047"}, 130, 70},
+		{"bj-43-bare", Input{StockCode: "430047"}, 130, 70},
+		{"bj-83", Input{StockCode: "830799.BJ"}, 130, 70},
+		{"bj-87-prefix", Input{StockCode: "bj872808"}, 130, 70},
+		{"bj-920", Input{StockCode: "920001"}, 130, 70},
 		// 主板 10%
-		{"main-sh-ts", Input{StockCode: "600519.SH"}, 1.099, 0.901},
-		{"main-sz-prefix", Input{StockCode: "sz000001"}, 1.099, 0.901},
-		{"main-bare", Input{StockCode: "601398"}, 1.099, 0.901},
+		{"main-sh-ts", Input{StockCode: "600519.SH"}, 110, 90},
+		{"main-sz-prefix", Input{StockCode: "sz000001"}, 110, 90},
+		{"main-bare", Input{StockCode: "601398"}, 110, 90},
 		// 指数/ETF 不落入个股板块，按主板处理
-		{"index-510300", Input{StockCode: "sh510300"}, 1.099, 0.901},
-		{"index-000300", Input{StockCode: "sh000300"}, 1.099, 0.901},
+		{"index-510300", Input{StockCode: "sh510300"}, 110, 90},
+		{"index-000300", Input{StockCode: "sh000300"}, 110, 90},
 		// 无法识别的代码按主板处理
-		{"mock", Input{StockCode: "mock_win"}, 1.099, 0.901},
-		// ST 5%，任意格式都优先走 ST 分支
-		{"st-main", Input{StockCode: "600519.SH", IsST: true}, 1.049, 0.951},
-		{"st-sci", Input{StockCode: "sh688981", IsST: true}, 1.049, 0.951},
+		{"mock", Input{StockCode: "mock_win"}, 110, 90},
+		// 主板 ST 5%
+		{"st-main", Input{StockCode: "600519.SH", IsST: true}, 105, 95},
+		// 创业板/科创板 20% 与是否 ST 无关（板块规则优先）
+		{"st-sci", Input{StockCode: "sh688981", IsST: true}, 120, 80},
+		{"st-gem", Input{StockCode: "sz301269", IsST: true}, 120, 80},
 	}
 	for _, c := range cases {
-		up, down := engine.limitUpDown(c.in)
+		up, down, ok := engine.signalPriceLimit(c.in, 100)
+		assert.True(t, ok, c.name)
 		assert.InDelta(t, c.wantUp, up, 1e-9, c.name)
 		assert.InDelta(t, c.wantDown, down, 1e-9, c.name)
+	}
+	// prevClose 无效时不给限价，调用方跳过涨跌停判定
+	if _, _, ok := engine.signalPriceLimit(Input{StockCode: "600519.SH"}, 0); ok {
+		t.Fatal("prevClose<=0 应返回 ok=false")
 	}
 }
 
@@ -218,10 +225,10 @@ func TestSanitizeStockCodeInput(t *testing.T) {
 	cases := map[string]string{
 		"兴业银锡 - 000426.SZ": "sz000426",
 		"兴业银锡 - 000426":    "sz000426",
-		"600519.SH":          "sh600519",
-		"sh600519":           "sh600519",
-		"600519":             "sh600519",
-		"贵州茅台 600519":        "sh600519",
+		"600519.SH":        "sh600519",
+		"sh600519":         "sh600519",
+		"600519":           "sh600519",
+		"贵州茅台 600519":      "sh600519",
 	}
 	for input, want := range cases {
 		if got := SanitizeStockCodeInput(input); got != want {

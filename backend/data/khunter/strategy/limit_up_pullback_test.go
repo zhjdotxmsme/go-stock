@@ -68,3 +68,37 @@ func TestLimitUpPullbackTodayWeak(t *testing.T) {
 		t.Fatal("今日涨幅不足不应命中")
 	}
 }
+
+// TestLimitUpPullbackChiNextRealLimit 创业板按 20% 真实涨停判定关键日：
+// +10%（前收 10 → 收 11）不是涨停日，不得命中；改成 20% 真实涨停（收 12）后应命中。
+func TestLimitUpPullbackChiNextRealLimit(t *testing.T) {
+	bars := mkPullbackBars()
+	for i := range bars {
+		bars[i].StockCode = "300780"
+	}
+	if sig := (LimitUpPullback{}).Select(bars, "测试股份", bars[len(bars)-1].TradeDate); sig != nil {
+		t.Fatal("创业板 +10% 不是真实涨停，不应命中涨停回马枪")
+	}
+
+	// 涨停日改为 20% 真实涨停（10 → 12），回调区间与今日同步抬高 → 应命中
+	n := len(bars)
+	lu := 18
+	bars[lu].Open, bars[lu].High, bars[lu].Close = 10, 12, 12
+	pullCloses := []float64{11.8, 11.6, 11.7, 11.55, 11.6}
+	for k, pc := range pullCloses {
+		i := lu + 1 + k
+		bars[i].Open, bars[i].Close = pc, pc
+		bars[i].High, bars[i].Low = pc+0.05, pc-0.05
+	}
+	bars[n-1].Open = 11.7
+	bars[n-1].Close = bars[n-2].Close * 1.03
+	bars[n-1].High = bars[n-1].Close + 0.05
+	bars[n-1].Low = bars[n-1].Open - 0.05
+	sig := (LimitUpPullback{}).Select(bars, "测试股份", bars[n-1].TradeDate)
+	if sig == nil {
+		t.Fatal("创业板 20% 真实涨停后的缩量回调应命中")
+	}
+	if sig.KeyDateType != "涨停日" {
+		t.Fatalf("KeyDateType 应为涨停日: %+v", sig)
+	}
+}

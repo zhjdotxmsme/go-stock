@@ -3,9 +3,10 @@ package backtest
 import (
 	"context"
 	"fmt"
-	"strings"
+	"math"
 
 	"go-stock/backend/data/datasource"
+	"go-stock/backend/data/trading"
 	"go-stock/backend/models"
 )
 
@@ -66,27 +67,22 @@ func (e *Engine) queryCacheKLines(ctx context.Context, code, period, startDate, 
 	return nil, lastErr
 }
 
-// limitUpDown 返回给定 Input 的涨跌停阈值系数。
-// 返回 (upThreshold, downThreshold)，例如 (1.099, 0.901) 表示 10% 涨跌停。
-func (e *Engine) limitUpDown(in Input) (upFactor, downFactor float64) {
+// signalPriceLimit 返回信号日按板块规则的真实涨跌停价（与 trading.DailyPriceLimit 同一口径）。
+// 代码无法识别（非 6 位数字，如测试 mock）时按主板近似：ST 5%、其余 10%，
+// 仍返回 ok=true 以维持旧行为；prevClose <= 0 时 ok=false，由调用方跳过判定。
+func (e *Engine) signalPriceLimit(in Input, prevClose float64) (upPrice, downPrice float64, ok bool) {
+	if prevClose <= 0 {
+		return 0, 0, false
+	}
+	if pl, ok := trading.DailyPriceLimit(in.StockCode, prevClose, in.IsST); ok {
+		return pl.UpPrice, pl.DownPrice, true
+	}
+	rate := 0.10
 	if in.IsST {
-		return 1.049, 0.951 // ST 股 5%
+		rate = 0.05
 	}
-	// 根据 6 位数字代码前缀判断板块，任意输入格式（600519.SH / sh600519 / 600519）都正确
-	digits, _, ok := ParseStockCode(in.StockCode)
-	if !ok {
-		return 1.099, 0.901 // 无法识别的代码（如指数/测试 mock），按主板处理
-	}
-	if strings.HasPrefix(digits, "688") {
-		return 1.199, 0.801 // 科创板 20%
-	}
-	if strings.HasPrefix(digits, "300") || strings.HasPrefix(digits, "301") {
-		return 1.199, 0.801 // 创业板 20%
-	}
-	if digits[0] == '4' || digits[0] == '8' || strings.HasPrefix(digits, "920") {
-		return 1.299, 0.701 // 北交所 30%
-	}
-	return 1.099, 0.901 // 主板 10%
+	return math.Round(prevClose*(1+rate)*100) / 100,
+		math.Round(prevClose*(1-rate)*100) / 100, true
 }
 
 func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
@@ -157,20 +153,19 @@ func (e *Engine) Run(ctx context.Context, in Input) (*Result, error) {
 
 	signalBar := bars[0]
 
-	// 涨跌停约束检查：信号日若涨停/跌停，禁止买入
-	upFactor, downFactor := e.limitUpDown(in)
-
-	if signalBar.PrevClose > 0 {
+	// 涨跌停约束检查：信号日收于板块真实涨停/跌停价（0.01 元取整）禁止买入
+	if upPrice, downPrice, ok := e.signalPriceLimit(in, signalBar.PrevClose); ok {
 		switch {
-		case signalBar.Close >= signalBar.PrevClose*upFactor:
-			return nil, fmt.Errorf("price limit on signal date %s for %s: buy-day limit-up (close=%.2f >= prev=%.2f*%.4f)",
-				in.SignalDate, in.StockCode, signalBar.Close, signalBar.PrevClose, upFactor)
-		case signalBar.Close <= signalBar.PrevClose*downFactor:
-			return nil, fmt.Errorf("price limit on signal date %s for %s: buy-day limit-down (close=%.2f <= prev=%.2f*%.4f)",
-				in.SignalDate, in.StockCode, signalBar.Close, signalBar.PrevClose, downFactor)
+		case signalBar.Close >= upPrice-0.001:
+			return nil, fmt.Errorf("price limit on signal date %s for %s: buy-day limit-up (close=%.2f prev=%.2f limit=%.2f)",
+				in.SignalDate, in.StockCode, signalBar.Close, signalBar.PrevClose, upPrice)
+		case signalBar.Close <= downPrice+0.001:
+			return nil, fmt.Errorf("price limit on signal date %s for %s: buy-day limit-down (close=%.2f prev=%.2f limit=%.2f)",
+				in.SignalDate, in.StockCode, signalBar.Close, signalBar.PrevClose, downPrice)
 		}
 	}
-	// PrevClose == 0 时跳过检查（旧数据无此字段），保守允许交易
+	// PrevClose 无效时跳过检查（旧数据无此字段），回测口径保守允许交易；
+	// 狩猎场确认链路不得沿用该回退：缺前收必须拒绝确认（在后续确认任务接入）。
 
 	entry := in.EntryPrice
 	if entry <= 0 {

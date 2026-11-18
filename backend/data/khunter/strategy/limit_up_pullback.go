@@ -1,12 +1,16 @@
 package strategy
 
-import "go-stock/backend/models"
+import (
+	"strings"
+
+	"go-stock/backend/data/trading"
+	"go-stock/backend/models"
+)
 
 // 涨停回马枪参数（对齐 KHunter 代码实际值）
 const (
-	lpLimitUpThreshold = 0.095 // 涨停判定涨幅
-	lpLimitLookback    = 6     // 近 6 日内有涨停
-	lpVolRatioLimitUp  = 2.2   // 涨停日量比（前5日均量）
+	lpLimitLookback    = 6   // 近 6 日内有涨停
+	lpVolRatioLimitUp  = 2.2 // 涨停日量比（前5日均量）
 	lpPullbackMaxDays  = 9
 	lpPullbackRangeMax = 0.15 // 回调振幅上限
 	lpSupportRatio     = 0.95 // 回调收盘下限（对涨停收盘）
@@ -24,6 +28,23 @@ func (s LimitUpPullback) Name() string { return "涨停回马枪" }
 func (s LimitUpPullback) Weight() int  { return 50 }
 func (s LimitUpPullback) MinBars() int { return 15 }
 
+// lpEffectivePrevClose 第 i 根的有效前收：优先 PrevClose 字段，旧数据缺失时回退前一根收盘价。
+// 两者都无效返回 0，调用方必须跳过涨跌停判定（不得用近似涨幅命名涨停）。
+func lpEffectivePrevClose(bars []models.KLineBar, i int) float64 {
+	if bars[i].PrevClose > 0 {
+		return bars[i].PrevClose
+	}
+	if i > 0 && bars[i-1].Close > 0 {
+		return bars[i-1].Close
+	}
+	return 0
+}
+
+// lpIsSTName 按股票简称判断 ST（与 IsInvalidName 同一口径）。
+func lpIsSTName(name string) bool {
+	return strings.HasPrefix(name, "ST") || strings.HasPrefix(name, "*ST")
+}
+
 func (s LimitUpPullback) Select(bars []models.KLineBar, stockName, selectionDate string) *Signal {
 	n := len(bars)
 	if n < s.MinBars() || IsInvalidName(stockName) {
@@ -35,14 +56,21 @@ func (s LimitUpPullback) Select(bars []models.KLineBar, stockName, selectionDate
 	closes, vols := Closes(bars), Volumes(bars)
 	today := n - 1
 
-	// 1. 近 6 日找最近一个涨停日（涨幅≥9.5% 且量比≥2.2）
+	// 1. 近 6 日找最近一个真实涨停日（收盘=板块真实涨停价 且量比≥2.2）
+	//    创业板/科创板 20%、主板 10%、主板 ST 5%、北交所 30%：不再以固定 9.5% 涨幅命名涨停。
 	lu := -1
 	for i := today - 1; i >= 0 && i >= today-lpLimitLookback; i-- {
-		if PctChange(bars, i) >= lpLimitUpThreshold {
-			if a := AvgVolumeBefore(vols, i, 5); a > 0 && vols[i]/a >= lpVolRatioLimitUp {
-				lu = i
-				break
-			}
+		prev := lpEffectivePrevClose(bars, i)
+		if prev <= 0 {
+			continue // 关键日前收无效：无法判定真实涨停，跳过该日
+		}
+		limit, ok := trading.DailyPriceLimit(bars[0].StockCode, prev, lpIsSTName(stockName))
+		if !ok || !trading.ClosedAtLimitUp(bars[i], limit) {
+			continue
+		}
+		if a := AvgVolumeBefore(vols, i, 5); a > 0 && vols[i]/a >= lpVolRatioLimitUp {
+			lu = i
+			break
 		}
 	}
 	if lu < 0 || today-lu > lpPullbackMaxDays {
