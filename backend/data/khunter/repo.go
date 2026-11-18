@@ -20,6 +20,7 @@ func EnsureMigrate() error {
 		&models.KhunterSignal{}, &models.KhunterScore{}, &models.KhunterHunting{},
 		&models.KhunterMoneyFlowDaily{}, &models.KhunterRiskLevel{}, &models.KhunterEvent{},
 		&models.KhunterRunSummary{},
+		&models.KhunterResearchRecord{}, &models.KhunterFundamentalSnapshot{}, &models.KhunterSectorSnapshot{},
 	)
 }
 
@@ -195,4 +196,44 @@ func (r *Repo) GetActiveEvents(code, date string) ([]models.KhunterEvent, error)
 	err := db.Dao.Where("code = ? AND event_date <= ? AND expire_date >= ?", code, date, date).
 		Order("event_date DESC").Find(&rows).Error
 	return rows, err
+}
+
+// ErrSnapshotUnavailable 表示评分时点之前没有任何已落库的输入快照，历史结果不可回测。
+var ErrSnapshotUnavailable = errors.New("point-in-time snapshot unavailable")
+
+func (r *Repo) UpsertFundamentalSnapshot(row *models.KhunterFundamentalSnapshot) error {
+	return db.Dao.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "code"}, {Name: "available_date"}},
+		UpdateAll: true,
+	}).Create(row).Error
+}
+
+func (r *Repo) UpsertSectorSnapshot(row *models.KhunterSectorSnapshot) error {
+	return db.Dao.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "code"}, {Name: "available_date"}},
+		UpdateAll: true,
+	}).Create(row).Error
+}
+
+// GetFundamentalSnapshotAsOf 返回 asOfDate 当日已可用的最新基本面快照：
+// 绝不返回 available_date > asOfDate 的行；没有可用快照时返回 ErrSnapshotUnavailable。
+func (r *Repo) GetFundamentalSnapshotAsOf(code, asOfDate string) (models.KhunterFundamentalSnapshot, error) {
+	var row models.KhunterFundamentalSnapshot
+	err := db.Dao.Where("code=? AND available_date<=?", code, asOfDate).
+		Order("available_date DESC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return row, ErrSnapshotUnavailable
+	}
+	return row, err
+}
+
+// GetSectorSnapshotAsOf 返回 asOfDate 当日已可用的最新板块快照，语义同 GetFundamentalSnapshotAsOf。
+func (r *Repo) GetSectorSnapshotAsOf(code, asOfDate string) (models.KhunterSectorSnapshot, error) {
+	var row models.KhunterSectorSnapshot
+	err := db.Dao.Where("code=? AND available_date<=?", code, asOfDate).
+		Order("available_date DESC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return row, ErrSnapshotUnavailable
+	}
+	return row, err
 }

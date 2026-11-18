@@ -56,11 +56,30 @@ type PipelineResult struct {
 	InsufficientHistory int `json:"insufficientHistory"`
 	MissingTradeDate    int `json:"missingTradeDate"`
 	QueryFailed         int `json:"queryFailed"`
+	// Limitations 研究运行的数据局限说明（幸存者偏差、清单读取失败等）
+	Limitations []string `json:"limitations,omitempty"`
+	// NotBacktestable 缺时点快照、不得用最新值替代的标的（研究运行）
+	NotBacktestable []string `json:"notBacktestable,omitempty"`
 }
 
-// resolveTradeDate 解析流水线交易日：显式传入则照用；为空时取本地日 K 最新交易日
-// （周末/节假日手动运行时回退到最近有数据的交易日），本地无数据回退今天。
-func resolveTradeDate(tradeDate string) string {
+// RunMode 运行模式：live 实时生产运行（写生产表）；research 历史研究运行（只写研究记录）
+type RunMode string
+
+const (
+	RunModeLive     RunMode = "live"
+	RunModeResearch RunMode = "research"
+)
+
+// PipelineOptions 流水线运行选项。Mode 为空按 live 处理；Now 为空取当前时间。
+type PipelineOptions struct {
+	TradeDate string
+	Mode      RunMode
+	Now       time.Time
+}
+
+// resolveTradeDateAsOf 解析流水线交易日：显式传入则照用；为空时取本地日 K 最新交易日
+// （周末/节假日手动运行时回退到最近有数据的交易日），本地无数据回退 now（Now 为零值取今天）。
+func resolveTradeDateAsOf(tradeDate string, now time.Time) string {
 	if tradeDate != "" {
 		return tradeDate
 	}
@@ -69,7 +88,14 @@ func resolveTradeDate(tradeDate string) string {
 			return d
 		}
 	}
+	if !now.IsZero() {
+		return now.Format("2006-01-02")
+	}
 	return timeutil.TodayStr()
+}
+
+func resolveTradeDate(tradeDate string) string {
+	return resolveTradeDateAsOf(tradeDate, time.Time{})
 }
 
 func hasBarOnDate(bars []models.KLineBar, tradeDate string) bool {
@@ -91,11 +117,11 @@ var ErrPipelineRunning = errors.New("狩猎场流水线正在运行，请等待�
 var pipelineRunning atomic.Bool
 
 // marketRisk 计算并返回当日沪深300风险档；数据不足时按保守默认档处理。
-func marketRisk(ctx context.Context, tradeDate string) (risk.Level, float64) {
+func marketRisk(ctx context.Context, tradeDate string, now time.Time) (risk.Level, float64) {
 	lv := risk.LevelOf(0)
 	var1d := 0.0
 	if bars, err := datasource.NewKLineStore().QueryKLines(ctx, "sh000300", "day",
-		time.Now().AddDate(0, 0, -750).Format("2006-01-02"), tradeDate, false); err == nil && len(bars) > 100 {
+		now.AddDate(0, 0, -750).Format("2006-01-02"), tradeDate, false); err == nil && len(bars) > 100 {
 		returns := make([]float64, 0, len(bars)-1)
 		for i := 1; i < len(bars); i++ {
 			if bars[i-1].Close > 0 {
@@ -109,22 +135,166 @@ func marketRisk(ctx context.Context, tradeDate string) (risk.Level, float64) {
 	return lv, var1d
 }
 
-// RunPipeline 每日流水线（spec 第 7 节 8 步）。tradeDate 为空取最近交易日。
-func RunPipeline(ctx context.Context, tradeDate string) (res *PipelineResult, err error) {
+// snapshotAvailableDate 时点快照的可用日：常规当日运行即交易日；补跑历史交易日时
+// 数据是取数当天才拿到的，按取数日归档，可用日绝不早于取数时刻，避免研究读到未来数据。
+func snapshotAvailableDate(tradeDate string, now time.Time) string {
+	fetched := now.Format("2006-01-02")
+	if tradeDate > fetched {
+		return tradeDate
+	}
+	return fetched
+}
+
+type stockBasic struct {
+	Code string
+	Name string
+}
+
+// loadStockList 全市场股票清单（A 股，当前时点的在市股票）
+func loadStockList() ([]stockBasic, error) {
+	var infos []models.AllStockInfo
+	if err := db.Dao.Model(&models.AllStockInfo{}).
+		Where("secucode LIKE ? OR secucode LIKE ?", "%.SH", "%.SZ").
+		Find(&infos).Error; err != nil {
+		return nil, fmt.Errorf("读取股票清单: %w", err)
+	}
+	stocks := make([]stockBasic, 0, len(infos))
+	for _, info := range infos {
+		code := stockcode.Normalize(info.SECURITYCODE)
+		if code == "" {
+			code = stockcode.Normalize(info.SECUCODE)
+		}
+		if code == "" {
+			continue
+		}
+		stocks = append(stocks, stockBasic{Code: code, Name: info.SECURITYNAMEABBR})
+	}
+	return stocks, nil
+}
+
+type scanStat struct {
+	InsufficientHistory int
+	MissingTradeDate    int
+	QueryFailed         int
+}
+
+// scanStrategySignals 5 策略并行扫描（纯本地 K 线，8 并发；停牌过滤：bars 末日 < tradeDate 跳过）。
+// 实时/研究两模式共用，保证扫描规则一致。
+func scanStrategySignals(ctx context.Context, tradeDate string, stocks []stockBasic) (
+	signals []models.KhunterSignal, hits map[string][]scorer.Hit, lastBars map[string][]models.KLineBar, stat scanStat,
+) {
+	strategies := strategy.Registry()
+	var mu sync.Mutex
+	hits = map[string][]scorer.Hit{}
+	lastBars = map[string][]models.KLineBar{}
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	for _, st := range stocks {
+		if strategy.IsInvalidName(st.Name) {
+			continue
+		}
+		wg.Add(1)
+		go func(code, name string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			bars, err := strategy.LoadDailyBarsAsOf(ctx, code, tradeDate, 30)
+			if err != nil {
+				mu.Lock()
+				stat.QueryFailed++
+				mu.Unlock()
+				return
+			}
+			if len(bars) == 0 {
+				mu.Lock()
+				stat.InsufficientHistory++
+				mu.Unlock()
+				return
+			}
+			if !hasBarOnDate(bars, tradeDate) {
+				mu.Lock()
+				stat.MissingTradeDate++
+				mu.Unlock()
+				return // 停牌/本地 K 未同步到 tradeDate
+			}
+			mu.Lock()
+			lastBars[code] = bars
+			mu.Unlock()
+			for _, s := range strategies {
+				if len(bars) < s.MinBars() {
+					continue
+				}
+				if sig := s.Select(bars, name, tradeDate); sig != nil {
+					reasons, _ := json.Marshal(sig.Reasons)
+					details, _ := json.Marshal(sig.Details)
+					row := models.KhunterSignal{
+						Code: code, Name: name, Strategy: sig.StrategyName,
+						SignalDate: sig.Date, KeyDate: sig.KeyDate, KeyDateType: sig.KeyDateType,
+						Close: sig.Close, VolumeRatio: sig.VolumeRatio,
+						Reasons: string(reasons), Details: string(details),
+					}
+					mu.Lock()
+					signals = append(signals, row)
+					hits[code] = append(hits[code], scorer.Hit{Name: s.Name(), Weight: s.Weight(), Reasons: sig.Reasons})
+					mu.Unlock()
+				}
+			}
+		}(st.Code, st.Name)
+	}
+	wg.Wait()
+	return signals, hits, lastBars, stat
+}
+
+// buildCandidates 候选池（按信号去重）
+func buildCandidates(signals []models.KhunterSignal) (names map[string]string, candidates []string) {
+	names = map[string]string{}
+	for _, sig := range signals {
+		if _, ok := names[sig.Code]; !ok {
+			names[sig.Code] = sig.Name
+			candidates = append(candidates, sig.Code)
+		}
+	}
+	return names, candidates
+}
+
+// RunPipeline 每日流水线（实时模式兼容入口，spec 第 7 节 8 步）。tradeDate 为空取最近交易日。
+func RunPipeline(ctx context.Context, tradeDate string) (*PipelineResult, error) {
+	return RunPipelineWithOptions(ctx, PipelineOptions{TradeDate: tradeDate, Mode: RunModeLive})
+}
+
+// RunPipelineWithOptions 按模式运行流水线：实时模式先落时点快照再评分并写生产表；
+// 研究模式只用 available_date <= tradeDate 的时点输入，结果只写 KhunterResearchRecord。
+func RunPipelineWithOptions(ctx context.Context, opts PipelineOptions) (*PipelineResult, error) {
 	if !pipelineRunning.CompareAndSwap(false, true) {
 		return nil, ErrPipelineRunning
 	}
-	// 互斥标志必须在此释放：后面的 defer 依赖 res，而 res 要到迁移成功后才赋值。
+	// 互斥标志必须在此释放
 	defer pipelineRunning.Store(false)
 
-	started := time.Now()
-	input := tradeDate
-	tradeDate = resolveTradeDate(tradeDate)
-	logger.SugaredLogger.Infof("khunter pipeline start: tradeDate=%s (input=%q)", tradeDate, input)
+	mode := opts.Mode
+	if mode == "" {
+		mode = RunModeLive
+	}
+	now := opts.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	tradeDate := resolveTradeDateAsOf(opts.TradeDate, now)
+	logger.SugaredLogger.Infof("khunter pipeline start: mode=%s tradeDate=%s (input=%q)", mode, tradeDate, opts.TradeDate)
 	if err := EnsureMigrate(); err != nil {
 		return nil, err
 	}
 	repo := NewRepo()
+	if mode == RunModeResearch {
+		return runResearchPipeline(ctx, repo, tradeDate, now)
+	}
+	return runLivePipeline(ctx, repo, tradeDate, now)
+}
+
+// runLivePipeline 实时生产运行：写信号/评分/风险档/狩猎池/运行汇总。
+// 评分前先把基本面和板块输入落时点快照，供历史研究按时点回读。
+func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time.Time) (res *PipelineResult, err error) {
+	started := time.Now()
 	res = &PipelineResult{TradeDate: tradeDate}
 	defer func() {
 		duration := time.Since(started)
@@ -156,99 +326,20 @@ func RunPipeline(ctx context.Context, tradeDate string) (res *PipelineResult, er
 	}()
 
 	// 1. 全市场股票清单（A 股）
-	var infos []models.AllStockInfo
-	if err := db.Dao.Model(&models.AllStockInfo{}).
-		Where("secucode LIKE ? OR secucode LIKE ?", "%.SH", "%.SZ").
-		Find(&infos).Error; err != nil {
-		return nil, fmt.Errorf("读取股票清单: %w", err)
-	}
-	type stockBasic struct {
-		Code string
-		Name string
-	}
-	stocks := make([]stockBasic, 0, len(infos))
-	for _, info := range infos {
-		code := stockcode.Normalize(info.SECURITYCODE)
-		if code == "" {
-			code = stockcode.Normalize(info.SECUCODE)
-		}
-		if code == "" {
-			continue
-		}
-		stocks = append(stocks, stockBasic{Code: code, Name: info.SECURITYNAMEABBR})
+	stocks, err := loadStockList()
+	if err != nil {
+		return nil, err
 	}
 	res.StockTotal = len(stocks)
 
 	// 2. 5 策略并行扫描（纯本地 K 线，8 并发；停牌过滤：bars 末日 < tradeDate 跳过）
-	strategies := strategy.Registry()
-	var mu sync.Mutex
-	var signals []models.KhunterSignal
-	hits := map[string][]scorer.Hit{}
-	lastBars := map[string][]models.KLineBar{}
-	sem := make(chan struct{}, 8)
-	insufficientHistory := 0
-	missingTradeDate := 0
-	queryFailed := 0
-	var wg sync.WaitGroup
-	for _, st := range stocks {
-		if strategy.IsInvalidName(st.Name) {
-			continue
-		}
-		wg.Add(1)
-		go func(code, name string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			bars, err := strategy.LoadDailyBarsAsOf(ctx, code, tradeDate, 30)
-			if err != nil {
-				mu.Lock()
-				queryFailed++
-				mu.Unlock()
-				return
-			}
-			if len(bars) == 0 {
-				mu.Lock()
-				insufficientHistory++
-				mu.Unlock()
-				return
-			}
-			if !hasBarOnDate(bars, tradeDate) {
-				mu.Lock()
-				missingTradeDate++
-				mu.Unlock()
-				return // 停牌/本地 K 未同步到 tradeDate
-			}
-			mu.Lock()
-			lastBars[code] = bars
-			mu.Unlock()
-			for _, s := range strategies {
-				if len(bars) < s.MinBars() {
-					continue
-				}
-				if sig := s.Select(bars, name, tradeDate); sig != nil {
-					reasons, _ := json.Marshal(sig.Reasons)
-					details, _ := json.Marshal(sig.Details)
-					row := models.KhunterSignal{
-						Code: code, Name: name, Strategy: sig.StrategyName,
-						SignalDate: sig.Date, KeyDate: sig.KeyDate, KeyDateType: sig.KeyDateType,
-						Close: sig.Close, VolumeRatio: sig.VolumeRatio,
-						Reasons: string(reasons), Details: string(details),
-					}
-					mu.Lock()
-					signals = append(signals, row)
-					hits[code] = append(hits[code], scorer.Hit{Name: s.Name(), Weight: s.Weight(), Reasons: sig.Reasons})
-					mu.Unlock()
-				}
-			}
-		}(st.Code, st.Name)
-	}
-	wg.Wait()
+	signals, hits, lastBars, stat := scanStrategySignals(ctx, tradeDate, stocks)
 	res.FreshStocks = len(lastBars)
-	res.InsufficientHistory = insufficientHistory
-	res.MissingTradeDate = missingTradeDate
-	res.QueryFailed = queryFailed
+	res.InsufficientHistory = stat.InsufficientHistory
+	res.MissingTradeDate = stat.MissingTradeDate
+	res.QueryFailed = stat.QueryFailed
 	logger.SugaredLogger.Infof("khunter pipeline scan done: %d/%d 只本地K线在 %s 有 bar，历史不足 %d，当日无 bar %d，查询失败 %d，信号 %d 条",
-		len(lastBars), len(stocks), tradeDate, insufficientHistory, missingTradeDate, queryFailed, len(signals))
+		len(lastBars), len(stocks), tradeDate, stat.InsufficientHistory, stat.MissingTradeDate, stat.QueryFailed, len(signals))
 	if len(lastBars) < 100 {
 		logger.SugaredLogger.Warnf("khunter 所选日期本地日K覆盖较低：%s，当日有 bar %d/%d", tradeDate, len(lastBars), len(stocks))
 	}
@@ -258,18 +349,11 @@ func RunPipeline(ctx context.Context, tradeDate string) (res *PipelineResult, er
 	res.Signals = len(signals)
 
 	// 3. 候选池（去重）
-	names := map[string]string{}
-	var candidates []string
-	for _, sig := range signals {
-		if _, ok := names[sig.Code]; !ok {
-			names[sig.Code] = sig.Name
-			candidates = append(candidates, sig.Code)
-		}
-	}
+	names, candidates := buildCandidates(signals)
 	res.Candidates = len(candidates)
 
 	// 风险档与候选无关：无信号也要持久化，避免运行记录缺当日市场状态。
-	lv, var1d := marketRisk(ctx, tradeDate)
+	lv, var1d := marketRisk(ctx, tradeDate, now)
 	if err := repo.SaveRiskLevel(&models.KhunterRiskLevel{
 		Date: tradeDate, Var1d: var1d, Var5d: risk.MultiDay(var1d, 5),
 		Level: lv.Name, PositionLimit: lv.PositionLimit, ScoreExtra: lv.ScoreExtra,
@@ -294,16 +378,19 @@ func RunPipeline(ctx context.Context, tradeDate string) (res *PipelineResult, er
 		logger.SugaredLogger.Warnf("khunter 事件同步中断: %v", err)
 	}
 
-	// 5. 五维评分
+	// 5. 先落时点快照再评分
+	snapDate := snapshotAvailableDate(tradeDate, now)
 	var scores []models.KhunterScore
 	for _, code := range candidates {
 		flows, _ := repo.GetMoneyFlowAsOf(code, tradeDate, 5)
 		events, evErr := repo.GetActiveEvents(code, tradeDate)
+		fund := FetchAndSnapshotFundamental(repo, code, snapDate)
+		sectors := fetchAndSnapshotSectorInputs(repo, code, snapDate)
 		in := scorer.FiveDimInput{
 			Hits:      hits[code],
 			MoneyFlow: flows,
-			Finance:   FetchFundamentalRetry(code, 1),
-			Sectors:   fetchSectorInputs(code),
+			Finance:   fund,
+			Sectors:   sectors,
 			Events:    events,
 			StockName: names[code],
 		}

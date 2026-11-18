@@ -2,10 +2,12 @@ package khunter
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"go-stock/backend/data/khunter/scorer"
 	"go-stock/backend/db"
+	"go-stock/backend/logger"
 	"go-stock/backend/models"
 	"go-stock/backend/stockcode"
 )
@@ -57,4 +59,37 @@ func fetchSectorInputs(code string) []scorer.SectorInput {
 		out = append(out, in)
 	}
 	return out
+}
+
+// fetchAndSnapshotSectorInputs 实时模式专用：装配板块输入先落时点快照再返回评分输入。
+// 落库失败只记日志，不阻断评分。
+func fetchAndSnapshotSectorInputs(repo *Repo, code, availableDate string) []scorer.SectorInput {
+	sectors := fetchSectorInputs(code)
+	payload, err := json.Marshal(sectors)
+	if err != nil {
+		logger.SugaredLogger.Warnf("khunter 板块快照序列化失败 %s: %v", code, err)
+		return sectors
+	}
+	row := models.KhunterSectorSnapshot{Code: code, AvailableDate: availableDate, Payload: string(payload)}
+	if err := repo.UpsertSectorSnapshot(&row); err != nil {
+		logger.SugaredLogger.Warnf("khunter 板块快照落库失败 %s@%s: %v", code, availableDate, err)
+	}
+	return sectors
+}
+
+// loadSectorInputsAsOf 研究模式读取时点板块快照并解码；
+// 缺快照（或快照为空）返回 ErrSnapshotUnavailable，禁止调用最新接口补缺。
+func loadSectorInputsAsOf(repo *Repo, code, asOfDate string) ([]scorer.SectorInput, error) {
+	row, err := repo.GetSectorSnapshotAsOf(code, asOfDate)
+	if err != nil {
+		return nil, err
+	}
+	var sectors []scorer.SectorInput
+	if err := json.Unmarshal([]byte(row.Payload), &sectors); err != nil {
+		return nil, fmt.Errorf("板块快照解析失败 %s@%s: %w", code, row.AvailableDate, err)
+	}
+	if len(sectors) == 0 {
+		return nil, fmt.Errorf("%w: %s@%s 板块快照为空", ErrSnapshotUnavailable, code, row.AvailableDate)
+	}
+	return sectors, nil
 }

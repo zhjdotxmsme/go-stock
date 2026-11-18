@@ -125,3 +125,41 @@ type KhunterEvent struct {
 }
 
 func (KhunterEvent) TableName() string { return "khunter_events" }
+
+// KhunterResearchRecord 历史研究运行记录。研究模式只写本表，
+// 不写信号/评分/狩猎池/运行汇总等生产表，与实时生产状态完全隔离。
+type KhunterResearchRecord struct {
+	ID         uint      `gorm:"primarykey" json:"id"`
+	TradeDate  string    `gorm:"size:10;uniqueIndex" json:"tradeDate"`
+	Status     string    `gorm:"size:30" json:"status"` // success / failed
+	ResultJSON string    `gorm:"type:text" json:"resultJson"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+func (KhunterResearchRecord) TableName() string { return "khunter_research_records" }
+
+// KhunterFundamentalSnapshot 基本面时点快照。AvailableDate 为确认数据可用的日期
+// （快照落库当日，不早于取数时刻）；历史研究只读 available_date <= asOfDate 的行，
+// 缺快照时标记不可回测，禁止用最新值替代。
+type KhunterFundamentalSnapshot struct {
+	ID            uint      `gorm:"primarykey" json:"id"`
+	Code          string    `gorm:"size:20;index:idx_khfs_code_available,unique" json:"code"`
+	AvailableDate string    `gorm:"size:10;index:idx_khfs_code_available,unique" json:"availableDate"`
+	ReportPeriod  string    `gorm:"size:10" json:"reportPeriod"`
+	Payload       string    `gorm:"type:text" json:"payload"` // JSON: scorer.FundamentalInput
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+func (KhunterFundamentalSnapshot) TableName() string { return "khunter_fundamental_snapshots" }
+
+// KhunterSectorSnapshot 板块输入时点快照（行业+概念 × 主力净流入，整组一行）。
+type KhunterSectorSnapshot struct {
+	ID            uint      `gorm:"primarykey" json:"id"`
+	Code          string    `gorm:"size:20;index:idx_khss_code_available,unique" json:"code"`
+	AvailableDate string    `gorm:"size:10;index:idx_khss_code_available,unique" json:"availableDate"`
+	Payload       string    `gorm:"type:text" json:"payload"` // JSON: []scorer.SectorInput
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+func (KhunterSectorSnapshot) TableName() string { return "khunter_sector_snapshots" }
