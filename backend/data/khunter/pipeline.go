@@ -482,7 +482,7 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 	}
 	if len(pending) > 0 {
 		engine := NewConfirmationEngine(repo)
-		tradeDates, err := repo.GetTradeDates(ctx, daysBefore(tradeDate, 10), tradeDate)
+		tradeDates, err := repo.GetTradeDates(ctx, daysBefore(tradeDate, 30), tradeDate)
 		if err != nil {
 			logger.SugaredLogger.Warnf("khunter 交易日序列读取失败 %s: %v", tradeDate, err)
 		} else {

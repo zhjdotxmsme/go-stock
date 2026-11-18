@@ -70,7 +70,7 @@ func EvaluateConfirmationDay(
 
 // ConfirmationWindowState 按真实交易日序列判断 checkDate 相对于 signalDate 的窗口位置。
 // 返回 signal_day / open / expired / invalid 之一。
-func ConfirmationWindowState(signalDate, checkDate string, tradeDates []string) string {
+func ConfirmationWindowState(signalDate, checkDate string, tradeDates []string, cfg RiskControlConfig) string {
 	signalIdx, checkIdx := -1, -1
 	for i, d := range tradeDates {
 		if d == signalDate {
@@ -84,26 +84,30 @@ func ConfirmationWindowState(signalDate, checkDate string, tradeDates []string) 
 		return "invalid"
 	}
 	offset := checkIdx - signalIdx
+	confirmWindow := cfg.ConfirmTradingDays
+	if confirmWindow <= 0 {
+		confirmWindow = 3
+	}
 	switch {
 	case offset == 0:
 		return "signal_day"
-	case offset >= 1 && offset <= cfgConfirmWindow:
+	case offset >= 1 && offset <= confirmWindow:
 		return "open"
 	default:
 		return "expired"
 	}
 }
 
-// cfgConfirmWindow 默认确认窗口为 3 个交易日；由 RiskControlConfig.ConfirmTradingDays 控制。
-const cfgConfirmWindow = 3
-
 // RiskBudgetShares 按风险预算、仓位上限和 100 股整数手计算可买入股数。
 // positionLimit 为仓位上限比例（如 1.0 表示 100%），usedExposure 为已用Exposure。
-func RiskBudgetShares(equity, entry, stop float64, positionLimit float64, usedExposure float64) int {
+func RiskBudgetShares(equity, entry, stop float64, positionLimit float64, usedExposure float64, cfg RiskControlConfig) int {
 	if equity <= 0 || entry <= 0 || stop <= 0 || stop >= entry {
 		return 0
 	}
-	riskFraction := DefaultRiskControlConfig().AccountRiskFraction
+	riskFraction := cfg.AccountRiskFraction
+	if riskFraction <= 0 {
+		riskFraction = DefaultRiskControlConfig().AccountRiskFraction
+	}
 	riskBudgetShares := int(math.Floor(equity * riskFraction / (entry - stop)))
 	availableExposure := equity*positionLimit - usedExposure
 	maxSharesByExposure := int(math.Floor(availableExposure / entry))
@@ -183,7 +187,7 @@ func (e *ConfirmationEngine) ConfirmForDate(
 
 	confirmedCount := 0
 	for _, obs := range pending {
-		state := ConfirmationWindowState(obs.SignalDate, tradeDate, tradeDates)
+		state := ConfirmationWindowState(obs.SignalDate, tradeDate, tradeDates, cfg)
 		if state == "signal_day" || state == "invalid" {
 			continue
 		}
@@ -242,7 +246,7 @@ func (e *ConfirmationEngine) ConfirmForDate(
 			continue
 		}
 
-		shares := RiskBudgetShares(equity, cd.EntryPrice, cd.StopPrice, marketRisk.PositionLimit, usedExposure)
+		shares := RiskBudgetShares(equity, cd.EntryPrice, cd.StopPrice, marketRisk.PositionLimit, usedExposure, cfg)
 		if shares < 100 {
 			if err := e.recordRejection(&obs, tradeDate, []string{"不足一手"}); err != nil {
 				return confirmedCount, err

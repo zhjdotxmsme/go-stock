@@ -36,11 +36,12 @@ func TestConfirmationPriceAndGap(t *testing.T) {
 }
 
 func TestConfirmationWindowAndRawPrice(t *testing.T) {
+	cfg := DefaultRiskControlConfig()
 	days := []string{"2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-16"}
-	if got := ConfirmationWindowState(days[0], days[3], days); got != "open" {
+	if got := ConfirmationWindowState(days[0], days[3], days, cfg); got != "open" {
 		t.Fatalf("T+3 应可确认: %s", got)
 	}
-	if got := ConfirmationWindowState(days[0], days[4], days); got != "expired" {
+	if got := ConfirmationWindowState(days[0], days[4], days, cfg); got != "expired" {
 		t.Fatalf("T+4 应过期: %s", got)
 	}
 	raw, err := RawSignalLevel(120, 100, 90)
@@ -50,26 +51,28 @@ func TestConfirmationWindowAndRawPrice(t *testing.T) {
 }
 
 func TestInitialStopAndRiskBudget(t *testing.T) {
+	cfg := DefaultRiskControlConfig()
 	d := EvaluateConfirmationDay(100, 96, 3,
 		models.KLineBar{Open: 99, High: 101, Low: 98, Close: 100},
-		trading.PriceLimit{UpPrice: 110, DownPrice: 90}, RiskDecision{AllowConfirm: true}, DefaultRiskControlConfig())
+		trading.PriceLimit{UpPrice: 110, DownPrice: 90}, RiskDecision{AllowConfirm: true}, cfg)
 	if !d.Confirmed || d.StopPrice != 96 || d.InitialRisk != 4 {
 		t.Fatalf("初始失效价错误: %+v", d)
 	}
-	if shares := RiskBudgetShares(1e6, 100, 96, 1, 0); shares != 1200 {
+	if shares := RiskBudgetShares(1e6, 100, 96, 1, 0, cfg); shares != 1200 {
 		t.Fatalf("风险预算股数=%d", shares)
 	}
 }
 
 func TestConfirmWindowStateEdgeCases(t *testing.T) {
+	cfg := DefaultRiskControlConfig()
 	days := []string{"2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-16"}
-	if got := ConfirmationWindowState(days[0], days[0], days); got != "signal_day" {
+	if got := ConfirmationWindowState(days[0], days[0], days, cfg); got != "signal_day" {
 		t.Fatalf("signal_day expected, got %s", got)
 	}
-	if got := ConfirmationWindowState(days[0], "2026-11-09", days); got != "invalid" {
+	if got := ConfirmationWindowState(days[0], "2026-11-09", days, cfg); got != "invalid" {
 		t.Fatalf("invalid expected, got %s", got)
 	}
-	if got := ConfirmationWindowState("2026-11-09", days[0], days); got != "invalid" {
+	if got := ConfirmationWindowState("2026-11-09", days[0], days, cfg); got != "invalid" {
 		t.Fatalf("invalid expected when signal not in tradeDates, got %s", got)
 	}
 }
@@ -87,20 +90,21 @@ func TestRawSignalLevelInvalidInputs(t *testing.T) {
 }
 
 func TestRiskBudgetSharesRespectsPositionLimitAndLotSize(t *testing.T) {
+	cfg := DefaultRiskControlConfig()
 	// risk budget: 1e6 * 0.005 / 4 = 1250 -> round to 1200
-	if got := RiskBudgetShares(1e6, 100, 96, 1, 0); got != 1200 {
+	if got := RiskBudgetShares(1e6, 100, 96, 1, 0, cfg); got != 1200 {
 		t.Fatalf("expected 1200, got %d", got)
 	}
 	// position limit caps exposure: 1e6*0.1 - 0 = 100k -> 1000 shares, risk budget 1250 -> constrained to 1000
-	if got := RiskBudgetShares(1e6, 100, 96, 0.1, 0); got != 1000 {
+	if got := RiskBudgetShares(1e6, 100, 96, 0.1, 0, cfg); got != 1000 {
 		t.Fatalf("expected 1000, got %d", got)
 	}
 	// used exposure eats into position limit
-	if got := RiskBudgetShares(1e6, 100, 96, 0.1, 50000); got != 500 {
+	if got := RiskBudgetShares(1e6, 100, 96, 0.1, 50000, cfg); got != 500 {
 		t.Fatalf("expected 500, got %d", got)
 	}
 	// negative available exposure -> 0
-	if got := RiskBudgetShares(1e6, 100, 96, 0.1, 200000); got != 0 {
+	if got := RiskBudgetShares(1e6, 100, 96, 0.1, 200000, cfg); got != 0 {
 		t.Fatalf("expected 0, got %d", got)
 	}
 }
