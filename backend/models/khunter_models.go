@@ -41,21 +41,58 @@ type KhunterScore struct {
 
 func (KhunterScore) TableName() string { return "khunter_scores" }
 
-// KhunterHunting 狩猎场
+// KhunterHunting 狩猎池交易记录：只有确认成功才入池。新状态只允许 持仓中 → 已退出；
+// 旧版本记录统一迁移为 历史待核（不是真实持仓，不得伪装成可执行仓位）。
+// 唯一键 (code, signal_date) 与 (code, enter_date)：同一股票同一信号日只有一条记录，
+// 同一股票同一确认日只保留一条入池记录。
 type KhunterHunting struct {
-	ID           uint      `gorm:"primarykey" json:"id"`
-	Code         string    `gorm:"size:20;index" json:"code"`
-	Name         string    `gorm:"size:50" json:"name"`
-	EnterDate    string    `gorm:"size:10" json:"enterDate"`
-	EnterScore   float64   `json:"enterScore"`
-	SupportPrice float64   `json:"supportPrice"`
-	Status       string    `gorm:"size:10" json:"status"` // 追踪中 / 已移除
-	TrackDays    int       `json:"trackDays"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID               uint      `gorm:"primarykey" json:"id"`
+	Code             string    `gorm:"size:20;uniqueIndex:idx_khh_code_signal,priority:1;uniqueIndex:idx_khh_code_enter,priority:1" json:"code"`
+	Name             string    `gorm:"size:50" json:"name"`
+	SignalDate       string    `gorm:"size:10;uniqueIndex:idx_khh_code_signal,priority:2" json:"signalDate"`
+	EnterDate        string    `gorm:"size:10;uniqueIndex:idx_khh_code_enter,priority:2" json:"enterDate"`
+	EnterScore       float64   `json:"enterScore"`
+	SupportPrice     float64   `json:"supportPrice"`
+	EntryPrice       float64   `json:"entryPrice"` // 真实确认成交价
+	InitialStopPrice float64   `json:"initialStopPrice"`
+	ProtectPrice     float64   `json:"protectPrice"`
+	InitialRisk      float64   `json:"initialRisk"`
+	Shares           int       `json:"shares"`
+	Status           string    `gorm:"size:10" json:"status"` // 持仓中 / 已退出 / 历史待核
+	TrackDays        int       `json:"trackDays"`
+	ExitDate         string    `gorm:"size:10" json:"exitDate"`
+	ExitPrice        float64   `json:"exitPrice"`
+	ExitReason       string    `gorm:"size:100" json:"exitReason"`
+	CreatedAt        time.Time `json:"createdAt"`
+	UpdatedAt        time.Time `json:"updatedAt"`
 }
 
 func (KhunterHunting) TableName() string { return "khunter_hunting" }
+
+// KhunterObservation 形态候选观察记录：T 日信号只观察，不假定当日收盘买入。
+// 同一股票同一信号日只有一条有效观察（唯一键 (code, signal_date)）；
+// 状态只允许由对应事务迁移（确认 → 已确认，过期 → 已过期），
+// 同日重跑 UpsertObservation 不得把终态重置为观察中。
+type KhunterObservation struct {
+	ID              uint      `gorm:"primarykey" json:"id"`
+	Code            string    `gorm:"size:20;uniqueIndex:idx_kho_code_signal" json:"code"`
+	Name            string    `gorm:"size:50" json:"name"`
+	SignalDate      string    `gorm:"size:10;uniqueIndex:idx_kho_code_signal" json:"signalDate"`
+	Status          string    `gorm:"size:20" json:"status"`     // 观察中 / 已确认 / 已过期
+	DataStatus      string    `gorm:"size:30" json:"dataStatus"` // valid / invalid / intraday
+	TriggerPrice    float64   `json:"triggerPrice"`              // 信号日最高价 H，T+1~T+3 触及可确认
+	SignalLow       float64   `json:"signalLow"`                 // 信号日最低价 L，初始失效价下界
+	ATR14           float64   `json:"atr14"`
+	ConfirmExpire   string    `gorm:"size:10" json:"confirmExpire"` // 确认有效期（真实交易日序列由确认引擎判定）
+	Score           float64   `json:"score"`
+	SignalRiskJSON  string    `gorm:"type:text" json:"signalRiskJson"`
+	RiskHistoryJSON string    `gorm:"type:text" json:"riskHistoryJson"`
+	RejectReason    string    `gorm:"type:text" json:"rejectReason"` // 数据闸门不放行确认的全部原因
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+func (KhunterObservation) TableName() string { return "khunter_observations" }
 
 // KhunterMoneyFlowDaily 资金流历史落库
 type KhunterMoneyFlowDaily struct {

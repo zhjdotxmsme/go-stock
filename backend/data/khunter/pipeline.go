@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,7 +48,8 @@ type PipelineResult struct {
 	Signals             int
 	Candidates          int
 	Scored              int
-	Hunted              int
+	Observed            int // 本次落库的观察数（候选不再直接入池）
+	Hunted              int // 本次确认入池的交易数（确认引擎接入前恒为 0）
 	Removed             int
 	RiskLevel           string
 	TradeDate           string
@@ -362,70 +364,72 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 	}
 	res.RiskLevel = lv.Name
 
+	scores := make([]models.KhunterScore, 0, len(candidates))
 	if len(candidates) == 0 {
 		// 重跑同日且本次无候选：清空旧评分，保证库内结果和本次扫描一致。
 		if err := repo.ReplaceScoresForDate(tradeDate, nil); err != nil {
 			return res, err
 		}
-		return res, nil
-	}
-
-	// 4. 候选池数据预取（限流在 sync 函数内）
-	if _, err := SyncMoneyFlow(ctx, candidates); err != nil {
-		logger.SugaredLogger.Warnf("khunter 资金流同步中断: %v", err)
-	}
-	if _, err := SyncEvents(ctx, candidates); err != nil {
-		logger.SugaredLogger.Warnf("khunter 事件同步中断: %v", err)
-	}
-
-	// 5. 先落时点快照再评分
-	snapDate := snapshotAvailableDate(tradeDate, now)
-	var scores []models.KhunterScore
-	for _, code := range candidates {
-		flows, _ := repo.GetMoneyFlowAsOf(code, tradeDate, 5)
-		events, evErr := repo.GetActiveEvents(code, tradeDate)
-		fund := FetchAndSnapshotFundamental(repo, code, snapDate)
-		sectors := fetchAndSnapshotSectorInputs(repo, code, snapDate)
-		in := scorer.FiveDimInput{
-			Hits:      hits[code],
-			MoneyFlow: flows,
-			Finance:   fund,
-			Sectors:   sectors,
-			Events:    events,
-			StockName: names[code],
+	} else {
+		// 4. 候选池数据预取（限流在 sync 函数内）
+		if _, err := SyncMoneyFlow(ctx, candidates); err != nil {
+			logger.SugaredLogger.Warnf("khunter 资金流同步中断: %v", err)
 		}
-		r := scorer.Score(in)
-		// 逐维解释落库：命中策略+理由、技术画像、缺数据标注，供前端"讲清楚"
-		explain := r.Explain
-		if explain == nil {
-			explain = map[string]any{}
+		if _, err := SyncEvents(ctx, candidates); err != nil {
+			logger.SugaredLogger.Warnf("khunter 事件同步中断: %v", err)
 		}
-		if tech, ok := explain["technical"].(map[string]any); ok {
-			if bars := lastBars[code]; len(bars) > 0 {
-				tech["profile"] = BuildTechProfile(bars)
+
+		// 5. 先落时点快照再评分
+		snapDate := snapshotAvailableDate(tradeDate, now)
+		for _, code := range candidates {
+			flows, _ := repo.GetMoneyFlowAsOf(code, tradeDate, 5)
+			events, evErr := repo.GetActiveEvents(code, tradeDate)
+			fund := FetchAndSnapshotFundamental(repo, code, snapDate)
+			sectors := fetchAndSnapshotSectorInputs(repo, code, snapDate)
+			in := scorer.FiveDimInput{
+				Hits:      hits[code],
+				MoneyFlow: flows,
+				Finance:   fund,
+				Sectors:   sectors,
+				Events:    events,
+				StockName: names[code],
 			}
-		}
-		if evErr != nil {
-			if ev, ok := explain["event"].(map[string]any); ok {
-				ev["missing"] = true
-				ev["reason"] = "事件查询失败: " + evErr.Error()
+			r := scorer.Score(in)
+			// 逐维解释落库：命中策略+理由、技术画像、缺数据标注，供前端"讲清楚"
+			explain := r.Explain
+			if explain == nil {
+				explain = map[string]any{}
 			}
+			if tech, ok := explain["technical"].(map[string]any); ok {
+				if bars := lastBars[code]; len(bars) > 0 {
+					tech["profile"] = BuildTechProfile(bars)
+				}
+			}
+			if evErr != nil {
+				if ev, ok := explain["event"].(map[string]any); ok {
+					ev["missing"] = true
+					ev["reason"] = "事件查询失败: " + evErr.Error()
+				}
+			}
+			details, _ := json.Marshal(explain)
+			scores = append(scores, models.KhunterScore{
+				Code: code, Name: names[code], ScoreDate: tradeDate,
+				Technical: r.Technical, Moneyflow: r.Moneyflow, Fundamental: r.Fundamental,
+				Sector: r.Sector, Event: r.Event, Total: r.Total, Level: r.Level,
+				VetoReason: r.VetoReason, Degraded: r.Degraded, Details: string(details),
+			})
 		}
-		details, _ := json.Marshal(explain)
-		scores = append(scores, models.KhunterScore{
-			Code: code, Name: names[code], ScoreDate: tradeDate,
-			Technical: r.Technical, Moneyflow: r.Moneyflow, Fundamental: r.Fundamental,
-			Sector: r.Sector, Event: r.Event, Total: r.Total, Level: r.Level,
-			VetoReason: r.VetoReason, Degraded: r.Degraded, Details: string(details),
-		})
+		if err := repo.ReplaceScoresForDate(tradeDate, scores); err != nil {
+			return res, err
+		}
+		res.Scored = len(scores)
 	}
-	if err := repo.ReplaceScoresForDate(tradeDate, scores); err != nil {
-		return res, err
-	}
-	res.Scored = len(scores)
 
-	// 7. 狩猎场筛选：总分 ≥ 阈值 且 现价 ≥ 支撑位×0.98
+	// 7. 观察保存：分数达阈值不再直接写入狩猎池，只落观察（真实入池由确认事务完成）。
+	//    数据闸门结论随观察落库：盘中/降级/无效数据只观察不确认，不以中性分冒充买入结论。
+	synced := dailySyncCompleted(tradeDate, now)
 	threshold := HuntingThreshold(lv)
+	observations := make([]models.KhunterObservation, 0, len(scores))
 	for _, sc := range scores {
 		if sc.Total < threshold {
 			continue
@@ -439,43 +443,35 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 		if latest < support*0.98 {
 			continue
 		}
-		h := models.KhunterHunting{
-			Code: sc.Code, Name: names[sc.Code], EnterDate: tradeDate,
-			EnterScore: sc.Total, SupportPrice: support, Status: "追踪中",
-		}
-		if err := repo.SaveHunting(&h); err == nil {
-			res.Hunted++
-		}
-	}
-
-	// 8. 狩猎场追踪：追踪中标的每日 TrackDays+1；最新收盘跌破支撑位（无 ×0.98 缓冲）→ 已移除
-	tracked, err := repo.GetHuntingList("追踪中")
-	if err != nil {
-		logger.SugaredLogger.Warnf("khunter 追踪列表读取失败: %v", err)
-		return res, nil
-	}
-	for _, h := range tracked {
-		if h.EnterDate == tradeDate {
-			continue // 当日新入选不计天数
-		}
-		bars := lastBars[h.Code]
-		if len(bars) == 0 {
-			if b, err := strategy.LoadDailyBarsAsOf(ctx, h.Code, tradeDate, 30); err == nil {
-				bars = b
-			}
-		}
-		if len(bars) == 0 || !hasBarOnDate(bars, tradeDate) {
-			continue // 停牌/无当日行情，无法判定破位也不计天数
-		}
-		if bars[len(bars)-1].Close < h.SupportPrice {
-			if err := repo.UpdateHuntingStatus(h.ID, "已移除"); err == nil {
-				res.Removed++
-			}
+		decision := EvaluateDataGate(bars, tradeDate, synced)
+		if !decision.AllowObservation {
+			logger.SugaredLogger.Warnf("khunter 候选 %s 数据闸门不放行观察: %s",
+				sc.Code, strings.Join(decision.Reasons, "；"))
 			continue
 		}
-		if err := repo.IncrTrackDays(h.ID); err != nil {
-			logger.SugaredLogger.Warnf("khunter 追踪天数更新失败 %s: %v", h.Code, err)
-		}
+		observations = append(observations, BuildObservation(sc, bars, decision, tradeDate))
+	}
+	if err := repo.SaveObservations(observations); err != nil {
+		return res, err
+	}
+	res.Observed = len(observations)
+
+	// 8. 旧观察与已有持仓处理：无新信号也必须继续执行（上方不再因无候选提前返回）。
+	//    T+1~T+3 触发价确认与 结构/ATR 失效、1R 锁盈、五日到期 退出引擎由后续任务接入，
+	//    本阶段先保证无信号日流水线不早退、待确认观察与持仓中交易的读取路径稳定。
+	pending, err := repo.GetPendingObservations(tradeDate)
+	if err != nil {
+		logger.SugaredLogger.Warnf("khunter 待确认观察读取失败: %v", err)
+		return res, nil
+	}
+	holdings, err := repo.GetHuntingList(HuntingStatusHolding)
+	if err != nil {
+		logger.SugaredLogger.Warnf("khunter 持仓列表读取失败: %v", err)
+		return res, nil
+	}
+	if len(pending) > 0 || len(holdings) > 0 {
+		logger.SugaredLogger.Infof("khunter %s 待确认观察 %d 条，持仓中交易 %d 笔（确认/退出引擎待后续任务接入）",
+			tradeDate, len(pending), len(holdings))
 	}
 	return res, nil
 }

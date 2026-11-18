@@ -128,34 +128,145 @@ func TestRepoHuntingTracking(t *testing.T) {
 	setupTestDB(t)
 	r := NewRepo()
 
-	h := models.KhunterHunting{Code: "600519", Name: "贵州茅台", EnterDate: "2026-09-23",
-		EnterScore: 70, SupportPrice: 1650, Status: "追踪中"}
+	h := models.KhunterHunting{Code: "600519", Name: "贵州茅台", SignalDate: "2026-09-23",
+		EnterDate: "2026-09-24", EnterScore: 70, SupportPrice: 1650,
+		EntryPrice: 1660, InitialStopPrice: 1500, ProtectPrice: 1500, InitialRisk: 160,
+		Status: HuntingStatusHolding}
 	if err := r.SaveHunting(&h); err != nil {
 		t.Fatalf("SaveHunting: %v", err)
 	}
 	if h.ID == 0 {
 		t.Fatal("SaveHunting 未回填 ID")
 	}
+	if got, err := r.GetHuntingList(HuntingStatusHolding); err != nil || len(got) != 1 || got[0].EntryPrice != 1660 {
+		t.Fatalf("持仓中列表: %v %+v", err, got)
+	}
 
-	// 追踪天数累加
-	for i := 0; i < 2; i++ {
-		if err := r.IncrTrackDays(h.ID); err != nil {
-			t.Fatalf("IncrTrackDays: %v", err)
+	// 退出：状态迁移到已退出，不再出现在持仓中
+	if err := r.ExitHunting(h.ID, "2026-09-30", 1700, "失效位退出"); err != nil {
+		t.Fatalf("ExitHunting: %v", err)
+	}
+	if got, err := r.GetHuntingList(HuntingStatusExited); err != nil || len(got) != 1 ||
+		got[0].ExitDate != "2026-09-30" || got[0].ExitPrice != 1700 || got[0].ExitReason != "失效位退出" {
+		t.Fatalf("已退出列表: %v %+v", err, got)
+	}
+	if got, err := r.GetHuntingList(HuntingStatusHolding); err != nil || len(got) != 0 {
+		t.Fatalf("退出后持仓中应为空: %v %+v", err, got)
+	}
+
+	// 旧版记录迁移为历史待核：可按状态过滤，不混入持仓/退出列表
+	legacy := models.KhunterHunting{Code: "000001", Name: "旧记录", EnterDate: "2026-08-01",
+		Status: HuntingStatusLegacy}
+	if err := r.SaveHunting(&legacy); err != nil {
+		t.Fatalf("SaveHunting: %v", err)
+	}
+	if got, err := r.GetHuntingList(HuntingStatusLegacy); err != nil || len(got) != 1 {
+		t.Fatalf("历史待核列表: %v %+v", err, got)
+	}
+}
+
+// TestHuntingMigrationDeduplicatesLegacyRows 旧库迁移：还原旧版表结构（无 signal_date、
+// 状态为 追踪中/已移除、同股同日重复行），EnsureMigrate 必须幂等地
+//  1. 补齐 signal_date = enter_date；
+//  2. 旧状态改为 历史待核（旧记录不是真实持仓，不得伪装成可执行仓位）；
+//  3. 同组重复行保留最新 ID 删除其余，再建 (code,signal_date)/(code,enter_date) 唯一索引；
+//  4. 重复迁移与新增的 持仓中 交易互不影响。
+func TestHuntingMigrationDeduplicatesLegacyRows(t *testing.T) {
+	setupTestDB(t)
+	if err := db.Dao.Migrator().DropTable("khunter_hunting"); err != nil {
+		t.Fatal(err)
+	}
+	legacyDDL := `CREATE TABLE khunter_hunting (
+		id integer PRIMARY KEY AUTOINCREMENT,
+		code text, name text, enter_date text, enter_score numeric,
+		support_price numeric, status text, track_days numeric,
+		created_at datetime, updated_at datetime)`
+	if err := db.Dao.Exec(legacyDDL).Error; err != nil {
+		t.Fatal(err)
+	}
+	seed := []string{
+		`(1,'600000','旧记录1','2026-11-10',70,9.5,'追踪中',3,'2026-11-10 15:00:00','2026-11-10 15:00:00')`,
+		`(2,'600000','旧记录2','2026-11-10',72,9.4,'追踪中',3,'2026-11-10 15:00:00','2026-11-10 15:00:00')`,
+		`(3,'600000','旧记录3','2026-11-03',65,9.2,'已移除',5,'2026-11-03 15:00:00','2026-11-03 15:00:00')`,
+	}
+	for _, v := range seed {
+		sql := `INSERT INTO khunter_hunting
+			(id, code, name, enter_date, enter_score, support_price, status, track_days, created_at, updated_at)
+			VALUES ` + v
+		if err := db.Dao.Exec(sql).Error; err != nil {
+			t.Fatal(err)
 		}
 	}
-	got, err := r.GetHuntingList("追踪中")
-	if err != nil || len(got) != 1 || got[0].TrackDays != 2 {
-		t.Fatalf("GetHuntingList: %v %+v", err, got)
+
+	if err := EnsureMigrate(); err != nil {
+		t.Fatalf("迁移旧表失败: %v", err)
+	}
+	var rows []models.KhunterHunting
+	if err := db.Dao.Order("id").Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].ID != 2 || rows[1].ID != 3 {
+		t.Fatalf("同组重复应保留最新 ID: %+v", rows)
+	}
+	for _, row := range rows {
+		if row.Status != HuntingStatusLegacy {
+			t.Fatalf("旧记录应显示为历史待核，got %s", row.Status)
+		}
+	}
+	if rows[0].SignalDate != "2026-11-10" || rows[1].SignalDate != "2026-11-03" {
+		t.Fatalf("旧 signal_date 应用 enter_date 补齐: %+v", rows)
+	}
+	var idxNames []string
+	if err := db.Dao.Raw(
+		"SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='khunter_hunting'",
+	).Scan(&idxNames).Error; err != nil {
+		t.Fatal(err)
+	}
+	hasIdx := func(name string) bool {
+		for _, n := range idxNames {
+			if n == name {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasIdx("idx_khh_code_signal") || !hasIdx("idx_khh_code_enter") {
+		t.Fatalf("唯一索引未创建: %v", idxNames)
 	}
 
-	// 破位移除：状态切换后不再出现在"追踪中"
-	if err := r.UpdateHuntingStatus(h.ID, "已移除"); err != nil {
-		t.Fatalf("UpdateHuntingStatus: %v", err)
+	// 唯一约束生效：同股同信号日 / 同股同确认日都只能一行
+	dupSignal := models.KhunterHunting{Code: "600000", SignalDate: "2026-11-10",
+		EnterDate: "2026-11-12", Status: HuntingStatusHolding}
+	if err := db.Dao.Create(&dupSignal).Error; err == nil {
+		t.Fatal("同股同信号日重复应被唯一索引拒绝")
 	}
-	if got, err = r.GetHuntingList("追踪中"); err != nil || len(got) != 0 {
-		t.Fatalf("追踪中应为空: %v %+v", err, got)
+	dupEnter := models.KhunterHunting{Code: "600000", SignalDate: "2026-11-17",
+		EnterDate: "2026-11-10", Status: HuntingStatusHolding}
+	if err := db.Dao.Create(&dupEnter).Error; err == nil {
+		t.Fatal("同股同确认日重复应被唯一索引拒绝")
 	}
-	if got, err = r.GetHuntingList("已移除"); err != nil || len(got) != 1 || got[0].TrackDays != 2 {
-		t.Fatalf("已移除列表: %v %+v", err, got)
+
+	// 重复迁移幂等，且不得改动新交易的持仓状态
+	holding := models.KhunterHunting{Code: "688322", SignalDate: "2026-11-11",
+		EnterDate: "2026-11-12", Status: HuntingStatusHolding}
+	if err := db.Dao.Create(&holding).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureMigrate(); err != nil {
+		t.Fatalf("重复迁移应幂等: %v", err)
+	}
+	var got models.KhunterHunting
+	if err := db.Dao.Where("code=?", "688322").First(&got).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != HuntingStatusHolding {
+		t.Fatalf("重复迁移不得改动持仓中交易，got %s", got.Status)
+	}
+	var total int64
+	if err := db.Dao.Model(&models.KhunterHunting{}).Count(&total).Error; err != nil {
+		t.Fatal(err)
+	}
+	if total != 3 {
+		t.Fatalf("重复迁移不得增删数据，got %d 行", total)
 	}
 }

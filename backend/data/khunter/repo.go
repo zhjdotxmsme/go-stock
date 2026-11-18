@@ -11,17 +11,58 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// EnsureMigrate 懒迁移 khunter 全部表（幂等）
+// EnsureMigrate 懒迁移 khunter 全部表（幂等）。
+// 旧版 khunter_hunting 数据先在事务内去重并迁移为 历史待核，再由 AutoMigrate
+// 创建 (code,signal_date)/(code,enter_date) 唯一索引，避免存量重复行导致建索引失败。
 func EnsureMigrate() error {
 	if db.Dao == nil {
 		return nil
 	}
+	if err := migrateHuntingLegacy(); err != nil {
+		return err
+	}
 	return db.Dao.AutoMigrate(
 		&models.KhunterSignal{}, &models.KhunterScore{}, &models.KhunterHunting{},
+		&models.KhunterObservation{},
 		&models.KhunterMoneyFlowDaily{}, &models.KhunterRiskLevel{}, &models.KhunterEvent{},
 		&models.KhunterRunSummary{},
 		&models.KhunterResearchRecord{}, &models.KhunterFundamentalSnapshot{}, &models.KhunterSectorSnapshot{},
 	)
+}
+
+// migrateHuntingLegacy 迁移旧版 khunter_hunting 数据（幂等）：
+//  1. 补齐 signal_date 列（AutoMigrate 建唯一索引前该列必须存在且已回填）；
+//  2. 事务内：旧 signal_date 用 enter_date 补齐；旧状态（追踪中/已移除/空）改为
+//     历史待核；同一 (code, signal_date) 与 (code, enter_date) 分组重复行保留最新
+//     ID 并删除其余行。
+//  3. 新状态的 持仓中/已退出 交易不受影响，重复迁移是空操作。
+func migrateHuntingLegacy() error {
+	if !db.Dao.Migrator().HasTable(&models.KhunterHunting{}) {
+		return nil // 全新库：AutoMigrate 直接建表（含唯一索引）
+	}
+	if !db.Dao.Migrator().HasColumn(&models.KhunterHunting{}, "SignalDate") {
+		if err := db.Dao.Migrator().AddColumn(&models.KhunterHunting{}, "SignalDate"); err != nil {
+			return err
+		}
+	}
+	return db.Dao.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`UPDATE khunter_hunting
+			SET signal_date = enter_date
+			WHERE signal_date IS NULL OR signal_date = ''`).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.KhunterHunting{}).
+			Where("status IS NULL OR status = '' OR status IN ?", []string{"追踪中", "已移除"}).
+			Update("status", HuntingStatusLegacy).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`DELETE FROM khunter_hunting WHERE id NOT IN
+			(SELECT MAX(id) FROM khunter_hunting GROUP BY code, signal_date)`).Error; err != nil {
+			return err
+		}
+		return tx.Exec(`DELETE FROM khunter_hunting WHERE id NOT IN
+			(SELECT MAX(id) FROM khunter_hunting GROUP BY code, enter_date)`).Error
+	})
 }
 
 type Repo struct{}
@@ -150,18 +191,6 @@ func (r *Repo) GetHuntingList(status string) ([]models.KhunterHunting, error) {
 		q = q.Where("status = ?", status)
 	}
 	return rows, q.Find(&rows).Error
-}
-
-// UpdateHuntingStatus 更新狩猎场条目状态（追踪中 / 已移除）
-func (r *Repo) UpdateHuntingStatus(id uint, status string) error {
-	return db.Dao.Model(&models.KhunterHunting{}).Where("id = ?", id).
-		Update("status", status).Error
-}
-
-// IncrTrackDays 追踪天数 +1
-func (r *Repo) IncrTrackDays(id uint) error {
-	return db.Dao.Model(&models.KhunterHunting{}).Where("id = ?", id).
-		Update("track_days", gorm.Expr("track_days + 1")).Error
 }
 
 func (r *Repo) SaveRiskLevel(rl *models.KhunterRiskLevel) error {
