@@ -1,0 +1,18 @@
+{
+  "maxFiveDayReturn": 0.20,
+  "maxMA20Deviation": 0.15,
+  "maxATRRatio": 0.08,
+  "minMedianAmount20": 100000000,
+  "atrPeriod": 14,
+  "atrStopMultiple": 1.5,
+  "maxEntryGap": 0.02,
+  "confirmTradingDays": 3,
+  "maxHoldingTradingDays": 5,
+  "accountRiskFraction": 0.005,
+  "initialCash": 1000000,
+  "commissionRate": 0.0003,
+  "minCommission": 5,
+  "stampDutyRate": 0.0005,
+  "transferFeeRate": 0,
+  "slippageRate": 0.0005
+}

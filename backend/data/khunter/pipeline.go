@@ -427,8 +427,11 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 
 	// 7. 观察保存：分数达阈值不再直接写入狩猎池，只落观察（真实入池由确认事务完成）。
 	//    数据闸门结论随观察落库：盘中/降级/无效数据只观察不确认，不以中性分冒充买入结论。
+	//    信号日风险画像同步落库（SignalRiskJSON/RiskHistoryJSON）：风险过滤只输出否决原因，
+	//    不修改形态与评分；信号日失败但后续恢复的候选仍可由确认引擎在拟入场日重算确认。
 	synced := dailySyncCompleted(tradeDate, now)
 	threshold := HuntingThreshold(lv)
+	riskCfg := LoadRiskControlConfig(resolveRiskControlConfigPath())
 	observations := make([]models.KhunterObservation, 0, len(scores))
 	for _, sc := range scores {
 		if sc.Total < threshold {
@@ -449,7 +452,12 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 				sc.Code, strings.Join(decision.Reasons, "；"))
 			continue
 		}
-		observations = append(observations, BuildObservation(sc, bars, decision, tradeDate))
+		obs := BuildObservation(sc, bars, decision, tradeDate)
+		if d := AttachSignalRisk(&obs, bars, decision, lv, riskCfg); !d.AllowConfirm {
+			logger.SugaredLogger.Infof("khunter 候选 %s 信号日风险否决: %s",
+				sc.Code, strings.Join(d.Reasons, "；"))
+		}
+		observations = append(observations, obs)
 	}
 	if err := repo.SaveObservations(observations); err != nil {
 		return res, err
