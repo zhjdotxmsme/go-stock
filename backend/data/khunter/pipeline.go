@@ -501,7 +501,7 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 
 	// 9. 退出引擎：对持仓中交易按真实 K 线评估止损、突破失败、1R 锁盈与到期退出。
 	if len(holdings) > 0 && len(tradeDates) > 0 {
-		ProcessHoldingsForDate(ctx, repo, tradeDate, tradeDates, riskCfg)
+		ProcessHoldingsForDate(ctx, repo, tradeDate, tradeDates, riskCfg, holdings)
 	}
 	return res, nil
 }

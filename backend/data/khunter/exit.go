@@ -2,6 +2,8 @@ package khunter
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
 
 	"go-stock/backend/data/datasource"
@@ -70,12 +72,8 @@ func ProcessHoldingsForDate(
 	tradeDate string,
 	tradeDates []string,
 	cfg RiskControlConfig,
+	holdings []models.KhunterHunting,
 ) {
-	holdings, err := repo.GetHuntingList(HuntingStatusHolding)
-	if err != nil {
-		logger.SugaredLogger.Warnf("khunter 持仓列表读取失败: %v", err)
-		return
-	}
 	if len(holdings) == 0 {
 		return
 	}
@@ -132,15 +130,21 @@ func resolveSignalHigh(ctx context.Context, repo *Repo, h models.KhunterHunting)
 		return 0, err
 	}
 	if obs == nil {
-		return 0, nil
+		return 0, errors.New("observation not found for signal")
 	}
 	adjBars, err := datasource.NewKLineStore().QueryKLines(ctx, h.Code, "day", h.SignalDate, h.SignalDate, true)
-	if err != nil || len(adjBars) == 0 {
-		return 0, nil
+	if err != nil {
+		return 0, fmt.Errorf("query adjusted kline for signal: %w", err)
+	}
+	if len(adjBars) == 0 {
+		return 0, errors.New("adjusted kline not found for signal")
 	}
 	rawBars, err := datasource.NewKLineStore().QueryKLines(ctx, h.Code, "day", h.SignalDate, h.SignalDate, false)
-	if err != nil || len(rawBars) == 0 {
-		return 0, nil
+	if err != nil {
+		return 0, fmt.Errorf("query raw kline for signal: %w", err)
+	}
+	if len(rawBars) == 0 {
+		return 0, errors.New("raw kline not found for signal")
 	}
 	high, err := RawSignalLevel(obs.TriggerPrice, adjBars[0].Close, rawBars[0].Close)
 	if err != nil {
@@ -162,10 +166,14 @@ func dailyPriceLimit(code string, bar models.KLineBar) trading.PriceLimit {
 	if ok {
 		return limit
 	}
-	if bar.Close > 0 {
+	base := bar.PrevClose
+	if base <= 0 {
+		base = bar.Close
+	}
+	if base > 0 {
 		return trading.PriceLimit{
-			UpPrice:   math.Round(bar.Close*1.1*100) / 100,
-			DownPrice: math.Round(bar.Close*0.9*100) / 100,
+			UpPrice:   math.Round(base*1.1*100) / 100,
+			DownPrice: math.Round(base*0.9*100) / 100,
 		}
 	}
 	return trading.PriceLimit{}
