@@ -480,19 +480,28 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 		logger.SugaredLogger.Infof("khunter %s 待确认观察 %d 条，持仓中交易 %d 笔",
 			tradeDate, len(pending), len(holdings))
 	}
-	if len(pending) > 0 {
-		engine := NewConfirmationEngine(repo)
-		tradeDates, err := repo.GetTradeDates(ctx, daysBefore(tradeDate, 30), tradeDate)
+
+	var tradeDates []string
+	if len(pending) > 0 || len(holdings) > 0 {
+		tradeDates, err = repo.GetTradeDates(ctx, daysBefore(tradeDate, 30), tradeDate)
 		if err != nil {
 			logger.SugaredLogger.Warnf("khunter 交易日序列读取失败 %s: %v", tradeDate, err)
-		} else {
-			n, err := engine.ConfirmForDate(ctx, tradeDate, tradeDates, lv, riskCfg, riskCfg.InitialCash)
-			if err != nil {
-				logger.SugaredLogger.Warnf("khunter 确认引擎执行失败 %s: %v", tradeDate, err)
-			} else {
-				res.Hunted += n
-			}
 		}
+	}
+
+	if len(pending) > 0 && len(tradeDates) > 0 {
+		engine := NewConfirmationEngine(repo)
+		n, err := engine.ConfirmForDate(ctx, tradeDate, tradeDates, lv, riskCfg, riskCfg.InitialCash)
+		if err != nil {
+			logger.SugaredLogger.Warnf("khunter 确认引擎执行失败 %s: %v", tradeDate, err)
+		} else {
+			res.Hunted += n
+		}
+	}
+
+	// 9. 退出引擎：对持仓中交易按真实 K 线评估止损、突破失败、1R 锁盈与到期退出。
+	if len(holdings) > 0 && len(tradeDates) > 0 {
+		ProcessHoldingsForDate(ctx, repo, tradeDate, tradeDates, riskCfg)
 	}
 	return res, nil
 }

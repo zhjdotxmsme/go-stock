@@ -216,6 +216,27 @@ func (r *Repo) GetHuntingList(status string) ([]models.KhunterHunting, error) {
 	return rows, q.Find(&rows).Error
 }
 
+// UpdateHoldingProtectAndTrack 幂等地更新持仓保护位与已持有交易日数：
+// 仅当新 track_days 大于当前值时才写入，避免同日重跑导致重复累加。
+func (r *Repo) UpdateHoldingProtectAndTrack(id uint, protectPrice float64, trackDays int) error {
+	return db.Dao.Model(&models.KhunterHunting{}).
+		Where("id = ? AND status = ? AND track_days < ?", id, HuntingStatusHolding, trackDays).
+		Updates(map[string]any{
+			"protect_price": protectPrice,
+			"track_days":    trackDays,
+		}).Error
+}
+
+// GetObservationBySignal 按 (code, signal_date) 读取观察记录；不存在返回 nil。
+func (r *Repo) GetObservationBySignal(code, signalDate string) (*models.KhunterObservation, error) {
+	var row models.KhunterObservation
+	err := db.Dao.Where("code = ? AND signal_date = ?", code, signalDate).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &row, err
+}
+
 func (r *Repo) SaveRiskLevel(rl *models.KhunterRiskLevel) error {
 	return db.Dao.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "date"}},
