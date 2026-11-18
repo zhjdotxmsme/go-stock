@@ -3,6 +3,7 @@ package khunter
 import (
 	"context"
 	"math"
+	"strings"
 	"testing"
 
 	"go-stock/backend/db"
@@ -323,6 +324,84 @@ func TestCostHelpersRecomputeBothSides(t *testing.T) {
 	wantSell := 100000 - 30 - 50 - 10.0
 	if math.Abs(sell-wantSell) > 1e-9 {
 		t.Fatalf("卖出净入金=%v, want=%v", sell, wantSell)
+	}
+}
+
+// 确认日落在交易日历之外的入场记为过期（Expired），样本计数守恒：
+// SignalCount = Trade + Invalid + Untradeable + Expired，不允许静默丢弃。
+func TestPortfolioBacktestExpiresOffCalendarEntries(t *testing.T) {
+	cfg := defaultPortfolioCfg(100000)
+
+	dates := []string{"2026-01-05", "2026-01-06"}
+	bench := benchBars([]benchRow{
+		{"2026-01-05", 4000},
+		{"2026-01-06", 4000},
+	})
+	stock := dayBars("sh600000", []barRow{
+		{"2026-01-05", 10, 10.2, 9.8, 10, 10},
+		{"2026-01-06", 10, 10.2, 9.8, 10, 10},
+	})
+	report := RunPortfolioBacktest(PortfolioBacktestInput{
+		TradeDates:    dates,
+		BenchmarkBars: bench,
+		CodeBars:      map[string][]models.KLineBar{"sh600000": stock},
+		Entries: []PortfolioEntry{
+			// 窗口内：正常建仓并在窗口结束强平
+			{Code: "sh600000", SignalDate: "2026-01-04", ConfirmDate: "2026-01-05",
+				EntryPrice: 10, StopPrice: 9, SignalHigh: 9.5, Shares: 5000, ConfirmSeq: 0},
+			// 确认日在交易日历之外 → 过期
+			{Code: "sh600000", SignalDate: "2026-01-04", ConfirmDate: "2026-01-07",
+				EntryPrice: 10, StopPrice: 9, SignalHigh: 9.5, Shares: 5000, ConfirmSeq: 1},
+			// 确认日缺失 → 过期
+			{Code: "sh600000", SignalDate: "2026-01-04", ConfirmDate: "",
+				EntryPrice: 10, StopPrice: 9, SignalHigh: 9.5, Shares: 5000, ConfirmSeq: 2},
+		},
+		DefaultPositionLimit: 1.0,
+		Cfg:                  cfg,
+	})
+
+	if report.ExpiredCount != 2 {
+		t.Fatalf("过期计数=%d, want=2", report.ExpiredCount)
+	}
+	if report.SignalCount != report.TradeCount+report.InvalidCount+report.UntradeableCount+report.ExpiredCount {
+		t.Fatalf("样本计数不守恒: Signal=%d Trade=%d Invalid=%d Untradeable=%d Expired=%d",
+			report.SignalCount, report.TradeCount, report.InvalidCount,
+			report.UntradeableCount, report.ExpiredCount)
+	}
+	if report.TradeCount != 1 || report.Trades[0].ExitReason != "回测结束强平" {
+		t.Fatalf("窗口内入场未强平: %+v", report.Trades)
+	}
+}
+
+// 全局约束：非一字板成交报告必须注明不包含真实排队数据；
+// 基准日 K 缺失时注明 BenchmarkReturn 不可用，而非静默记 0。
+func TestPortfolioBacktestNotesQueueAndBenchmarkLimitations(t *testing.T) {
+	cfg := defaultPortfolioCfg(100000)
+
+	dates := []string{"2026-01-05", "2026-01-06"}
+	stock := dayBars("sh600000", []barRow{
+		{"2026-01-05", 10, 10.2, 9.8, 10, 10},
+		{"2026-01-06", 10, 10.2, 9.8, 10, 10},
+	})
+	report := RunPortfolioBacktest(PortfolioBacktestInput{
+		// BenchmarkBars 留空：基准收益不可用
+		TradeDates: dates,
+		CodeBars:   map[string][]models.KLineBar{"sh600000": stock},
+		Entries: []PortfolioEntry{{Code: "sh600000", SignalDate: "2026-01-04", ConfirmDate: "2026-01-05",
+			EntryPrice: 10, StopPrice: 9, SignalHigh: 9.5, Shares: 5000, ConfirmSeq: 0}},
+		DefaultPositionLimit: 1.0,
+		Cfg:                  cfg,
+	})
+
+	limitations := strings.Join(report.Limitations, "\n")
+	if !strings.Contains(limitations, "排队") {
+		t.Fatalf("缺少不包含真实排队数据的注明: %v", report.Limitations)
+	}
+	if report.Metrics.BenchmarkReturn != 0 {
+		t.Fatalf("基准缺失时 BenchmarkReturn=%v, want=0", report.Metrics.BenchmarkReturn)
+	}
+	if !strings.Contains(limitations, "基准") {
+		t.Fatalf("缺少基准收益不可用的注明: %v", report.Limitations)
 	}
 }
 

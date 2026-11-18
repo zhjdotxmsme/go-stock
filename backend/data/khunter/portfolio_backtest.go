@@ -109,7 +109,10 @@ func LoadPortfolioBenchmarkBars(ctx context.Context, startDate, endDate string) 
 // 净收益扣双边佣金（最低 MinCommission 元）、卖出印花税和过户费。
 // 每日权益 = 现金 + 全部持仓当日市值（停牌日用最近收盘估值），
 // 组合最大回撤从该权益序列计算；窗口结束时未退出的持仓按最后收盘价强平
-// （ExitReason=回测结束强平），最后一日的入场记为不可成交（无法建模 T+1 退出）。
+// （ExitReason=回测结束强平），最后一日的入场记为不可成交（无法建模 T+1 退出）；
+// 确认日不在交易日历内的入场（窗口外或缺失）记为过期（Expired），
+// 保证样本计数守恒。报告注明非一字板成交不含真实排队数据；
+// 基准日 K 缺失时注明 BenchmarkReturn 不可用（记 0）。
 func RunPortfolioBacktest(input PortfolioBacktestInput) *BacktestReport {
 	cfg := input.Cfg
 	cash := cfg.InitialCash
@@ -164,6 +167,8 @@ func RunPortfolioBacktest(input PortfolioBacktestInput) *BacktestReport {
 	}
 
 	report := NewBacktestReport(len(input.Entries))
+	// 全局约束：日线非一字板为模拟撮合，报告必须注明不包含真实排队数据
+	report.AddLimitation("日线非一字板成交为按触发价撮合的近似，不包含真实排队/委托数据")
 	holdings := make([]*portfolioHolding, 0, 8)
 
 	marketValue := func(date string) float64 {
@@ -299,6 +304,15 @@ func RunPortfolioBacktest(input PortfolioBacktestInput) *BacktestReport {
 		if close, ok := benchByDate[date]; ok {
 			lastBenchClose = close
 		}
+		delete(entriesByDate, date)
+	}
+
+	// 交易日历之外的确认信号（ConfirmDate 在窗口外或缺失）无法建仓，
+	// 记为过期而非静默丢弃，保证 SignalCount = Trade + Invalid + Untradeable + Expired 守恒。
+	for _, list := range entriesByDate {
+		for range list {
+			report.AddExpired()
+		}
 	}
 
 	// 基准（sh000300）同期收益：首末有效收盘价
@@ -313,6 +327,8 @@ func RunPortfolioBacktest(input PortfolioBacktestInput) *BacktestReport {
 		if firstBench > 0 {
 			report.SetBenchmarkReturn(lastBenchClose/firstBench - 1)
 		}
+	} else {
+		report.AddLimitation("基准 sh000300 日 K 缺失，基准同期收益不可用（BenchmarkReturn 记 0）")
 	}
 	return report
 }

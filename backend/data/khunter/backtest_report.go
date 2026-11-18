@@ -40,8 +40,9 @@ type BacktestMetrics struct {
 	SampleInsufficient bool
 }
 
-// BacktestReport 回测报告：失败样本计数守恒，任何信号要么成为成交、
-// 要么被计入 Invalid/Untradeable/Expired，不允许静默丢弃。
+// BacktestReport 回测报告：失败样本计数守恒——
+// SignalCount = TradeCount + InvalidCount + UntradeableCount + ExpiredCount，
+// 任何信号要么成为成交、要么被计入 Invalid/Untradeable/Expired，不允许静默丢弃。
 type BacktestReport struct {
 	SignalCount        int
 	ConfirmedCount     int

@@ -1,3 +1,7 @@
+// 信号级回测的旧路径：BacktestStrategies 早于组合的成本/原始价口径
+// （见 portfolio_backtest.go）——使用复权价（Adjusted=true）、不计交易成本、
+// 固定 8% 止损，仅作策略信号质量粗筛；与组合口径的对账与退役由 Task 10 的
+// runner 工作负责，组合回测不消费本文件的聚合统计。
 package khunter
 
 import (
