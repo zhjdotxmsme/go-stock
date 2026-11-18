@@ -26,8 +26,8 @@ func (s ImmortalGuidance) Select(bars []models.KLineBar, stockName, selectionDat
 	if n < s.MinBars() || IsInvalidName(stockName) {
 		return nil
 	}
-	// 停牌/退市过滤：最后一根日期早于选股日则出局
-	if selectionDate != "" && bars[n-1].TradeDate < selectionDate {
+	// 时点过滤：最后一根 K 线必须恰好是选股日（早于=停牌/数据未同步，晚于=未来数据）
+	if selectionDate != "" && bars[n-1].TradeDate != selectionDate {
 		return nil
 	}
 	closes, vols := Closes(bars), Volumes(bars)

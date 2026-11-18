@@ -372,16 +372,16 @@ func round2(v float64) float64 {
 }
 
 // enrichScoreTechProfiles 给还没有分段结论的历史评分补上技术分析。
-// 只读本地日 K，不重跑狩猎场流水线。
+// 按每行的 ScoreDate 加载截至评分日的本地日 K（不用最新行情冒充历史画像），不重跑狩猎场流水线。
 func enrichScoreTechProfiles(ctx context.Context, rows []models.KhunterScore) {
 	if db.Dao == nil {
 		return
 	}
 	for i := range rows {
-		if rows[i].Code == "" || profileHasSections(rows[i].Details) {
+		if rows[i].Code == "" || rows[i].ScoreDate == "" || profileHasSections(rows[i].Details) {
 			continue
 		}
-		bars, err := strategy.LoadDailyBars(ctx, rows[i].Code, 30)
+		bars, err := strategy.LoadDailyBarsAsOf(ctx, rows[i].Code, rows[i].ScoreDate, 30)
 		if err != nil || len(bars) == 0 {
 			continue
 		}

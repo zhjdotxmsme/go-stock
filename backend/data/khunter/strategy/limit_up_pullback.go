@@ -29,7 +29,7 @@ func (s LimitUpPullback) Select(bars []models.KLineBar, stockName, selectionDate
 	if n < s.MinBars() || IsInvalidName(stockName) {
 		return nil
 	}
-	if selectionDate != "" && bars[n-1].TradeDate < selectionDate {
+	if selectionDate != "" && bars[n-1].TradeDate != selectionDate {
 		return nil
 	}
 	closes, vols := Closes(bars), Volumes(bars)

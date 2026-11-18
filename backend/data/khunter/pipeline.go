@@ -199,7 +199,7 @@ func RunPipeline(ctx context.Context, tradeDate string) (res *PipelineResult, er
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			bars, err := strategy.LoadDailyBars(ctx, code, 30)
+			bars, err := strategy.LoadDailyBarsAsOf(ctx, code, tradeDate, 30)
 			if err != nil {
 				mu.Lock()
 				queryFailed++
@@ -297,7 +297,7 @@ func RunPipeline(ctx context.Context, tradeDate string) (res *PipelineResult, er
 	// 5. 五维评分
 	var scores []models.KhunterScore
 	for _, code := range candidates {
-		flows, _ := repo.GetMoneyFlow(code, 5)
+		flows, _ := repo.GetMoneyFlowAsOf(code, tradeDate, 5)
 		events, evErr := repo.GetActiveEvents(code, tradeDate)
 		in := scorer.FiveDimInput{
 			Hits:      hits[code],
@@ -373,7 +373,7 @@ func RunPipeline(ctx context.Context, tradeDate string) (res *PipelineResult, er
 		}
 		bars := lastBars[h.Code]
 		if len(bars) == 0 {
-			if b, err := strategy.LoadDailyBars(ctx, h.Code, 30); err == nil {
+			if b, err := strategy.LoadDailyBarsAsOf(ctx, h.Code, tradeDate, 30); err == nil {
 				bars = b
 			}
 		}

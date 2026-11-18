@@ -2,6 +2,7 @@ package khunter
 
 import (
 	"errors"
+	"time"
 
 	"go-stock/backend/db"
 	"go-stock/backend/models"
@@ -120,14 +121,21 @@ func (r *Repo) UpsertMoneyFlow(rows []models.KhunterMoneyFlowDaily) error {
 	}).Create(&rows).Error
 }
 
-// GetMoneyFlow 返回最近 days 天资金流，正序（日期升序）
-func (r *Repo) GetMoneyFlow(code string, days int) ([]models.KhunterMoneyFlowDaily, error) {
+// GetMoneyFlowAsOf 返回 asOfDate 及之前最近 days 天资金流，正序（日期升序）。
+// 历史时点查询：绝不返回 date > asOfDate 的行。
+func (r *Repo) GetMoneyFlowAsOf(code, asOfDate string, days int) ([]models.KhunterMoneyFlowDaily, error) {
 	var rows []models.KhunterMoneyFlowDaily
-	err := db.Dao.Where("code = ?", code).Order("date DESC").Limit(days).Find(&rows).Error
+	err := db.Dao.Where("code = ? AND date <= ?", code, asOfDate).
+		Order("date DESC").Limit(days).Find(&rows).Error
 	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
 		rows[i], rows[j] = rows[j], rows[i]
 	}
 	return rows, err
+}
+
+// GetMoneyFlow 兼容包装：按今天取最近 days 天资金流（其他调用方沿用旧入口）。
+func (r *Repo) GetMoneyFlow(code string, days int) ([]models.KhunterMoneyFlowDaily, error) {
+	return r.GetMoneyFlowAsOf(code, time.Now().Format("2006-01-02"), days)
 }
 
 func (r *Repo) SaveHunting(h *models.KhunterHunting) error {
