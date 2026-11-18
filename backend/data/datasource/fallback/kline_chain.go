@@ -70,7 +70,7 @@ func (p *EastMoneyKLineProvider) GetKLine(ctx context.Context, code string, peri
 		return nil, fmt.Errorf("eastmoney kline: empty result for %s", code)
 	}
 	logger.SugaredLogger.Infof("datasource: kline %s from eastmoney (%d bars)", code, len(*kLines))
-	return ConvertKLineData(code, period, *kLines), nil
+	return ConvertKLineData(code, period, p.Name(), *kLines), nil
 }
 
 // GetKLineBefore 取 endDate（YYYY-MM-DD）当日及之前的 count 根 K 线。
@@ -101,7 +101,7 @@ func (p *EastMoneyKLineProvider) GetKLineBefore(ctx context.Context, code string
 			return nil, fmt.Errorf("%w: eastmoney %s before %s", datasource.ErrNoBarsBefore, code, endDate)
 		}
 	}
-	out := ConvertKLineData(code, period, bars)
+	out := ConvertKLineData(code, period, p.Name(), bars)
 	// 统一接口语义：只保留 endDate 当日及之前的 bars
 	kept := make([]datasource.KLineBar, 0, len(out.Bars))
 	for _, b := range out.Bars {
@@ -124,19 +124,29 @@ func RegisterKLineChain(router *datasource.Router) {
 }
 
 // ConvertKLineData converts legacy data.KLineData (string fields) to datasource.KLineData (float64 fields).
-func ConvertKLineData(code, period string, src []data.KLineData) *datasource.KLineData {
+// source 是实际提供数据的 Provider 名（如 eastmoney_kline / mootdx_kline / fund_kline）：
+// 成交量经 NormalizeKLineVolume 归一为股（东财手 ×100），单位随值声明；
+// Amount 解析原值，仅东财明确提供人民币成交额（元）时设置 AmountUnit="CNY"，
+// 其余来源币种未确认保持空，不得反推。
+func ConvertKLineData(code, period, source string, src []data.KLineData) *datasource.KLineData {
 	dst := &datasource.KLineData{
 		Code:   code,
 		Period: period,
 		Bars:   make([]datasource.KLineBar, 0, len(src)),
 	}
 	for _, k := range src {
+		vol, volUnit := datasource.NormalizeKLineVolume(source, parseInt64(k.Volume))
 		bar := datasource.KLineBar{
-			Open:   parseFloat64(k.Open),
-			High:   parseFloat64(k.High),
-			Low:    parseFloat64(k.Low),
-			Close:  parseFloat64(k.Close),
-			Volume: parseInt64(k.Volume),
+			Open:       parseFloat64(k.Open),
+			High:       parseFloat64(k.High),
+			Low:        parseFloat64(k.Low),
+			Close:      parseFloat64(k.Close),
+			Volume:     vol,
+			VolumeUnit: volUnit,
+			Amount:     parseFloat64(k.Amount),
+		}
+		if source == "eastmoney_kline" {
+			bar.AmountUnit = "CNY"
 		}
 		// 统一走 timeutil：本地时区解析（time.Parse 会给 UTC，与本地语义数据比较会偏 8h）
 		bar.Time = timeutil.MustParseDateTime(k.Day)

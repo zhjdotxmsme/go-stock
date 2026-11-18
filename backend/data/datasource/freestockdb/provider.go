@@ -19,8 +19,8 @@ func NewProvider(m *Manager, svc *KLineService, bi *BoardIndex) *Provider {
 	return &Provider{m: m, svc: svc, boards: bi}
 }
 
-func (p *Provider) Name() string                      { return "freestockdb" }
-func (p *Provider) Priority() int                     { return 5 }
+func (p *Provider) Name() string                       { return "freestockdb" }
+func (p *Provider) Priority() int                      { return 5 }
 func (p *Provider) Available(ctx context.Context) bool { return p.m.Available(ctx) }
 
 var periodFreq = map[string]Frequency{
@@ -105,7 +105,10 @@ func toKLineData(code, period string, bars []Bar) *datasource.KLineData {
 			Close:     b.Close,
 			PrevClose: b.PreClose,
 			Volume:    int64(b.Volume),
-			Amount:    b.Amount,
+			// freestockdb 历史库成交量已是股（归一映射口径）；成交额币种上游未明确
+			// 标注，AmountUnit 保持空，禁止确认口径使用。
+			VolumeUnit: "share",
+			Amount:     b.Amount,
 		})
 	}
 	return dst

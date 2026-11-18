@@ -470,6 +470,10 @@ func (receiver *EastMoneyKLineApi) getAdjustType(adjustFlag string) string {
 
 // parseKLine 解析单条 K 线数据
 // K 线数据格式：日期，开盘价，收盘价，最高价，最低价，成交量，成交额，振幅，涨跌幅，涨跌额，换手率，市盈率 TTM
+// 单位口径：成交量=手，成交额=人民币元。本 API 层保持上游单位不变（手/元），
+// 手→股的归一与 AmountUnit="CNY" 标记统一在数据源转换边界
+// （fallback.ConvertKLineData → datasource.NormalizeKLineVolume）完成，
+// 禁止在此重复换算，避免旧调用方（前端展示、AI 工具按手口径）读到翻倍的量。
 func (receiver *EastMoneyKLineApi) parseKLine(klineStr, adjustFlag string) *KLineData {
 	//logger.SugaredLogger.Debugf("parseKLine: %s", klineStr)
 	parts := strings.Split(klineStr, ",")

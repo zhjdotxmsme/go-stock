@@ -87,15 +87,20 @@ type KLineData struct {
 }
 
 // KLineBar represents a single K-line bar.
+// 内部口径：Volume 为股（VolumeUnit="share"），Amount 为人民币元（AmountUnit="CNY"）。
+// 只有数据源明确提供对应单位/币种时才设置这两个字段；未确认保持 unknown/空，
+// 禁止根据价格或成交额反推单位。
 type KLineBar struct {
-	Time      time.Time `json:"time"`
-	Open      float64   `json:"open"`
-	High      float64   `json:"high"`
-	Low       float64   `json:"low"`
-	Close     float64   `json:"close"`
-	PrevClose float64   `json:"prevClose"` // 前一交易日收盘价
-	Volume    int64     `json:"volume"`
-	Amount    float64   `json:"amount"`
+	Time       time.Time `json:"time"`
+	Open       float64   `json:"open"`
+	High       float64   `json:"high"`
+	Low        float64   `json:"low"`
+	Close      float64   `json:"close"`
+	PrevClose  float64   `json:"prevClose"` // 前一交易日收盘价
+	Volume     int64     `json:"volume"`
+	VolumeUnit string    `json:"volumeUnit,omitempty"` // share / unknown；空表示未记录
+	Amount     float64   `json:"amount"`
+	AmountUnit string    `json:"amountUnit,omitempty"` // CNY；空或 unknown 表示币种未确认
 }
 
 // NewsItem represents a single news article.

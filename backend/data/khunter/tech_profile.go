@@ -157,7 +157,9 @@ func loadOnExchangeFundBars(ctx context.Context, stockCode, endDate, startDate s
 	if result == nil || result.Data == nil || len(*result.Data) == 0 {
 		return nil
 	}
-	converted := fallback.ConvertKLineData(stockCode, "day", *result.Data)
+	// 场内基金 K 线可能来自新浪/东财/腾讯任一上游，成交量与成交额单位未逐一确认，
+	// source 不在归一映射内：数值保持原样、单位记 unknown，不参与确认口径。
+	converted := fallback.ConvertKLineData(stockCode, "day", "fund_kline", *result.Data)
 	if converted == nil {
 		return nil
 	}

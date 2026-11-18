@@ -412,6 +412,23 @@ func isHoliday(date time.Time) bool {
 	return result.Holiday.Holiday
 }
 
+// NormalizeKLineVolume 按数据源把原始成交量归一为股，并返回内部单位标记。
+// 唯一映射来源：东财日线接口成交量单位为手（×100 换算），mootdx_kline /
+// freestockdb / seed 历史数据已是股；其余来源单位未确认，数值不变、保持 unknown，
+// 禁止根据价格或成交额反推单位。
+// fallback.ConvertKLineData（数据源转换边界）与 khunter.NormalizeVolume（闸门口径）
+// 均以此为准，确保同一条数据只换算一次。
+func NormalizeKLineVolume(source string, raw int64) (int64, string) {
+	switch source {
+	case "eastmoney_kline":
+		return raw * 100, "share"
+	case "mootdx_kline", "freestockdb", "seed":
+		return raw, "share"
+	default:
+		return raw, "unknown"
+	}
+}
+
 // BarsFromKLineData converts datasource.KLineData to []models.KLineBar.
 func BarsFromKLineData(code, period, source string, adjusted bool, data *KLineData) []models.KLineBar {
 	if data == nil {
@@ -423,19 +440,27 @@ func BarsFromKLineData(code, period, source string, adjusted bool, data *KLineDa
 		if b.Time.Year() < 1990 || b.Time.Year() > 2100 {
 			continue
 		}
+		// 已声明单位的（数据源边界换算过）直接透传；未声明的按来源映射补齐，
+		// 保证同一来源不会被换算两次。
+		vol, volUnit := b.Volume, b.VolumeUnit
+		if volUnit == "" {
+			vol, volUnit = NormalizeKLineVolume(source, b.Volume)
+		}
 		bars = append(bars, models.KLineBar{
-			StockCode: code,
-			Period:    period,
-			TradeDate: b.Time.Format("2006-01-02"),
-			Adjusted:  adjusted,
-			Open:      b.Open,
-			High:      b.High,
-			Low:       b.Low,
-			Close:     b.Close,
-			PrevClose: b.PrevClose, // 透传数据源提供的 PrevClose
-			Volume:    b.Volume,
-			Amount:    b.Amount,
-			Source:    source,
+			StockCode:  code,
+			Period:     period,
+			TradeDate:  b.Time.Format("2006-01-02"),
+			Adjusted:   adjusted,
+			Open:       b.Open,
+			High:       b.High,
+			Low:        b.Low,
+			Close:      b.Close,
+			PrevClose:  b.PrevClose, // 透传数据源提供的 PrevClose
+			Volume:     vol,
+			VolumeUnit: volUnit,
+			Amount:     b.Amount,
+			AmountUnit: b.AmountUnit, // 仅数据源明确提供人民币成交额时为 CNY，否则留空
+			Source:     source,
 		})
 	}
 	sort.Slice(bars, func(i, j int) bool { return bars[i].TradeDate < bars[j].TradeDate })

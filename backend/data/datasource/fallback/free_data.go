@@ -289,7 +289,7 @@ func (p *MootdxKLineProvider) GetKLine(ctx context.Context, code string, period 
 		return nil, fmt.Errorf("mootdx kline: empty for %s", code)
 	}
 	logger.SugaredLogger.Infof("datasource: kline %s from mootdx (%d bars)", code, len(*kLines))
-	return ConvertKLineData(code, period, *kLines), nil
+	return ConvertKLineData(code, period, p.Name(), *kLines), nil
 }
 
 // TonghuashunFundamentalProvider provides fundamental data for A-share stocks.

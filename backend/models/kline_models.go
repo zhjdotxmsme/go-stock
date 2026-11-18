@@ -8,21 +8,23 @@ import (
 
 // KLineBar 持久化 K 线（日线/周线/月线）
 type KLineBar struct {
-	ID        uint   `gorm:"primarykey"`
-	StockCode string `gorm:"index:idx_kline_code_period_date_adj,unique;size:20"`
-	Period    string `gorm:"index:idx_kline_code_period_date_adj,unique;size:10"` // day / week / month
-	TradeDate string `gorm:"index:idx_kline_code_period_date_adj,unique;size:10"` // YYYY-MM-DD
-	Adjusted  bool   `gorm:"index:idx_kline_code_period_date_adj,unique"`         // 是否前复权
-	Open      float64
-	High      float64
-	Low       float64
-	Close     float64
-	PrevClose float64 // 前一交易日收盘价，用于涨跌停计算；0 表示未知
-	Volume    int64
-	Amount    float64
-	Source    string `gorm:"size:20"` // tdx / tencent / eastmoney / seed
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID         uint   `gorm:"primarykey"`
+	StockCode  string `gorm:"index:idx_kline_code_period_date_adj,unique;size:20"`
+	Period     string `gorm:"index:idx_kline_code_period_date_adj,unique;size:10"` // day / week / month
+	TradeDate  string `gorm:"index:idx_kline_code_period_date_adj,unique;size:10"` // YYYY-MM-DD
+	Adjusted   bool   `gorm:"index:idx_kline_code_period_date_adj,unique"`         // 是否前复权
+	Open       float64
+	High       float64
+	Low        float64
+	Close      float64
+	PrevClose  float64 // 前一交易日收盘价，用于涨跌停计算；0 表示未知
+	Volume     int64
+	VolumeUnit string `gorm:"size:10"` // 内部口径：股（share）；空表示旧记录未记录单位（允许展示、禁止确认）
+	Amount     float64
+	AmountUnit string `gorm:"size:10"` // 仅数据源明确提供人民币成交额时为 CNY；空或 unknown 禁止确认
+	Source     string `gorm:"size:20"` // 写入方：eastmoney_kline / mootdx_kline / tencent_kline / freestockdb / sync / seed 等
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 func (KLineBar) TableName() string { return "kline_bars" }
