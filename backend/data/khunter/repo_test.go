@@ -1,7 +1,10 @@
 package khunter
 
 import (
+	"context"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -268,5 +271,65 @@ func TestHuntingMigrationDeduplicatesLegacyRows(t *testing.T) {
 	}
 	if total != 3 {
 		t.Fatalf("重复迁移不得增删数据，got %d 行", total)
+	}
+}
+
+// seedDayBar 造一根指定 adjusted 口径的日 K（GetTradeDates 覆盖度测试用）。
+func seedDayBar(code, date string, adjusted bool) models.KLineBar {
+	return models.KLineBar{
+		StockCode: code, Period: "day", TradeDate: date, Adjusted: adjusted,
+		Open: 10, High: 10.2, Low: 9.8, Close: 10, PrevClose: 9.9,
+		Volume: 100, VolumeUnit: "share", Amount: 1000, AmountUnit: "CNY", Source: "seed",
+	}
+}
+
+// GetTradeDates 优先 sh000300；本地未同步沪深300时按市场日 K 覆盖度重建交易日序列，
+// 剔除覆盖度远低于峰值的脏日期，避免确认/退出窗口落在非交易日上。
+func TestGetTradeDatesFallsBackToMarketCoverage(t *testing.T) {
+	setupTestDB(t)
+	if err := db.Dao.AutoMigrate(&models.KLineBar{}); err != nil {
+		t.Fatal(err)
+	}
+	// 600 只股票：d1/d2 全覆盖、d3 部分（550/600 ≥ 90% 峰值）、d4 脏日期（仅 50 只）
+	codes := make([]string, 0, 600)
+	for i := 0; i < 600; i++ {
+		codes = append(codes, fmt.Sprintf("sh%06d", 600000+i))
+	}
+	rows := make([]models.KLineBar, 0, 600*3+60)
+	for i, c := range codes {
+		rows = append(rows, seedDayBar(c, "2026-01-05", true))
+		rows = append(rows, seedDayBar(c, "2026-01-06", true))
+		if i < 550 {
+			rows = append(rows, seedDayBar(c, "2026-01-07", true))
+		}
+		if i < 50 {
+			rows = append(rows, seedDayBar(c, "2026-01-08", true))
+		}
+	}
+	if err := db.Dao.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewRepo()
+	dates, err := r.GetTradeDates(context.Background(), "2026-01-01", "2026-01-31")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"2026-01-05", "2026-01-06", "2026-01-07"}
+	if strings.Join(dates, ",") != strings.Join(want, ",") {
+		t.Fatalf("覆盖度回退交易日错误: got %v want %v", dates, want)
+	}
+
+	// 主路径：一旦存在 sh000300，直接使用其日期，不做覆盖度回退
+	idxBar := seedDayBar("sh000300", "2026-01-05", false)
+	if err := db.Dao.Create(&idxBar).Error; err != nil {
+		t.Fatal(err)
+	}
+	dates, err = r.GetTradeDates(context.Background(), "2026-01-01", "2026-01-31")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dates) != 1 || dates[0] != "2026-01-05" {
+		t.Fatalf("sh000300 主路径应精确返回其交易日: %v", dates)
 	}
 }

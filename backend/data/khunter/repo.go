@@ -194,7 +194,52 @@ func (r *Repo) GetTradeDates(ctx context.Context, start, end string) ([]string, 
 		Distinct("trade_date").
 		Order("trade_date ASC").
 		Pluck("trade_date", &dates).Error
-	return dates, err
+	if err != nil {
+		return nil, err
+	}
+	if len(dates) > 0 {
+		return dates, nil
+	}
+	// 回退：本地库未同步 sh000300（如只同步了 sh000001/sz399006）时，
+	// 用市场日 K 覆盖度重建交易日序列（与 datasource.LatestMarketTradeDate 同一口径：
+	// 计数达峰值 90% 且不少于 500 只，避免停牌/脏日期污染日历）。
+	return r.marketTradeDates(start, end)
+}
+
+// marketTradeDates 由市场日 K 覆盖度推导 [start, end] 的真实交易日序列。
+func (r *Repo) marketTradeDates(start, end string) ([]string, error) {
+	type row struct {
+		TradeDate string
+		C         int64
+	}
+	var rows []row
+	err := db.Dao.Raw(`
+SELECT substr(trade_date, 1, 10) AS trade_date, COUNT(DISTINCT stock_code) AS c
+FROM kline_bars
+WHERE period IN ('day','101') AND adjusted = 1
+  AND substr(trade_date, 1, 10) BETWEEN ? AND ?
+  AND substr(trade_date, 1, 10) >= '1990-01-01'
+GROUP BY 1`, start, end).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	var peak int64
+	for _, row := range rows {
+		if row.C > peak {
+			peak = row.C
+		}
+	}
+	need := int64(500)
+	if floor := peak * 9 / 10; floor > need {
+		need = floor
+	}
+	dates := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.TradeDate != "" && row.C >= need {
+			dates = append(dates, row.TradeDate)
+		}
+	}
+	return dates, nil
 }
 
 // GetHoldingExposure 返回所有持仓中交易的 entry_price * shares 之和。
