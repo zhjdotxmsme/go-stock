@@ -30,6 +30,11 @@ type DataReadiness struct {
 // ErrDataNotReady 日K同步未完成：禁止确认（观察不受影响，照常保存）。
 var ErrDataNotReady = errors.New("kline data not ready")
 
+// readinessMinCoverage 日K断点覆盖率的就绪下限：全市场 day 任务中断点已达到
+// tradeDate 的比例低于该值时视为未就绪。个别长期停牌/退市股票的断点天然落后，
+// 不要求 100%；正常收盘后全市场同步完成时应接近 100%。
+const readinessMinCoverage = 0.99
+
 // RequireConfirmationReadiness 确认前置条件：同步未完成时返回携带
 // pending/running/failed 计数与诊断原因的错误；完成时放行。
 func RequireConfirmationReadiness(r DataReadiness) error {
@@ -42,7 +47,8 @@ func RequireConfirmationReadiness(r DataReadiness) error {
 // ComputeDataReadiness 从日K同步日志计算 tradeDate 的就绪状态（now 供测试注入）。
 // 三个证据缺一不可：
 //   - day 周期同步任务无 pending/running/failed；
-//   - 全部 day 任务 LastSyncDate 断点的最小值已覆盖 tradeDate；
+//   - day 任务断点对 tradeDate 的覆盖率 ≥ readinessMinCoverage（少数长期停牌/退市
+//     股票的陈旧断点不阻断全市场，但覆盖率不足仍视为未就绪）；
 //   - 本地日K实际存在 tradeDate 的K线（当日覆盖）。
 func ComputeDataReadiness(ctx context.Context, tradeDate string, now time.Time) DataReadiness {
 	if now.IsZero() {
@@ -83,16 +89,20 @@ func ComputeDataReadiness(ctx context.Context, tradeDate string, now time.Time) 
 		}
 	}
 
-	// 2) LastSyncDate 断点覆盖（非空断点的最小值必须达到 tradeDate）
-	var minLastPtr *string
+	// 2) LastSyncDate 断点覆盖率（按市场整体衡量，而非最小值：
+	//    个别长期停牌/退市股票的陈旧断点不应阻断全市场确认）
+	var bp struct {
+		Total  int64
+		Behind int64
+		Oldest *string
+	}
 	if err := db.Dao.WithContext(ctx).Model(&models.KLineSyncLog{}).
 		Where("period = ? AND IFNULL(last_sync_date, '') <> ''", "day").
-		Select("MIN(last_sync_date)").Scan(&minLastPtr).Error; err != nil {
+		Select(`COUNT(*) AS total,
+			COALESCE(SUM(CASE WHEN last_sync_date < ? THEN 1 ELSE 0 END), 0) AS behind,
+			MIN(last_sync_date) AS oldest`, tradeDate).
+		Scan(&bp).Error; err != nil {
 		logger.SugaredLogger.Warnf("khunter 日K同步断点统计失败: %v", err)
-	}
-	minLast := ""
-	if minLastPtr != nil {
-		minLast = *minLastPtr
 	}
 
 	// 3) 当日覆盖：本地日K存在 tradeDate 的K线
@@ -106,17 +116,31 @@ func ComputeDataReadiness(ctx context.Context, tradeDate string, now time.Time) 
 		blockers = append(blockers, fmt.Sprintf("存在未完成的日K同步任务(pending=%d running=%d failed=%d)", r.Pending, r.Running, r.Failed))
 	}
 	switch {
-	case minLast == "":
+	case bp.Total == 0:
 		blockers = append(blockers, "无日K同步断点记录（kline_sync 尚未成功跑完过一单）")
-	case minLast < tradeDate:
-		blockers = append(blockers, fmt.Sprintf("日K同步断点 %s 未覆盖 %s", minLast, tradeDate))
+	default:
+		covered := bp.Total - bp.Behind
+		ratio := float64(covered) / float64(bp.Total)
+		if ratio < readinessMinCoverage {
+			oldest := ""
+			if bp.Oldest != nil {
+				oldest = *bp.Oldest
+			}
+			blockers = append(blockers, fmt.Sprintf(
+				"日K同步断点未覆盖 %s：仅 %d/%d 只任务断点达标（覆盖率 %.1f%%，最旧断点 %s），请重跑日K同步补尾部",
+				tradeDate, covered, bp.Total, ratio*100, oldest))
+		}
 	}
 	if covered == 0 {
 		blockers = append(blockers, "本地日K无 "+tradeDate+" 的K线")
 	}
 	if len(blockers) == 0 {
 		r.Completed = true
-		r.Reason = "日K同步已完成"
+		if bp.Total > 0 {
+			r.Reason = fmt.Sprintf("日K同步已完成（断点覆盖 %d/%d）", bp.Total-bp.Behind, bp.Total)
+		} else {
+			r.Reason = "日K同步已完成"
+		}
 	} else {
 		r.Reason = strings.Join(blockers, "；")
 	}

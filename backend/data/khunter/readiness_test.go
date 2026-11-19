@@ -3,6 +3,7 @@ package khunter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -126,6 +127,46 @@ func TestComputeDataReadinessFromSyncLogs(t *testing.T) {
 		}
 		if !strings.Contains(r.Reason, "2026-11-17") {
 			t.Fatalf("诊断应指出断点日期: %s", r.Reason)
+		}
+	})
+
+	// 少数长期停牌/退市股票的陈旧断点（如 2026-06-24）不应阻断全市场确认：
+	// 覆盖率 ≥ readinessMinCoverage 即视为就绪。
+	t.Run("个别陈旧断点不阻断全市场", func(t *testing.T) {
+		setupTestDB(t)
+		if err := db.Dao.AutoMigrate(&models.KLineSyncLog{}, &models.KLineBar{}); err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 200; i++ {
+			seedSyncLog(t, fmt.Sprintf("sh%06d", 600000+i), "done", tradeDate)
+		}
+		seedSyncLog(t, "sz000001", "done", "2026-06-24")
+		seedCoverageBar(t, "sh600000", tradeDate)
+		r := ComputeDataReadiness(ctx, tradeDate, now)
+		if !r.Completed {
+			t.Fatalf("覆盖率 %.1f%% 达标应就绪: %+v", 200.0/201*100, r)
+		}
+	})
+
+	// 覆盖率低于阈值（>1% 任务落后）仍视为未就绪，并给出覆盖率诊断。
+	t.Run("覆盖率不足阻断", func(t *testing.T) {
+		setupTestDB(t)
+		if err := db.Dao.AutoMigrate(&models.KLineSyncLog{}, &models.KLineBar{}); err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 100; i++ {
+			seedSyncLog(t, fmt.Sprintf("sh%06d", 600000+i), "done", tradeDate)
+		}
+		for i := 0; i < 5; i++ {
+			seedSyncLog(t, fmt.Sprintf("sz%06d", 1+i), "done", "2026-11-10")
+		}
+		seedCoverageBar(t, "sh600000", tradeDate)
+		r := ComputeDataReadiness(ctx, tradeDate, now)
+		if r.Completed {
+			t.Fatalf("覆盖率 95%% 不足不得就绪: %+v", r)
+		}
+		if !strings.Contains(r.Reason, "覆盖率") || !strings.Contains(r.Reason, "95.2%") {
+			t.Fatalf("诊断应包含覆盖率: %s", r.Reason)
 		}
 	})
 
