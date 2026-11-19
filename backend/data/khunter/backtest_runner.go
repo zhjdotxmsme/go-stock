@@ -728,7 +728,13 @@ func (r *runner) processConfirmedEntry(cc candidateCtx, cand *preparedCandidate,
 			lastReason = "确认日无本地K线"
 			continue
 		}
-		limit := dailyPriceLimit(cand.code, confirmBar)
+		limit, limitOK := dailyPriceLimit(cand.code, confirmBar)
+		if !limitOK {
+			// 与实盘确认链路同一规则：缺前收无法判定涨跌停，禁止确认（防回测偏乐观）
+			lastReason = "缺前一交易日收盘价，无法判定涨跌停，禁止确认"
+			cc.emit(ReplayEvent{Date: confirmDay, Variant: base.Variant, Code: base.Code, Stage: stageConfirm, Detail: lastReason})
+			continue
+		}
 		cd := EvaluateConfirmationDay(cand.rawHigh, cand.rawLow, cand.rawATR, confirmBar, limit, RiskDecision{AllowConfirm: true}, r.cfg)
 		if !cd.Confirmed {
 			lastReason = cd.Reason
@@ -1209,7 +1215,8 @@ func (r *runner) exitTrace(ct caseEntry) []ReplayEvent {
 		if !ok {
 			continue
 		}
-		decision := EvaluateExitDay(p, e.SignalHigh, bar, dailyPriceLimit(e.Code, bar),
+		exitLimit, _ := dailyPriceLimit(e.Code, bar) // 退出降级口径
+		decision := EvaluateExitDay(p, e.SignalHigh, bar, exitLimit,
 			idx == entryIdx, idx-entryIdx, r.cfg)
 		evs = append(evs, ReplayEvent{
 			Date: date, Variant: string(VariantFull), Code: e.Code, Stage: stageProtect,

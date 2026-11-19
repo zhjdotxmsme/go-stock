@@ -94,7 +94,7 @@ func ProcessHoldingsForDate(
 		if !ok {
 			continue
 		}
-		limit := dailyPriceLimit(h.Code, bar)
+		limit, _ := dailyPriceLimit(h.Code, bar) // 退出路径按降级口径继续评估
 		decision := EvaluateExitDay(h, signalHigh, bar, limit, isEntry, days, cfg)
 		if decision.Exit {
 			if err := repo.ExitHunting(h.ID, tradeDate, decision.ExitPrice, decision.Reason); err != nil {
@@ -162,10 +162,13 @@ func loadRawBar(ctx context.Context, code, tradeDate string) (models.KLineBar, b
 	return bars[0], true
 }
 
-func dailyPriceLimit(code string, bar models.KLineBar) trading.PriceLimit {
+// dailyPriceLimit 解析 code 的当日真实涨跌停价；PrevClose 缺失时回退 ±10% 近似带，
+// 并以 ok=false 告知调用方"该带为近似"。确认决策路径必须把 !ok 视为拒绝理由
+// （与实盘确认链路"缺前收必须拒绝"同一规则）；退出路径可按降级口径继续使用。
+func dailyPriceLimit(code string, bar models.KLineBar) (trading.PriceLimit, bool) {
 	limit, ok := trading.DailyPriceLimit(code, bar.PrevClose, false)
 	if ok {
-		return limit
+		return limit, true
 	}
 	base := bar.PrevClose
 	if base <= 0 {
@@ -175,7 +178,7 @@ func dailyPriceLimit(code string, bar models.KLineBar) trading.PriceLimit {
 		return trading.PriceLimit{
 			UpPrice:   math.Round(base*1.1*100) / 100,
 			DownPrice: math.Round(base*0.9*100) / 100,
-		}
+		}, false
 	}
-	return trading.PriceLimit{}
+	return trading.PriceLimit{}, false
 }

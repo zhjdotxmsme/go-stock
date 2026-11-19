@@ -230,7 +230,8 @@ func RunPortfolioBacktest(input PortfolioBacktestInput) *BacktestReport {
 				ProtectPrice: h.protect,
 				InitialRisk:  h.entry.EntryPrice - h.entry.StopPrice,
 			}
-			decision := EvaluateExitDay(p, h.entry.SignalHigh, bar, dailyPriceLimit(h.entry.Code, bar),
+			exitLimit, _ := dailyPriceLimit(h.entry.Code, bar) // 退出降级口径
+			decision := EvaluateExitDay(p, h.entry.SignalHigh, bar, exitLimit,
 				idx == h.entryIdx, idx-h.entryIdx, cfg)
 			if decision.Exit {
 				h.holdingDays = decision.HoldingDays
