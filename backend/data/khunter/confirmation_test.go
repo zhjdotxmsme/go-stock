@@ -3,6 +3,7 @@ package khunter
 import (
 	"context"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,9 +18,9 @@ func TestConfirmationPriceAndGap(t *testing.T) {
 	allow := RiskDecision{AllowConfirm: true}
 	limit, _ := trading.DailyPriceLimit("600000", 90, false)
 	tests := []struct {
-		name string
-		bar  models.KLineBar
-		entry float64
+		name            string
+		bar             models.KLineBar
+		entry           float64
 		confirmed, skip bool
 	}{
 		{"开盘位于H与H+2%之间", models.KLineBar{Open: 101, High: 102, Low: 100, Close: 101}, 101, true, false},
@@ -125,7 +126,7 @@ func TestConfirmEngineIdempotent(t *testing.T) {
 			StockCode: "sh600000", Period: "day", TradeDate: date, Adjusted: true,
 			Open: adjClose, High: adjClose + 1, Low: adjClose - 1, Close: adjClose,
 			PrevClose: adjClose - 1,
-			Volume: 1000000, VolumeUnit: "share", Amount: 100000000, AmountUnit: "CNY",
+			Volume:    1000000, VolumeUnit: "share", Amount: 100000000, AmountUnit: "CNY",
 		}).Error; err != nil {
 			t.Fatal(err)
 		}
@@ -133,7 +134,7 @@ func TestConfirmEngineIdempotent(t *testing.T) {
 			StockCode: "sh600000", Period: "day", TradeDate: date, Adjusted: false,
 			Open: rawClose, High: rawClose + 1, Low: rawClose - 1, Close: rawClose,
 			PrevClose: rawClose - 1,
-			Volume: 1000000, VolumeUnit: "share", Amount: 100000000, AmountUnit: "CNY",
+			Volume:    1000000, VolumeUnit: "share", Amount: 100000000, AmountUnit: "CNY",
 		}).Error; err != nil {
 			t.Fatal(err)
 		}
@@ -187,3 +188,194 @@ func TestConfirmEngineIdempotent(t *testing.T) {
 type alwaysReadyChecker struct{}
 
 func (alwaysReadyChecker) Ready(context.Context, string) bool { return true }
+
+// seedConfirmScenarioBars 为确认链路测试播种 sh600000 的复权+不复权日K（35 天）。
+// 复权口径恒为平价 100；不复权基准 bar 可按日期用 rawOverride 替换
+// （如 PrevClose=0、一字涨停日）。
+func seedConfirmScenarioBars(t *testing.T, baseRaw models.KLineBar, rawOverride map[string]models.KLineBar) {
+	t.Helper()
+	baseDate := time.Date(2026, 10, 10, 0, 0, 0, 0, time.Local)
+	for i := 0; i < 35; i++ {
+		date := baseDate.AddDate(0, 0, i).Format("2006-01-02")
+		if err := db.Dao.Create(&models.KLineBar{
+			StockCode: "sh600000", Period: "day", TradeDate: date, Adjusted: true,
+			Open: 100, High: 101, Low: 99, Close: 100, PrevClose: 99,
+			Volume: 1000000, VolumeUnit: "share", Amount: 100000000, AmountUnit: "CNY",
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+		raw := baseRaw
+		raw.StockCode = "sh600000"
+		raw.Period = "day"
+		raw.TradeDate = date
+		if o, ok := rawOverride[date]; ok {
+			raw = o
+			raw.StockCode = "sh600000"
+			raw.Period = "day"
+			raw.TradeDate = date
+		}
+		if err := db.Dao.Create(&raw).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func runConfirmOnDate(t *testing.T, engine *ConfirmationEngine, tradeDate string, tradeDates []string) (ConfirmStats, error) {
+	t.Helper()
+	return engine.ConfirmForDate(context.Background(), tradeDate, tradeDates,
+		risk.Level{Name: "正常", PositionLimit: 1, ScoreExtra: 0},
+		DefaultRiskControlConfig(), DefaultRiskControlConfig().InitialCash)
+}
+
+// 到期必须持久化终态：status=已过期、confirm_expire 落库；重跑同日不得重复计入
+// ExpiredCount，也不得报错（回归：UpsertObservation 不写 status，观察永远待确认）。
+func TestConfirmForDatePersistsExpiryOnce(t *testing.T) {
+	setupTestDB(t)
+	r := NewRepo()
+	obs := models.KhunterObservation{
+		Code: "600000", Name: "过期股", SignalDate: "2026-11-09", Status: ObsStatusPending,
+		DataStatus: "valid", TriggerPrice: 100, SignalLow: 95, ATR14: 2, Score: 80,
+	}
+	if err := r.UpsertObservation(&obs); err != nil {
+		t.Fatal(err)
+	}
+
+	engine := NewConfirmationEngine(r)
+	engine.Readiness = alwaysReadyChecker{}
+	tradeDates := []string{"2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13", "2026-11-20"}
+	// 2026-11-20 相对信号日为 T+5，超出 T+1~T+3 确认窗口：应判过期并持久化
+	stats, err := runConfirmOnDate(t, engine, "2026-11-20", tradeDates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Expired != 1 {
+		t.Fatalf("首次运行应恰好过期 1 条，got %d", stats.Expired)
+	}
+	var got models.KhunterObservation
+	if err := db.Dao.First(&got, obs.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != ObsStatusExpired {
+		t.Fatalf("到期状态必须持久化为已过期，got %s", got.Status)
+	}
+	if got.ConfirmExpire != "2026-11-20" {
+		t.Fatalf("confirm_expire 必须随过期落库，got %q", got.ConfirmExpire)
+	}
+	if !strings.Contains(got.RejectReason, "确认窗口已过期") {
+		t.Fatalf("过期必须留拒绝原因，got %q", got.RejectReason)
+	}
+
+	// 重跑同日：观察已退出待确认列表，不得再次计入过期
+	stats2, err := runConfirmOnDate(t, engine, "2026-11-20", tradeDates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats2.Expired != 0 {
+		t.Fatalf("重跑不得重复计数过期，got %d", stats2.Expired)
+	}
+	var again models.KhunterObservation
+	if err := db.Dao.First(&again, obs.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if again.Status != ObsStatusExpired || again.ConfirmExpire != "2026-11-20" {
+		t.Fatalf("重跑不得改变终态: %+v", again)
+	}
+}
+
+// 确认日 bar 缺前收（PrevClose=0）必须拒绝确认并留痕，不得用 close×1.1/0.9
+// 合成涨跌停带近似（回归：合成带在数学上关闭一字涨停判定，且 10% 对 20%/30% 板错误）。
+func TestConfirmForDateRejectsMissingPrevClose(t *testing.T) {
+	setupTestDB(t)
+	if err := db.Dao.AutoMigrate(&models.KLineBar{}); err != nil {
+		t.Fatal(err)
+	}
+	flat := models.KLineBar{
+		Open: 90, High: 91, Low: 89, Close: 90, PrevClose: 89,
+		Volume: 1000000, VolumeUnit: "share", Amount: 100000000, AmountUnit: "CNY",
+	}
+	seedConfirmScenarioBars(t, flat, map[string]models.KLineBar{
+		"2026-11-10": {Open: 90, High: 91, Low: 89, Close: 90, PrevClose: 0,
+			Volume: 1000000, VolumeUnit: "share", Amount: 100000000, AmountUnit: "CNY"},
+	})
+	r := NewRepo()
+	if err := r.UpsertObservation(&models.KhunterObservation{
+		Code: "600000", Name: "平稳股", SignalDate: "2026-11-09", Status: ObsStatusPending,
+		DataStatus: "valid", TriggerPrice: 100, SignalLow: 95, ATR14: 2, Score: 80,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	engine := NewConfirmationEngine(r)
+	engine.Readiness = alwaysReadyChecker{}
+	tradeDates := []string{"2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13"}
+	stats, err := runConfirmOnDate(t, engine, "2026-11-10", tradeDates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Confirmed != 0 || stats.Rejected != 1 {
+		t.Fatalf("缺前收必须拒绝确认: %+v", stats)
+	}
+	var n int64
+	if err := db.Dao.Model(&models.KhunterHunting{}).Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("缺前收不得生成交易，got %d", n)
+	}
+	var obs models.KhunterObservation
+	if err := db.Dao.Where("code=? AND signal_date=?", "600000", "2026-11-09").First(&obs).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(obs.RejectReason, "收盘价") || !strings.Contains(obs.RejectReason, "涨跌停") {
+		t.Fatalf("拒绝原因必须说明缺前收/涨跌停: %q", obs.RejectReason)
+	}
+}
+
+// 入场日一字涨停（真实前收推得涨停价）仍不可确认：OnePriceLimitUp 守卫必须生效。
+func TestConfirmForDateOnePriceLimitUpCannotConfirm(t *testing.T) {
+	setupTestDB(t)
+	if err := db.Dao.AutoMigrate(&models.KLineBar{}); err != nil {
+		t.Fatal(err)
+	}
+	flat := models.KLineBar{
+		Open: 100, High: 101, Low: 99, Close: 100, PrevClose: 99,
+		Volume: 1000000, VolumeUnit: "share", Amount: 100000000, AmountUnit: "CNY",
+	}
+	// 确认日 OHLC 全为 110 = 前收 100 × 1.1（真实涨停价）：全天封死买不进
+	seedConfirmScenarioBars(t, flat, map[string]models.KLineBar{
+		"2026-11-10": {Open: 110, High: 110, Low: 110, Close: 110, PrevClose: 100,
+			Volume: 1000000, VolumeUnit: "share", Amount: 100000000, AmountUnit: "CNY"},
+	})
+	r := NewRepo()
+	if err := r.UpsertObservation(&models.KhunterObservation{
+		Code: "600000", Name: "平稳股", SignalDate: "2026-11-09", Status: ObsStatusPending,
+		DataStatus: "valid", TriggerPrice: 100, SignalLow: 95, ATR14: 2, Score: 80,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	engine := NewConfirmationEngine(r)
+	engine.Readiness = alwaysReadyChecker{}
+	tradeDates := []string{"2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12", "2026-11-13"}
+	stats, err := runConfirmOnDate(t, engine, "2026-11-10", tradeDates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Confirmed != 0 {
+		t.Fatalf("一字涨停不得确认: %+v", stats)
+	}
+	var n int64
+	if err := db.Dao.Model(&models.KhunterHunting{}).Count(&n).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("一字涨停不得生成交易，got %d", n)
+	}
+	var obs models.KhunterObservation
+	if err := db.Dao.Where("code=? AND signal_date=?", "600000", "2026-11-09").First(&obs).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(obs.RejectReason, "一字涨停") {
+		t.Fatalf("拒绝原因必须点名一字涨停: %q", obs.RejectReason)
+	}
+}

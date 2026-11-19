@@ -955,6 +955,7 @@ func (r *runner) runVariant(variant BacktestVariant, vcfg BacktestInputManifest,
 		vr.Splits = append(vr.Splits, sr)
 		mergeReports(merged, sr.Report)
 	}
+	finalizeMergedReport(merged, vr.Splits)
 	merged.SignalCount = 0
 	for _, sr := range vr.Splits {
 		merged.SignalCount += sr.Report.SignalCount
@@ -980,6 +981,21 @@ func (r *runner) runVariant(variant BacktestVariant, vcfg BacktestInputManifest,
 	}
 	vr.SampleInsufficient = vr.OOSConfirmed < OOSMinConfirmedTrades
 	return vr, nil
+}
+
+// finalizeMergedReport 各时间段独立以初始资金重放（段间现金重启）：直接对拼接权益
+// 序列求回撤会把上一段期末盈利当作下一段的回撤（如 +5% 段接平段虚增 ~4.8% 回撤）。
+// 合并口径的组合最大回撤取各时间段（训练/验证/样本外）回撤的最大值（最差段），
+// 不从拼接序列推导，并注明口径；PortfolioEquity 拼接保留，仅作展示序列。
+func finalizeMergedReport(merged *BacktestReport, splits []SplitBacktestResult) {
+	worst := 0.0
+	for _, sr := range splits {
+		if sr.Report.Metrics.PortfolioMaxDD > worst {
+			worst = sr.Report.Metrics.PortfolioMaxDD
+		}
+	}
+	merged.Metrics.PortfolioMaxDD = worst
+	merged.AddLimitation("组合最大回撤取各时间段（训练/验证/样本外）回撤的最大值；各时间段独立以初始资金重放，不拼接权益曲线")
 }
 
 func mergeReports(dst, src *BacktestReport) {

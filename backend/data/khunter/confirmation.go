@@ -214,9 +214,13 @@ func (e *ConfirmationEngine) ConfirmForDate(
 			continue
 		}
 		if state == "expired" {
-			obs.Status = ObsStatusExpired
-			obs.RejectReason = joinRejectReasons(obs.RejectReason, []string{"确认窗口已过期"})
-			if err := e.Repo.UpsertObservation(&obs); err != nil {
+			// 到期也留痕：拒绝原因与风险画像历史先随 bookkeeping 落库
+			// （UpsertObservation 不写 status），终态再由 ExpireObservation
+			// 定向迁移——缺后一步会让观察永远待确认、ExpiredCount 每次重跑虚增。
+			if err := e.recordRejection(&obs, tradeDate, []string{"确认窗口已过期"}); err != nil {
+				return stats, err
+			}
+			if err := e.Repo.ExpireObservation(obs.ID, tradeDate); err != nil {
 				return stats, err
 			}
 			stats.Expired++
@@ -258,7 +262,18 @@ func (e *ConfirmationEngine) ConfirmForDate(
 			continue
 		}
 
-		limit := e.priceLimit(obs.Code, confirmBar)
+		// 缺前收（PrevClose<=0）或代码无法识别时禁止确认：合成 ±10% 带会在数学上
+		// 关闭一字涨停判定（收盘价不可能等于收盘价×1.1），且 10% 对创业板/科创板/
+		// 北交所是错误幅度——退回近似带等于静默绕过涨跌停守卫。
+		limit, limitOk := trading.DailyPriceLimit(obs.Code, confirmBar.PrevClose, false)
+		if !limitOk {
+			if err := e.recordRejection(&obs, tradeDate,
+				[]string{"缺前一交易日收盘价，无法判定涨跌停，禁止确认"}); err != nil {
+				return stats, err
+			}
+			stats.Rejected++
+			continue
+		}
 		cd := EvaluateConfirmationDay(rawHigh, rawLow, rawATR, confirmBar, limit, riskDecision, cfg)
 		if !cd.Confirmed {
 			reason := cd.Reason
@@ -363,18 +378,6 @@ func daysBefore(date string, n int) string {
 		return ""
 	}
 	return t.AddDate(0, 0, -n).Format("2006-01-02")
-}
-
-func (e *ConfirmationEngine) priceLimit(code string, bar models.KLineBar) trading.PriceLimit {
-	limit, ok := trading.DailyPriceLimit(code, bar.PrevClose, false)
-	if ok {
-		return limit
-	}
-	// PrevClose 缺失时退回到 10% 幅度（不因此跳过涨跌停判定）。
-	if bar.Close > 0 {
-		return trading.PriceLimit{UpPrice: math.Round(bar.Close*1.1*100) / 100, DownPrice: math.Round(bar.Close*0.9*100) / 100}
-	}
-	return trading.PriceLimit{}
 }
 
 func findBarByDate(bars []models.KLineBar, date string) (models.KLineBar, bool) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"go-stock/backend/data/indicator"
 	"go-stock/backend/db"
@@ -121,6 +122,20 @@ func (r *Repo) ExitHunting(id uint, exitDate string, exitPrice float64, exitReas
 			"exit_date":   exitDate,
 			"exit_price":  exitPrice,
 			"exit_reason": exitReason,
+		}).Error
+}
+
+// ExpireObservation 观察窗口到期：显式定向更新 status/confirm_expire。
+// UpsertObservation 的 OnConflict 故意不含 status，到期终态必须由此迁移；
+// WHERE status='观察中' 保持终态只能迁移一次（与 ExitHunting 同款幂等语义）：
+// 重复到期是安全空操作，不得重置已确认/已过期，也不会重复计数。
+func (r *Repo) ExpireObservation(id uint, expireDate string) error {
+	return db.Dao.Model(&models.KhunterObservation{}).
+		Where("id = ? AND status = ?", id, ObsStatusPending).
+		Updates(map[string]any{
+			"status":         ObsStatusExpired,
+			"confirm_expire": expireDate,
+			"updated_at":     time.Now(),
 		}).Error
 }
 

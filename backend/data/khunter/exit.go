@@ -81,7 +81,8 @@ func ProcessHoldingsForDate(
 	for _, h := range holdings {
 		days, isEntry, ok := holdingDaysBetween(h.EnterDate, tradeDate, tradeDates)
 		if !ok {
-			logger.SugaredLogger.Warnf("khunter %s 持仓 %s 无法定位交易日期", tradeDate, h.Code)
+			logger.SugaredLogger.Warnf("khunter %s 持仓 %s 无法定位交易日序列（EnterDate=%s），本日未评估退出，请检查交易日历数据",
+				tradeDate, h.Code, h.EnterDate)
 			continue
 		}
 		signalHigh, err := resolveSignalHigh(ctx, repo, h)

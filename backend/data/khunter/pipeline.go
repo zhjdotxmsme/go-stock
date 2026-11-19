@@ -302,6 +302,34 @@ func RunPipelineWithOptions(ctx context.Context, opts PipelineOptions) (*Pipelin
 	return runLivePipeline(ctx, repo, tradeDate, now)
 }
 
+// tradeDateWindowStart 确认/退出引擎共用的交易日序列窗口起点。
+// 默认 30 个日历日；有更旧的开放义务（最旧持仓入场日 / 最旧待确认观察信号日）时
+// 向前扩到该义务日前 5 天，最多回看 400 个日历日兜底。窗口不得窄于默认 30 天，
+// 否则老信号观察会因日期不在序列内被判 invalid、永远无法进入过期分支。
+func tradeDateWindowStart(tradeDate string, holdings []models.KhunterHunting, pending []models.KhunterObservation) string {
+	start := daysBefore(tradeDate, 30)
+	oldestRelevant := ""
+	for _, h := range holdings {
+		if h.EnterDate != "" && (oldestRelevant == "" || h.EnterDate < oldestRelevant) {
+			oldestRelevant = h.EnterDate
+		}
+	}
+	for _, o := range pending {
+		if o.SignalDate != "" && (oldestRelevant == "" || o.SignalDate < oldestRelevant) {
+			oldestRelevant = o.SignalDate
+		}
+	}
+	if oldestRelevant != "" {
+		if earliest := daysBefore(oldestRelevant, 5); earliest < start {
+			start = earliest
+		}
+	}
+	if floor := daysBefore(tradeDate, 400); start < floor {
+		start = floor
+	}
+	return start
+}
+
 // runLivePipeline 实时生产运行：写信号/评分/风险档/狩猎池/运行汇总。
 // 评分前先把基本面和板块输入落时点快照，供历史研究按时点回读。
 func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time.Time) (res *PipelineResult, err error) {
@@ -509,7 +537,11 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 
 	var tradeDates []string
 	if len(pending) > 0 || len(holdings) > 0 {
-		tradeDates, err = repo.GetTradeDates(ctx, daysBefore(tradeDate, 30), tradeDate)
+		// 覆盖最久未了的义务（最旧持仓入场日 / 最旧待确认观察信号日）：
+		// 固定 30 天窗口会截断持有超过约 20 个交易日的持仓（连续一字跌停无法退出、
+		// 无法到期）与老信号观察（窗口状态判 invalid、永不进入过期分支）。
+		// 只取一次，确认与退出引擎共用。
+		tradeDates, err = repo.GetTradeDates(ctx, tradeDateWindowStart(tradeDate, holdings, pending), tradeDate)
 		if err != nil {
 			logger.SugaredLogger.Warnf("khunter 交易日序列读取失败 %s: %v", tradeDate, err)
 		}

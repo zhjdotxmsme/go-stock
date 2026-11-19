@@ -134,3 +134,30 @@ func TestResolveTradeDate(t *testing.T) {
 		t.Fatalf("expect 覆盖最广交易日 %s（非离群 MAX）, got %v", older, got)
 	}
 }
+
+// 交易日序列窗口必须覆盖最旧的开放义务（旧持仓入场日/旧信号日观察），
+// 且不得窄于默认 30 天、最多回看 400 个日历日：
+// 固定 30 天窗口会让持有超 ~20 个交易日的持仓停止退出评估、老信号观察永不进过期分支。
+func TestTradeDateWindowStartCoversOldestObligation(t *testing.T) {
+	tradeDate := "2026-11-20"
+	if got := tradeDateWindowStart(tradeDate, nil, nil); got != daysBefore(tradeDate, 30) {
+		t.Fatalf("无持仓/待确认应保持默认 30 天窗口: %s", got)
+	}
+	recentHolding := []models.KhunterHunting{{EnterDate: daysBefore(tradeDate, 10)}}
+	if got := tradeDateWindowStart(tradeDate, recentHolding, nil); got != daysBefore(tradeDate, 30) {
+		t.Fatalf("近期义务不得收窄窗口: %s", got)
+	}
+	oldHolding := []models.KhunterHunting{{EnterDate: daysBefore(tradeDate, 100)}}
+	if got := tradeDateWindowStart(tradeDate, oldHolding, nil); got != daysBefore(tradeDate, 105) {
+		t.Fatalf("旧持仓窗口应扩到入场日前 5 天: %s", got)
+	}
+	ancientObs := []models.KhunterObservation{{SignalDate: daysBefore(tradeDate, 500)}}
+	if got := tradeDateWindowStart(tradeDate, nil, ancientObs); got != daysBefore(tradeDate, 400) {
+		t.Fatalf("窗口最多回看 400 个日历日: %s", got)
+	}
+	oldHoldingAndObs := []models.KhunterHunting{{EnterDate: daysBefore(tradeDate, 100)}}
+	oldObs := []models.KhunterObservation{{SignalDate: daysBefore(tradeDate, 200)}}
+	if got := tradeDateWindowStart(tradeDate, oldHoldingAndObs, oldObs); got != daysBefore(tradeDate, 205) {
+		t.Fatalf("应取更旧的义务（观察信号日）: %s", got)
+	}
+}

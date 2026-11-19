@@ -538,3 +538,48 @@ func TestRunFullBacktestRegeneratesResearchPointInTime(t *testing.T) {
 		t.Fatalf("案例轨迹缺少观察/确认事件: %v", found)
 	}
 }
+
+// 合并报告的组合最大回撤取各时间段回撤的最大值（最差段），不得从拼接权益序列推导：
+// 各时间段独立以初始资金重放，A 段 +5% 接 B 段持平会把段间落差误判为 ~4.8% 回撤。
+func TestMergedPortfolioMaxDDTakesWorstSplitNotSplice(t *testing.T) {
+	mkSplit := func(values []float64) SplitBacktestResult {
+		r := NewBacktestReport(0)
+		for _, v := range values {
+			r.AppendEquity(v)
+		}
+		return SplitBacktestResult{Report: r}
+	}
+	// A 段平滑上涨至 +5%（段内回撤≈0）；B 段持平（真实回撤≈0）
+	up := make([]float64, 11)
+	for i := range up {
+		up[i] = 1e6 * (1 + 0.005*float64(i))
+	}
+	flat := []float64{1e6, 1e6, 1e6, 1e6, 1e6}
+	splits := []SplitBacktestResult{mkSplit(up), mkSplit(flat)}
+
+	merged := &BacktestReport{}
+	mergeReports(merged, splits[0].Report)
+	mergeReports(merged, splits[1].Report)
+	// 拼接序列直接求回撤（旧口径）应复现 ~4.8% 假回撤，证明测试对症
+	spliceDD := EquityMaxDrawdown(merged.PortfolioEquity)
+	if spliceDD < 0.045 {
+		t.Fatalf("拼接口径应复现 ~4.8%% 假回撤，got %v", spliceDD)
+	}
+
+	finalizeMergedReport(merged, splits)
+	if merged.Metrics.PortfolioMaxDD >= 0.01 {
+		t.Fatalf("合并口径应取最差段回撤(≈0)，got %v", merged.Metrics.PortfolioMaxDD)
+	}
+	worst := 0.0
+	for _, sr := range splits {
+		if sr.Report.Metrics.PortfolioMaxDD > worst {
+			worst = sr.Report.Metrics.PortfolioMaxDD
+		}
+	}
+	if math.Abs(merged.Metrics.PortfolioMaxDD-worst) > 1e-12 {
+		t.Fatalf("合并值应等于各段最大回撤: merged=%v worst=%v", merged.Metrics.PortfolioMaxDD, worst)
+	}
+	if !strings.Contains(strings.Join(merged.Limitations, "\n"), "不拼接权益曲线") {
+		t.Fatalf("合并报告必须注明回撤口径: %v", merged.Limitations)
+	}
+}
