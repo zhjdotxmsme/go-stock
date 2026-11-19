@@ -9,6 +9,9 @@
           <n-text depth="3" style="font-size:12px">运行日期</n-text>
           <n-date-picker v-model:value="runDateTs" type="date" clearable placeholder="运行日期" style="width:150px" @update:value="loadScores" />
           <n-text v-if="lastRunText" depth="3" style="font-size:12px">{{ lastRunText }}</n-text>
+          <n-button :loading="researchRunning" @click="runResearch">
+            <template #icon><n-icon><PlayOutline /></n-icon></template>运行历史研究
+          </n-button>
           <n-button type="primary" :loading="running" @click="run">
             <template #icon><n-icon><PlayOutline /></n-icon></template>运行当日策略
           </n-button>
@@ -17,8 +20,8 @@
     </n-page-header>
 
     <n-alert type="info" :bordered="false" collapsible>
-      使用顺序：选择交易日 → 运行当日策略 → 查看「候选评分」；符合风险阈值且站上支撑位的股票进入「狩猎池」。
-      盘中运行时当日日 K 尚未完整，结果只代表已形成的收盘数据。
+      使用顺序：选择交易日 → 运行当日策略 → 查看「观察候选评分」；符合风险阈值且站上支撑位的股票进入「观察候选」名单，
+      待触发价触及、数据就绪并经确认引擎验证后才进入「狩猎池」持仓跟踪。盘中运行时当日日 K 尚未完整，结果只代表已形成的收盘数据。
     </n-alert>
 
     <n-tabs type="line" animated v-model:value="activeTab">
@@ -29,6 +32,21 @@
               <n-statistic :label="m.label" :tabular-nums="true">{{ m.value }}</n-statistic>
             </n-gi>
           </n-grid>
+          <n-alert v-if="readinessAlert" :type="readinessAlert.type" :bordered="false" closable>
+            {{ readinessAlert.text }}
+          </n-alert>
+          <n-alert v-if="researchInfo" type="info" :bordered="false" closable>
+            历史研究 {{ researchInfo.tradeDate || '-' }} 完成；只写研究记录、不影响生产数据。
+            <template v-if="researchInfo.readiness && !researchInfo.readiness.completed">
+              <br />确认未就绪：{{ researchInfo.readiness.reason }}（pending={{ researchInfo.readiness.pending }} running={{ researchInfo.readiness.running }} failed={{ researchInfo.readiness.failed }}）
+            </template>
+          </n-alert>
+          <n-alert v-for="(l, i) in researchInfo?.limitations || []" :key="'rl' + i" type="warning" :bordered="false">
+            研究局限：{{ l }}
+          </n-alert>
+          <n-alert v-if="(researchInfo?.notBacktestable || []).length" type="warning" :bordered="false">
+            以下标的缺时点快照、不得用最新值替代，已标记不可回测：{{ (researchInfo?.notBacktestable || []).join('，') }}
+          </n-alert>
           <n-alert v-if="overviewIssue" :type="overviewIssue.type" :bordered="false" closable>
             {{ overviewIssue.text }}
           </n-alert>
@@ -51,9 +69,12 @@
         </n-space>
       </n-tab-pane>
 
-      <!-- ========== 候选评分 ========== -->
-      <n-tab-pane name="scores" tab="候选评分">
+      <!-- ========== 观察候选评分 ========== -->
+      <n-tab-pane name="scores" tab="观察候选评分">
         <n-space vertical>
+          <n-alert type="info" :bordered="false">
+            候选评分只生成「观察候选」名单，是跟踪对象而非买入结论；是否入场由后续触发确认与风险档位共同决定。
+          </n-alert>
           <n-space align="center">
             <n-text depth="3" style="font-size:12px">日期：{{ runDateStr() }}</n-text>
             <n-button size="small" :loading="scoresLoading" @click="loadScores">刷新</n-button>
@@ -67,37 +88,106 @@
         </n-space>
       </n-tab-pane>
 
-      <!-- ========== 狩猎池 ========== -->
+      <!-- ========== 观察候选（观察/确认状态） ========== -->
+      <n-tab-pane name="observations" tab="观察候选">
+        <n-space vertical>
+          <n-alert type="info" :bordered="false">
+            观察候选仅表示信号日形态值得跟踪，不构成买入建议；T 日信号需待 T+1~T+3 触及触发价、
+            数据就绪且通过确认引擎验证后才转入狩猎池，过期则自动作废。
+          </n-alert>
+          <n-space align="center">
+            <n-select v-model:value="obsStatus" :options="obsStatusOptions" style="width:130px" @update:value="loadObservations" />
+            <n-button size="small" :loading="obsLoading" @click="loadObservations">刷新</n-button>
+            <n-text depth="3" style="font-size:12px">共 {{ observations.length }} 条</n-text>
+          </n-space>
+          <n-data-table :columns="obsColumns" :data="observations" :loading="obsLoading" :bordered="true"
+            :single-line="false" :max-height="560" striped :row-key="(r: any) => r.id" />
+        </n-space>
+      </n-tab-pane>
+
+      <!-- ========== 狩猎池（已确认持仓跟踪） ========== -->
       <n-tab-pane name="hunting" tab="狩猎池">
         <n-space vertical>
+          <n-alert type="info" :bordered="false">
+            狩猎池为已确认的真实持仓跟踪：展示真实入场价、失效/保护价、股数、持有交易日与退出结果，不是候选推荐。
+          </n-alert>
           <n-space align="center">
             <n-select v-model:value="huntingStatus" :options="huntingStatusOptions" style="width:130px" @update:value="loadHunting" />
             <n-button size="small" :loading="huntingLoading" @click="loadHunting">刷新</n-button>
-            <n-text depth="3" style="font-size:12px">共 {{ hunting.length }} 条；狩猎池用于跟踪和回测</n-text>
+            <n-text depth="3" style="font-size:12px">共 {{ hunting.length }} 条</n-text>
           </n-space>
           <n-data-table :columns="huntingColumns" :data="hunting" :loading="huntingLoading" :bordered="true"
             :single-line="false" :max-height="560" striped :row-key="(r: any) => r.id" />
         </n-space>
       </n-tab-pane>
 
-      <!-- ========== Tab 3: 回测结果 ========== -->
+      <!-- ========== Tab: 回测验证 ========== -->
       <n-tab-pane name="backtest" tab="回测验证">
         <n-space vertical>
-          <n-space align="center">
-            <n-date-picker v-model:value="btForm.startTs" type="date" clearable placeholder="开始日期" style="width:150px" />
-            <n-date-picker v-model:value="btForm.endTs" type="date" clearable placeholder="结束日期" style="width:150px" />
-            <n-input-number v-model:value="btForm.holdingDays" :min="1" :max="60" placeholder="持有天数" style="width:120px" />
-            <n-input v-model:value="btForm.codes" placeholder="股票代码（逗号分隔，留空=狩猎池）" style="width:260px" />
-            <n-button type="primary" :loading="btRunning" @click="startBacktest">开始回测</n-button>
-          </n-space>
-          <n-progress v-if="btRunning || btProgress.total > 0" type="line" :percentage="btPercent"
-            :indicator-placement="'inside'" processing />
-          <n-data-table :columns="btColumns" :data="btStats" :bordered="true" :single-line="false" striped
-            :row-key="(r: any) => r.Strategy || r.strategy" />
+          <n-alert type="info" :bordered="false">
+            全链路回测默认覆盖全市场（不再默认读取当前狩猎池），baseline / data_only / risk / full
+            四组变体共享同一输入凭证与成本哈希做严格对照；样本外确认不足 100 笔时，结论不用于替换默认策略。
+          </n-alert>
+
+          <n-card size="small" title="全链路四组对照回测">
+            <n-space align="center">
+              <n-date-picker v-model:value="fbForm.startTs" type="date" clearable placeholder="开始日期" style="width:150px" />
+              <n-date-picker v-model:value="fbForm.endTs" type="date" clearable placeholder="结束日期" style="width:150px" />
+              <n-radio-group v-model:value="fbForm.universe">
+                <n-radio-button value="all">全市场</n-radio-button>
+                <n-radio-button value="codes">指定代码</n-radio-button>
+              </n-radio-group>
+              <n-input v-if="fbForm.universe === 'codes'" v-model:value="fbForm.codes"
+                placeholder="股票代码（逗号分隔）" style="width:260px" />
+              <n-button type="primary" :loading="fbRunning" @click="startFullBacktest">运行全链路回测</n-button>
+            </n-space>
+            <n-space v-if="fullResult" vertical style="margin-top:12px">
+              <n-text depth="3" style="font-size:12px">
+                区间 {{ fullResult.startDate || '-' }} ~ {{ fullResult.endDate || '-' }}
+                · {{ fullResult.allMarket ? '全市场' : `${(fullResult.codes || []).length} 只指定代码` }}
+                · 成本哈希 {{ fullResult.costHash || '-' }}
+              </n-text>
+              <n-alert v-if="fbSampleWarning" type="warning" :bordered="false">{{ fbSampleWarning }}</n-alert>
+              <n-data-table :columns="fbVariantColumns" :data="fullResult.variants || []" :bordered="true"
+                :single-line="false" striped size="small" :row-key="(r: any) => r.variant" />
+              <n-alert v-for="(l, i) in fullResult.limitations || []" :key="'fbl' + i" type="warning" :bordered="false">
+                已知局限：{{ l }}
+              </n-alert>
+              <n-collapse v-if="(fullResult.caseReplays || []).length">
+                <n-collapse-item title="案例回放轨迹" name="cases">
+                  <n-space vertical>
+                    <n-card v-for="c in fullResult.caseReplays" :key="c.code" size="small" :title="c.code">
+                      <n-data-table :columns="replayColumns" :data="c.events || []" :bordered="true"
+                        :single-line="false" size="small" :pagination="false" :row-key="(e: any) => c.code + e.date + e.stage" />
+                    </n-card>
+                  </n-space>
+                </n-collapse-item>
+              </n-collapse>
+            </n-space>
+            <n-empty v-else description="尚未运行全链路回测" style="margin-top:12px" />
+          </n-card>
+
+          <n-collapse>
+            <n-collapse-item title="信号级回测（旧版；代码留空时读取当前狩猎池）" name="legacy">
+              <n-space vertical>
+                <n-space align="center">
+                  <n-date-picker v-model:value="btForm.startTs" type="date" clearable placeholder="开始日期" style="width:150px" />
+                  <n-date-picker v-model:value="btForm.endTs" type="date" clearable placeholder="结束日期" style="width:150px" />
+                  <n-input-number v-model:value="btForm.holdingDays" :min="1" :max="60" placeholder="持有天数" style="width:120px" />
+                  <n-input v-model:value="btForm.codes" placeholder="股票代码（逗号分隔，留空=狩猎池）" style="width:260px" />
+                  <n-button :loading="btRunning" @click="startBacktest">开始回测（旧版）</n-button>
+                </n-space>
+                <n-progress v-if="btRunning || btProgress.total > 0" type="line" :percentage="btPercent"
+                  :indicator-placement="'inside'" processing />
+                <n-data-table :columns="btColumns" :data="btStats" :bordered="true" :single-line="false" striped
+                  :row-key="(r: any) => r.Strategy || r.strategy" />
+              </n-space>
+            </n-collapse-item>
+          </n-collapse>
         </n-space>
       </n-tab-pane>
 
-      <!-- ========== Tab 4: 风险看板 ========== -->
+      <!-- ========== Tab: 风险看板 ========== -->
       <n-tab-pane name="risk" tab="风险与仓位">
         <n-space vertical>
           <n-button size="small" :loading="riskLoading" @click="loadRisk" style="align-self:flex-start">刷新</n-button>
@@ -139,8 +229,10 @@ import { PlayOutline } from '@vicons/ionicons5'
 import { format } from 'date-fns'
 
 import RadarChart from './charts/RadarChart.vue'
-import { runPipeline, getKhunterMeta, getScores, getHunting, getRunSummaries, getRiskLevel, getKellySuggestions, runBacktest } from '../api/khunter'
+import { runPipeline, getKhunterMeta, getScores, getHunting, getRunSummaries, getRiskLevel, getKellySuggestions, runBacktest, runResearchPipeline, getObservations, runFullBacktest } from '../api/khunter'
+import { observationLabel, huntingStatusType, backtestSampleWarning } from './khunter/presentation'
 import type { models } from '../../wailsjs/go/models'
+import type { FullBacktestResult, FullBacktestVariant } from '../api/khunter'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime'
 import { displayStockCode, resolveDisplayName, prepareStockDisplay, fillRowNames } from '../utils/stockDisplay'
 
@@ -148,8 +240,9 @@ const message = useMessage()
 const today = format(new Date(), 'yyyy-MM-dd')
 const activeTab = ref('overview')
 
-// ===== 页头：运行流水线 =====
+// ===== 页头：运行流水线 / 历史研究 =====
 const running = ref(false)
+const researchRunning = ref(false)
 const lastRunText = ref('')
 const runDateTs = ref<number | null>(Date.now())
 
@@ -181,10 +274,23 @@ async function run() {
   }
 }
 
+async function runResearch() {
+  if (researchRunning.value) return
+  researchRunning.value = true
+  try {
+    await runResearchPipeline(runDateStr())
+  } catch (e) {
+    researchRunning.value = false
+    message.error('研究运行启动失败: ' + e)
+  }
+}
+
 // ===== 运行概览 =====
 const runSummaries = ref<models.KhunterRunSummary[]>([])
 const runSummariesLoading = ref(false)
 const latestAvailableDate = ref('')
+const liveReadiness = ref<any>(null)
+const researchInfo = ref<any>(null)
 
 const currentRunSummary = computed(() =>
   runSummaries.value.find(r => r.tradeDate === runDateStr()) || null
@@ -196,10 +302,28 @@ const runSummaryMetrics = computed(() => {
     { label: '运行日期', value: r?.tradeDate || runDateStr() },
     { label: '当日K线覆盖', value: r ? `${r.freshStocks}/${r.stockTotal}` : '-' },
     { label: '触发信号', value: r?.signalCount ?? '-' },
-    { label: '候选评分', value: r?.scoredCount ?? '-' },
+    { label: '观察候选评分', value: r?.scoredCount ?? '-' },
     { label: '进入狩猎池', value: r?.huntedCount ?? '-' },
     { label: '市场风险档', value: r?.riskLevel || '-' },
+    { label: '数据无效', value: r?.invalidDataCount ?? '-' },
+    { label: '盘中观察', value: r?.intradayCount ?? '-' },
+    { label: '已确认', value: r?.confirmedCount ?? '-' },
+    { label: '已过期', value: r?.expiredCount ?? '-' },
+    { label: '不可成交', value: r?.untradeableCount ?? '-' },
   ]
+})
+
+// 确认被跳过（日K同步未就绪）时，把未就绪原因直接展示在概览顶部。
+const readinessAlert = computed(() => {
+  if (liveReadiness.value && !liveReadiness.value.completed) {
+    const d = liveReadiness.value
+    return { type: 'warning' as const, text: `确认已被跳过（日K同步未就绪）：${d.reason || '未知原因'}（pending=${d.pending ?? 0} running=${d.running ?? 0} failed=${d.failed ?? 0}）` }
+  }
+  const r = currentRunSummary.value
+  if (r?.message?.includes('确认跳过')) {
+    return { type: 'warning' as const, text: `确认已被跳过（日K同步未就绪）：${r.message}` }
+  }
+  return null
 })
 
 const overviewIssue = computed(() => {
@@ -217,7 +341,7 @@ const overviewIssue = computed(() => {
   if (r.insufficientHistory > 0 || r.queryFailed > 0) {
     return { type: 'warning' as const, text: `${r.tradeDate} 历史不足 ${r.insufficientHistory} 只，查询失败 ${r.queryFailed} 只；请到「数据管理」检查对应任务。` }
   }
-  if (r.signalCount === 0) return { type: 'info' as const, text: `${r.tradeDate} 无策略信号，因此没有候选评分。` }
+  if (r.signalCount === 0) return { type: 'info' as const, text: `${r.tradeDate} 无策略信号，因此没有观察候选评分。` }
   return null
 })
 
@@ -230,6 +354,11 @@ const runSummaryColumns: any[] = [
   { title: '信号', key: 'signalCount', width: 70, align: 'center' },
   { title: '评分', key: 'scoredCount', width: 70, align: 'center' },
   { title: '入池', key: 'huntedCount', width: 70, align: 'center' },
+  { title: '无效', key: 'invalidDataCount', width: 70, align: 'center' },
+  { title: '盘中', key: 'intradayCount', width: 70, align: 'center' },
+  { title: '确认', key: 'confirmedCount', width: 70, align: 'center' },
+  { title: '过期', key: 'expiredCount', width: 70, align: 'center' },
+  { title: '不可成交', key: 'untradeableCount', width: 85, align: 'center' },
   { title: '风险档', key: 'riskLevel', width: 90, align: 'center', render: (r: any) => r.riskLevel || '-' },
   {
     title: '状态', key: 'status', width: 85, align: 'center',
@@ -258,7 +387,7 @@ function runSummaryRowProps(row: models.KhunterRunSummary) {
   }
 }
 
-// ===== 候选评分 =====
+// ===== 观察候选评分 =====
 const scores = ref<any[]>([])
 const scoresLoading = ref(false)
 
@@ -288,9 +417,9 @@ const scoreEmptyReason = computed(() => {
     return `${runDateStr()} 尚未运行；可在页头运行当日策略。`
   }
   if (r.status === 'failed') return `${runDateStr()} 运行失败：${r.message || '未知错误'}`
-  if (r.signalCount === 0) return `${runDateStr()} 无策略信号，因此没有候选评分。`
+  if (r.signalCount === 0) return `${runDateStr()} 无策略信号，因此没有观察候选评分。`
   if (r.scoredCount === 0) return `${runDateStr()} 有 ${r.signalCount} 条信号但未生成评分。`
-  return `${runDateStr()} 暂无候选评分。`
+  return `${runDateStr()} 暂无观察候选评分。`
 })
 
 function levelTagType(level: string): 'success' | 'info' | 'default' | 'warning' | 'error' {
@@ -424,13 +553,80 @@ const scoreColumns: any[] = [
     render: (r: any) => r.vetoReason ? h(NText, { type: 'error', style: { fontSize: '12px' } }, { default: () => r.vetoReason }) : '-' },
 ]
 
-// ===== 狩猎池 =====
+// ===== 观察候选（观察/确认状态） =====
+const observations = ref<any[]>([])
+const obsLoading = ref(false)
+const obsStatus = ref('')
+
+const obsStatusOptions = [
+  { label: '观察中', value: '观察中' },
+  { label: '已确认', value: '已确认' },
+  { label: '已过期', value: '已过期' },
+  { label: '全部', value: '' },
+]
+
+async function loadObservations() {
+  obsLoading.value = true
+  try {
+    await prepareStockDisplay()
+    observations.value = fillRowNames(await getObservations(obsStatus.value), 'code', 'name')
+  } catch (e) { message.error('加载观察候选失败: ' + e)
+  } finally { obsLoading.value = false }
+}
+
+function renderObservationStatus(row: any) {
+  const label = observationLabel(row)
+  const type = row.dataStatus === 'invalid' ? 'error'
+    : row.dataStatus === 'intraday' ? 'warning'
+    : row.status === '已确认' ? 'success'
+    : row.status === '已过期' ? 'default' : 'info'
+  return h(NTag, { type, bordered: false, size: 'small' }, { default: () => label })
+}
+
+function renderObservationExpand(row: any) {
+  const children: any[] = []
+  if (row.rejectReason) {
+    children.push(h('div', { style: { fontSize: '12px', marginBottom: '4px' } }, [
+      h(NText, { strong: true }, { default: () => '数据闸门原因：' }),
+      h(NText, { depth: 2 }, { default: () => row.rejectReason }),
+    ]))
+  }
+  for (const [label, raw] of [['信号日风险快照', row.signalRiskJson], ['风险历史', row.riskHistoryJson]] as const) {
+    if (!raw) continue
+    let text = raw
+    try {
+      text = JSON.stringify(JSON.parse(raw), null, 2)
+    } catch { /* 保持原样 */ }
+    children.push(h('div', { style: { fontSize: '12px', marginTop: '6px' } }, [
+      h('div', [h(NText, { strong: true }, { default: () => `${label}：` })]),
+      h('div', { style: { whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: '11px', color: '#888' } }, [text]),
+    ]))
+  }
+  if (!children.length) children.push(h(NText, { depth: 3, style: { fontSize: '12px' } }, { default: () => '无更多记录' }))
+  return h('div', { style: { padding: '4px 12px' } }, children)
+}
+
+const obsColumns: any[] = [
+  { type: 'expand', renderExpand: renderObservationExpand },
+  { title: '代码', key: 'code', width: 100, render: (r: any) => displayStockCode(r.code) },
+  { title: '名称', key: 'name', width: 110, render: (r: any) => resolveDisplayName(r.code, r.name) || '-' },
+  { title: '信号日', key: 'signalDate', width: 105 },
+  { title: '数据状态', key: 'dataStatus', width: 100, align: 'center', render: renderObservationStatus },
+  { title: '触发价', key: 'triggerPrice', width: 90, align: 'right', render: (r: any) => (r.triggerPrice ?? 0).toFixed(2) },
+  { title: '确认有效期', key: 'confirmExpire', width: 105, align: 'center', render: (r: any) => r.confirmExpire || '-' },
+  { title: '评分', key: 'score', width: 80, align: 'center', render: (r: any) => (r.score ?? 0).toFixed(1) },
+  { title: '原因', key: 'rejectReason', ellipsis: { tooltip: true },
+    render: (r: any) => r.rejectReason ? h(NText, { depth: 2, style: { fontSize: '12px' } }, { default: () => r.rejectReason }) : '-' },
+]
+
+// ===== 狩猎池（已确认持仓跟踪） =====
 const hunting = ref<any[]>([])
 const huntingLoading = ref(false)
-const huntingStatus = ref('追踪中')
+const huntingStatus = ref('持仓中')
 const huntingStatusOptions = [
-  { label: '追踪中', value: '追踪中' },
-  { label: '已移除', value: '已移除' },
+  { label: '持仓中', value: '持仓中' },
+  { label: '已退出', value: '已退出' },
+  { label: '历史待核', value: '历史待核' },
   { label: '全部', value: '' },
 ]
 
@@ -446,15 +642,22 @@ async function loadHunting() {
 const huntingColumns: any[] = [
   { title: '代码', key: 'code', width: 100, render: (r: any) => displayStockCode(r.code) },
   { title: '名称', key: 'name', width: 110, render: (r: any) => resolveDisplayName(r.code, r.name) || '-' },
+  { title: '信号日', key: 'signalDate', width: 105 },
   { title: '入选日', key: 'enterDate', width: 105 },
   { title: '入选分', key: 'enterScore', width: 90, align: 'center', render: (r: any) => (r.enterScore ?? 0).toFixed(1) },
-  { title: '支撑价', key: 'supportPrice', width: 90, align: 'right', render: (r: any) => (r.supportPrice ?? 0).toFixed(2) },
   { title: '状态', key: 'status', width: 90, align: 'center',
-    render: (r: any) => h(NTag, { type: r.status === '追踪中' ? 'success' : 'default', bordered: false, size: 'small' }, { default: () => r.status || '-' }) },
-  { title: '跟踪天数', key: 'trackDays', width: 90, align: 'center' },
+    render: (r: any) => h(NTag, { type: huntingStatusType(r.status), bordered: false, size: 'small' }, { default: () => r.status || '-' }) },
+  { title: '真实入场', key: 'entryPrice', width: 90, align: 'right', render: (r: any) => (r.entryPrice ?? 0).toFixed(2) },
+  { title: '失效价', key: 'initialStopPrice', width: 90, align: 'right', render: (r: any) => (r.initialStopPrice ?? 0).toFixed(2) },
+  { title: '保护价', key: 'protectPrice', width: 90, align: 'right', render: (r: any) => (r.protectPrice ?? 0).toFixed(2) },
+  { title: '股数', key: 'shares', width: 80, align: 'right', render: (r: any) => r.shares ?? '-' },
+  { title: '持有交易日', key: 'trackDays', width: 95, align: 'center', render: (r: any) => r.trackDays ?? 0 },
+  { title: '退出', key: 'exit', width: 200, ellipsis: { tooltip: true },
+    render: (r: any) => r.exitDate ? `${r.exitDate} @ ${(r.exitPrice ?? 0).toFixed(2)}${r.exitReason ? `（${r.exitReason}）` : ''}` : '-' },
+  { title: '支撑价', key: 'supportPrice', width: 90, align: 'right', render: (r: any) => (r.supportPrice ?? 0).toFixed(2) },
 ]
 
-// ===== 回测结果 =====
+// ===== 信号级回测（旧版） =====
 const btForm = reactive({
   startTs: Date.now() - 180 * 24 * 3600 * 1000,
   endTs: Date.now(),
@@ -515,7 +718,144 @@ const btColumns: any[] = [
     render: (r: any) => (((r.MaxDrawdown ?? r.maxDrawdown ?? 0) * 100).toFixed(1) + '%') },
 ]
 
-// ===== Tab 4: 风险看板 =====
+// ===== 全链路四组对照回测 =====
+const fbForm = reactive({
+  startTs: Date.now() - 180 * 24 * 3600 * 1000,
+  endTs: Date.now(),
+  universe: 'all',
+  codes: '',
+})
+const fbRunning = ref(false)
+const fullResult = ref<FullBacktestResult | null>(null)
+
+const variantNames: Record<string, string> = {
+  baseline: '基线（旧默认）',
+  data_only: '数据闸门',
+  risk: '数据+风险',
+  full: '完整方案',
+}
+
+const fullVariant = computed<FullBacktestVariant | undefined>(() =>
+  (fullResult.value?.variants || []).find(v => v.variant === 'full')
+)
+
+// 样本外确认不足 100 笔：不得作为替换默认策略的依据
+const fbSampleWarning = computed(() =>
+  backtestSampleWarning({ confirmedCount: fullVariant.value?.oosConfirmed ?? fullVariant.value?.report?.confirmedCount })
+)
+
+async function startFullBacktest() {
+  if (fbRunning.value) return
+  let codes: string[] = []
+  if (fbForm.universe === 'codes') {
+    codes = fbForm.codes.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean)
+    if (codes.length === 0) {
+      message.warning('请选择「全市场」或输入股票代码')
+      return
+    }
+  }
+  fbRunning.value = true
+  try {
+    await runFullBacktest(
+      codes,
+      format(new Date(fbForm.startTs), 'yyyy-MM-dd'),
+      format(new Date(fbForm.endTs), 'yyyy-MM-dd'),
+    )
+  } catch (e) {
+    fbRunning.value = false
+    message.error('全链路回测启动失败: ' + e)
+  }
+}
+
+function renderVariantName(row: FullBacktestVariant) {
+  const tags: any[] = [
+    h('span', { style: { fontWeight: 'bold' } }, variantNames[row.variant || ''] || row.variant || '-'),
+  ]
+  if (row.manifest?.approximate) {
+    tags.push(h(NTag, { type: 'warning', size: 'tiny', bordered: false, style: { marginLeft: '6px' } }, { default: () => '近似' }))
+  }
+  if (row.manifest?.notBacktestable || (row.notBacktestableCodes || []).length > 0) {
+    tags.push(h(NTag, { type: 'error', size: 'tiny', bordered: false, style: { marginLeft: '6px' } }, { default: () => '不可回测' }))
+  }
+  if (row.sampleInsufficient || row.report?.metrics?.sampleInsufficient) {
+    tags.push(h(NTag, { type: 'warning', size: 'tiny', bordered: false, style: { marginLeft: '6px' } }, { default: () => '样本不足' }))
+  }
+  if (row.unfinished || row.report?.unfinished) {
+    tags.push(h(NTag, { type: 'default', size: 'tiny', bordered: false, style: { marginLeft: '6px' } }, { default: () => '未完成' }))
+  }
+  tags.push(h(NTag, {
+    type: row.stable ? 'success' : 'default', size: 'tiny', bordered: false, style: { marginLeft: '6px' },
+  }, { default: () => row.stable ? '结论稳定' : '结论不稳定' }))
+  return h('span', tags)
+}
+
+function renderVariantExpand(row: FullBacktestVariant) {
+  const report = row.report || {}
+  const children: any[] = []
+  if (row.stableNote) {
+    children.push(h('div', { style: { fontSize: '12px', marginBottom: '6px' } }, [
+      h(NText, { strong: true }, { default: () => '稳定性说明：' }),
+      h(NText, { depth: 2 }, { default: () => row.stableNote }),
+    ]))
+  }
+  if ((row.notBacktestableCodes || []).length) {
+    children.push(h('div', { style: { fontSize: '12px', marginBottom: '6px' } }, [
+      h(NTag, { type: 'error', size: 'tiny', bordered: false, style: { marginRight: '4px' } }, { default: () => '不可回测' }),
+      h(NText, { depth: 2 }, { default: () => row.notBacktestableCodes!.join('，') }),
+    ]))
+  }
+  const reasonList = (label: string, items?: string[]) => {
+    if (!items?.length) return
+    children.push(h('div', { style: { fontSize: '12px', marginBottom: '4px' } }, [
+      h(NText, { strong: true }, { default: () => `${label}：` }),
+      h(NText, { depth: 2 }, { default: () => items.join('；') }),
+    ]))
+  }
+  reasonList('无效原因', report.invalidReasons)
+  reasonList('不可成交原因', report.untradeableReasons)
+  reasonList('仍在窗口', report.stillInWindowReasons)
+  reasonList('局限', report.limitations)
+  const trades = report.trades || []
+  if (trades.length) {
+    children.push(h('div', { style: { marginTop: '8px' } }, [
+      h(NText, { strong: true, style: { fontSize: '12px' } }, { default: (): string => `成交明细（${trades.length} 笔，含滑点）` }),
+    ]))
+  }
+  return h('div', { style: { padding: '4px 12px' } }, children)
+}
+
+const fbVariantColumns: any[] = [
+  { type: 'expand', renderExpand: renderVariantExpand },
+  { title: '变体', key: 'variant', width: 220, render: renderVariantName },
+  { title: '信号', key: 'signalCount', width: 75, align: 'center', render: (r: FullBacktestVariant) => r.report?.signalCount ?? 0 },
+  { title: '确认', key: 'confirmedCount', width: 75, align: 'center', render: (r: FullBacktestVariant) => r.report?.confirmedCount ?? 0 },
+  { title: '过期', key: 'expiredCount', width: 70, align: 'center', render: (r: FullBacktestVariant) => r.report?.expiredCount ?? 0 },
+  { title: '无效', key: 'invalidCount', width: 70, align: 'center', render: (r: FullBacktestVariant) => r.report?.invalidCount ?? 0 },
+  { title: '不可成交', key: 'untradeableCount', width: 85, align: 'center', render: (r: FullBacktestVariant) => r.report?.untradeableCount ?? 0 },
+  { title: '在窗', key: 'stillInWindowCount', width: 70, align: 'center', render: (r: FullBacktestVariant) => r.report?.stillInWindowCount ?? 0 },
+  { title: '胜率', key: 'winRate', width: 85, align: 'center', render: (r: FullBacktestVariant) => pct(r.report?.metrics?.winRate) },
+  { title: '平均净收益', key: 'avgNetReturn', width: 100, align: 'right', render: (r: FullBacktestVariant) => pct(r.report?.metrics?.avgNetReturn) },
+  { title: '最差十分位', key: 'worstDecileAvg', width: 95, align: 'right', render: (r: FullBacktestVariant) => pct(r.report?.metrics?.worstDecileAvg) },
+  { title: '最大单笔亏损', key: 'maxSingleLoss', width: 105, align: 'right', render: (r: FullBacktestVariant) => pct(r.report?.metrics?.maxSingleLoss) },
+  { title: '组合最大回撤', key: 'portfolioMaxDD', width: 105, align: 'right', render: (r: FullBacktestVariant) => pct(r.report?.metrics?.portfolioMaxDD) },
+  { title: '超额收益', key: 'excessReturn', width: 95, align: 'right',
+    render: (r: FullBacktestVariant) => {
+      const v = r.report?.metrics?.excessReturn
+      return h(NText, { type: (v ?? 0) >= 0 ? 'success' : 'error' }, { default: () => pct(v) })
+    } },
+  { title: '样本外确认', key: 'oosConfirmed', width: 95, align: 'center', render: (r: FullBacktestVariant) => r.oosConfirmed ?? 0 },
+]
+
+const replayColumns: any[] = [
+  { title: '日期', key: 'date', width: 105 },
+  { title: '阶段', key: 'stage', width: 110, render: (e: any) => e.stage || '-' },
+  { title: '说明', key: 'detail', ellipsis: { tooltip: true }, render: (e: any) => e.detail || '-' },
+  { title: '价格', key: 'price', width: 90, align: 'right', render: (e: any) => e.price ? e.price.toFixed(2) : '-' },
+  { title: '保护价', key: 'protectPrice', width: 90, align: 'right', render: (e: any) => e.protectPrice ? e.protectPrice.toFixed(2) : '-' },
+  { title: '股数', key: 'shares', width: 80, align: 'right', render: (e: any) => e.shares ?? '-' },
+]
+
+// ===== Tab: 风险看板 =====
 const risk = ref<any>(null)
 const riskLoading = ref(false)
 
@@ -584,9 +924,13 @@ EventsOn('khunter:progress', (msg: any) => {
   const missingDate = r.MissingTradeDate ?? r.missingTradeDate ?? 0
   const queryFailed = r.QueryFailed ?? r.queryFailed ?? 0
   const sigN = r.Signals ?? 0
+  // 同步就绪诊断：确认被跳过时持续展示未就绪原因
+  liveReadiness.value = r.readiness ?? null
   lastRunText.value = `最近运行(${td || '-'}): 当日K线 ${fresh}/${total} · 信号 ${sigN} · 入池 ${r.Hunted ?? 0}`
   if (td) setRunDateFromISO(td)
-  if (fresh < 100) {
+  if (liveReadiness.value && !liveReadiness.value.completed) {
+    message.warning(`确认已跳过（日K同步未就绪）：${liveReadiness.value.reason || ''}`)
+  } else if (fresh < 100) {
     if (td === today) {
       message.warning(`今日日K尚未完整：当前覆盖 ${fresh}/${total} 只。可等待收盘同步或选择最近完整交易日`)
     } else if (insufficient > 0 || queryFailed > 0) {
@@ -597,10 +941,32 @@ EventsOn('khunter:progress', (msg: any) => {
   }
   if (sigN === 0) {
     message.warning(`${td || '当日'} 策略扫描完成但信号为 0；运行记录会保留本次覆盖和原因`)
-  } else {
+  } else if (!(liveReadiness.value && !liveReadiness.value.completed)) {
     message.success('狩猎场流水线运行完成')
   }
-  loadRunSummaries(); loadScores(); loadHunting(); loadRisk()
+  loadRunSummaries(); loadScores(); loadHunting(); loadObservations(); loadRisk()
+})
+
+EventsOn('khunter:research_progress', (msg: any) => {
+  if (!msg || typeof msg !== 'object' || !msg.done) return
+  researchRunning.value = false
+  if (msg.error) {
+    message.error('历史研究运行失败: ' + msg.error)
+    return
+  }
+  const r = msg.result || {}
+  researchInfo.value = {
+    tradeDate: r.TradeDate ?? r.tradeDate ?? '',
+    readiness: r.readiness ?? null,
+    limitations: r.Limitations ?? r.limitations ?? [],
+    notBacktestable: r.NotBacktestable ?? r.notBacktestable ?? [],
+  }
+  if (researchInfo.value.readiness && !researchInfo.value.readiness.completed) {
+    message.warning(`历史研究完成，但确认未就绪：${researchInfo.value.readiness.reason || ''}`)
+  } else {
+    message.success(`历史研究运行完成（${researchInfo.value.tradeDate || '-'}），只写研究记录`)
+  }
+  loadObservations()
 })
 
 EventsOn('khunter:backtest_progress', (msg: any) => {
@@ -620,10 +986,27 @@ EventsOn('khunter:backtest_done', (msg: any) => {
   message.success('回测完成')
 })
 
+EventsOn('khunter:full_backtest_done', (msg: any) => {
+  fbRunning.value = false
+  if (!msg || typeof msg !== 'object') return
+  if (msg.error) {
+    message.error('全链路回测失败: ' + msg.error)
+    return
+  }
+  fullResult.value = msg.result || null
+  if (!fullResult.value) {
+    message.warning('全链路回测未返回结果')
+    return
+  }
+  message.success('全链路回测完成（四组对照）')
+})
+
 onUnmounted(() => {
   EventsOff('khunter:progress')
+  EventsOff('khunter:research_progress')
   EventsOff('khunter:backtest_progress')
   EventsOff('khunter:backtest_done')
+  EventsOff('khunter:full_backtest_done')
 })
 
 onMounted(async () => {
@@ -633,7 +1016,7 @@ onMounted(async () => {
     const preferred = meta.latestScoreDate || meta.latestSignalDate || meta.latestRunDate
     if (preferred) setRunDateFromISO(preferred)
   } catch { /* ignore */ }
-  loadRunSummaries(); loadScores(); loadHunting(); loadRisk(); loadKelly()
+  loadRunSummaries(); loadScores(); loadHunting(); loadObservations(); loadRisk(); loadKelly()
 })
 </script>
 

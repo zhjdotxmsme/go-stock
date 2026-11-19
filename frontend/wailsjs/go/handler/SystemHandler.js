@@ -22,10 +22,6 @@ export function CheckSponsorCode(arg1) {
   return window['go']['handler']['SystemHandler']['CheckSponsorCode'](arg1);
 }
 
-export function VacuumDatabase() {
-  return window['go']['handler']['SystemHandler']['VacuumDatabase']();
-}
-
 export function CheckUpdate(arg1) {
   return window['go']['handler']['SystemHandler']['CheckUpdate'](arg1);
 }
@@ -126,6 +122,10 @@ export function GetEffectiveSponsorVip() {
   return window['go']['handler']['SystemHandler']['GetEffectiveSponsorVip']();
 }
 
+export function GetKLineSyncReadiness(arg1) {
+  return window['go']['handler']['SystemHandler']['GetKLineSyncReadiness'](arg1);
+}
+
 export function GetMCPServerByID(arg1) {
   return window['go']['handler']['SystemHandler']['GetMCPServerByID'](arg1);
 }
@@ -208,6 +208,10 @@ export function UpdateMCPServer(arg1) {
 
 export function UpdateSkill(arg1) {
   return window['go']['handler']['SystemHandler']['UpdateSkill'](arg1);
+}
+
+export function VacuumDatabase() {
+  return window['go']['handler']['SystemHandler']['VacuumDatabase']();
 }
 
 export function ValidateCronExpr(arg1) {

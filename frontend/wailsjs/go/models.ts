@@ -86,6 +86,78 @@ export namespace backtest {
 		    return a;
 		}
 	}
+	export class KLineHistoryItem {
+	    id: number;
+	    stockCode: string;
+	    stockName: string;
+	    period: string;
+	    tradeDate: string;
+	    adjusted: boolean;
+	    open: number;
+	    high: number;
+	    low: number;
+	    close: number;
+	    volume: number;
+	    amount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KLineHistoryItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.stockCode = source["stockCode"];
+	        this.stockName = source["stockName"];
+	        this.period = source["period"];
+	        this.tradeDate = source["tradeDate"];
+	        this.adjusted = source["adjusted"];
+	        this.open = source["open"];
+	        this.high = source["high"];
+	        this.low = source["low"];
+	        this.close = source["close"];
+	        this.volume = source["volume"];
+	        this.amount = source["amount"];
+	    }
+	}
+	export class KLineHistoryPageData {
+	    list: KLineHistoryItem[];
+	    total: number;
+	    page: number;
+	    pageSize: number;
+	    totalPages: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new KLineHistoryPageData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.list = this.convertValues(source["list"], KLineHistoryItem);
+	        this.total = source["total"];
+	        this.page = source["page"];
+	        this.pageSize = source["pageSize"];
+	        this.totalPages = source["totalPages"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ObjectiveConfig {
 	    sharpeWeight: number;
 	    winRateWeight: number;
@@ -223,77 +295,25 @@ export namespace backtest {
 	
 	
 	
-	export class KLineHistoryItem {
-	    id: number;
+	export class SyncTaskItem {
 	    stockCode: string;
-	    stockName: string;
 	    period: string;
-	    tradeDate: string;
-	    adjusted: boolean;
-	    open: number;
-	    high: number;
-	    low: number;
-	    close: number;
-	    volume: number;
-	    amount: number;
-
+	    status: string;
+	    progress: number;
+	    errorMsg: string;
+	
 	    static createFrom(source: any = {}) {
-	        return new KLineHistoryItem(source);
+	        return new SyncTaskItem(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
 	        this.stockCode = source["stockCode"];
-	        this.stockName = source["stockName"];
 	        this.period = source["period"];
-	        this.tradeDate = source["tradeDate"];
-	        this.adjusted = source["adjusted"];
-	        this.open = source["open"];
-	        this.high = source["high"];
-	        this.low = source["low"];
-	        this.close = source["close"];
-	        this.volume = source["volume"];
-	        this.amount = source["amount"];
+	        this.status = source["status"];
+	        this.progress = source["progress"];
+	        this.errorMsg = source["errorMsg"];
 	    }
-	}
-	export class KLineHistoryPageData {
-	    list: KLineHistoryItem[];
-	    total: number;
-	    page: number;
-	    pageSize: number;
-	    totalPages: number;
-
-	    static createFrom(source: any = {}) {
-	        return new KLineHistoryPageData(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.list = this.convertValues(source["list"], KLineHistoryItem);
-	        this.total = source["total"];
-	        this.page = source["page"];
-	        this.pageSize = source["pageSize"];
-	        this.totalPages = source["totalPages"];
-	    }
-
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class SyncProgressSummary {
 	    pending: number;
@@ -301,11 +321,11 @@ export namespace backtest {
 	    done: number;
 	    failed: number;
 	    partial: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SyncProgressSummary(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.pending = source["pending"];
@@ -319,18 +339,18 @@ export namespace backtest {
 	    summary: SyncProgressSummary;
 	    tasks: SyncTaskItem[];
 	    hiddenTasks: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new SyncProgressData(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.summary = this.convertValues(source["summary"], SyncProgressSummary);
 	        this.tasks = this.convertValues(source["tasks"], SyncTaskItem);
 	        this.hiddenTasks = source["hiddenTasks"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -349,26 +369,7 @@ export namespace backtest {
 		    return a;
 		}
 	}
-	export class SyncTaskItem {
-	    stockCode: string;
-	    period: string;
-	    status: string;
-	    progress: number;
-	    errorMsg: string;
-
-	    static createFrom(source: any = {}) {
-	        return new SyncTaskItem(source);
-	    }
-
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.stockCode = source["stockCode"];
-	        this.period = source["period"];
-	        this.status = source["status"];
-	        this.progress = source["progress"];
-	        this.errorMsg = source["errorMsg"];
-	    }
-	}
+	
 
 }
 
@@ -2374,6 +2375,8 @@ export namespace data {
 	    freeStockDBPath: string;
 	    freeStockDBAddr: string;
 	    freeStockDBAutoStart: boolean;
+	    klineAutoSyncEnable: boolean;
+	    klineAutoSyncIntervalMinutes: number;
 	    aiConfigs: AIConfig[];
 	
 	    static createFrom(source: any = {}) {
@@ -2446,6 +2449,8 @@ export namespace data {
 	        this.freeStockDBPath = source["freeStockDBPath"];
 	        this.freeStockDBAddr = source["freeStockDBAddr"];
 	        this.freeStockDBAutoStart = source["freeStockDBAutoStart"];
+	        this.klineAutoSyncEnable = source["klineAutoSyncEnable"];
+	        this.klineAutoSyncIntervalMinutes = source["klineAutoSyncIntervalMinutes"];
 	        this.aiConfigs = this.convertValues(source["aiConfigs"], AIConfig);
 	    }
 	
@@ -3195,7 +3200,9 @@ export namespace datasource {
 	    close: number;
 	    prevClose: number;
 	    volume: number;
+	    volumeUnit?: string;
 	    amount: number;
+	    amountUnit?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new KLineBar(source);
@@ -3210,7 +3217,9 @@ export namespace datasource {
 	        this.close = source["close"];
 	        this.prevClose = source["prevClose"];
 	        this.volume = source["volume"];
+	        this.volumeUnit = source["volumeUnit"];
 	        this.amount = source["amount"];
+	        this.amountUnit = source["amountUnit"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -3350,6 +3359,28 @@ export namespace handler {
 
 export namespace khunter {
 	
+	export class DataReadiness {
+	    tradeDate: string;
+	    completed: boolean;
+	    pending: number;
+	    running: number;
+	    failed: number;
+	    reason: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DataReadiness(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tradeDate = source["tradeDate"];
+	        this.completed = source["completed"];
+	        this.pending = source["pending"];
+	        this.running = source["running"];
+	        this.failed = source["failed"];
+	        this.reason = source["reason"];
+	    }
+	}
 	export class KellySuggestion {
 	    strategy: string;
 	    winRate: number;
@@ -3371,6 +3402,7 @@ export namespace khunter {
 	export class KhunterMeta {
 	    latestScoreDate: string;
 	    latestSignalDate: string;
+	    latestRunDate: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new KhunterMeta(source);
@@ -3380,6 +3412,7 @@ export namespace khunter {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.latestScoreDate = source["latestScoreDate"];
 	        this.latestSignalDate = source["latestSignalDate"];
+	        this.latestRunDate = source["latestRunDate"];
 	    }
 	}
 
@@ -4343,6 +4376,20 @@ export namespace models {
 	        this.name = source["name"];
 	    }
 	}
+	export class TechSection {
+	    title: string;
+	    text: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TechSection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.title = source["title"];
+	        this.text = source["text"];
+	    }
+	}
 	export class DailyPick {
 	    id: number;
 	    // Go type: time
@@ -4401,6 +4448,7 @@ export namespace models {
 	    kronosChangePct: number;
 	    kronosConfidence: number;
 	    kronosScore: number;
+	    kronosPredLen: number;
 	    kronosHit: string;
 	    finalScore: number;
 	    screenScore: number;
@@ -4466,6 +4514,7 @@ export namespace models {
 	    postAnalysisDetail: string;
 	    reason: string;
 	    remarks: string;
+	    techBrief?: TechSection[];
 	
 	    static createFrom(source: any = {}) {
 	        return new DailyPick(source);
@@ -4528,6 +4577,7 @@ export namespace models {
 	        this.kronosChangePct = source["kronosChangePct"];
 	        this.kronosConfidence = source["kronosConfidence"];
 	        this.kronosScore = source["kronosScore"];
+	        this.kronosPredLen = source["kronosPredLen"];
 	        this.kronosHit = source["kronosHit"];
 	        this.finalScore = source["finalScore"];
 	        this.screenScore = source["screenScore"];
@@ -4593,6 +4643,7 @@ export namespace models {
 	        this.postAnalysisDetail = source["postAnalysisDetail"];
 	        this.reason = source["reason"];
 	        this.remarks = source["remarks"];
+	        this.techBrief = this.convertValues(source["techBrief"], TechSection);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -4759,11 +4810,20 @@ export namespace models {
 	    id: number;
 	    code: string;
 	    name: string;
+	    signalDate: string;
 	    enterDate: string;
 	    enterScore: number;
 	    supportPrice: number;
+	    entryPrice: number;
+	    initialStopPrice: number;
+	    protectPrice: number;
+	    initialRisk: number;
+	    shares: number;
 	    status: string;
 	    trackDays: number;
+	    exitDate: string;
+	    exitPrice: number;
+	    exitReason: string;
 	    // Go type: time
 	    createdAt: any;
 	    // Go type: time
@@ -4778,11 +4838,20 @@ export namespace models {
 	        this.id = source["id"];
 	        this.code = source["code"];
 	        this.name = source["name"];
+	        this.signalDate = source["signalDate"];
 	        this.enterDate = source["enterDate"];
 	        this.enterScore = source["enterScore"];
 	        this.supportPrice = source["supportPrice"];
+	        this.entryPrice = source["entryPrice"];
+	        this.initialStopPrice = source["initialStopPrice"];
+	        this.protectPrice = source["protectPrice"];
+	        this.initialRisk = source["initialRisk"];
+	        this.shares = source["shares"];
 	        this.status = source["status"];
 	        this.trackDays = source["trackDays"];
+	        this.exitDate = source["exitDate"];
+	        this.exitPrice = source["exitPrice"];
+	        this.exitReason = source["exitReason"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	    }
@@ -4805,52 +4874,50 @@ export namespace models {
 		    return a;
 		}
 	}
-	export class KhunterRunSummary {
+	export class KhunterObservation {
 	    id: number;
-	    tradeDate: string;
-	    stockTotal: number;
-	    freshStocks: number;
-	    insufficientHistory: number;
-	    missingTradeDate: number;
-	    queryFailed: number;
-	    signalCount: number;
-	    candidateCount: number;
-	    scoredCount: number;
-	    huntedCount: number;
-	    riskLevel: string;
+	    code: string;
+	    name: string;
+	    signalDate: string;
 	    status: string;
-	    message: string;
-	    durationMs: number;
+	    dataStatus: string;
+	    triggerPrice: number;
+	    signalLow: number;
+	    atr14: number;
+	    confirmExpire: string;
+	    score: number;
+	    signalRiskJson: string;
+	    riskHistoryJson: string;
+	    rejectReason: string;
 	    // Go type: time
 	    createdAt: any;
 	    // Go type: time
 	    updatedAt: any;
-
+	
 	    static createFrom(source: any = {}) {
-	        return new KhunterRunSummary(source);
+	        return new KhunterObservation(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
-	        this.tradeDate = source["tradeDate"];
-	        this.stockTotal = source["stockTotal"];
-	        this.freshStocks = source["freshStocks"];
-	        this.insufficientHistory = source["insufficientHistory"];
-	        this.missingTradeDate = source["missingTradeDate"];
-	        this.queryFailed = source["queryFailed"];
-	        this.signalCount = source["signalCount"];
-	        this.candidateCount = source["candidateCount"];
-	        this.scoredCount = source["scoredCount"];
-	        this.huntedCount = source["huntedCount"];
-	        this.riskLevel = source["riskLevel"];
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.signalDate = source["signalDate"];
 	        this.status = source["status"];
-	        this.message = source["message"];
-	        this.durationMs = source["durationMs"];
+	        this.dataStatus = source["dataStatus"];
+	        this.triggerPrice = source["triggerPrice"];
+	        this.signalLow = source["signalLow"];
+	        this.atr14 = source["atr14"];
+	        this.confirmExpire = source["confirmExpire"];
+	        this.score = source["score"];
+	        this.signalRiskJson = source["signalRiskJson"];
+	        this.riskHistoryJson = source["riskHistoryJson"];
+	        this.rejectReason = source["rejectReason"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -4894,6 +4961,80 @@ export namespace models {
 	        this.positionLimit = source["positionLimit"];
 	        this.scoreExtra = source["scoreExtra"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class KhunterRunSummary {
+	    id: number;
+	    tradeDate: string;
+	    stockTotal: number;
+	    freshStocks: number;
+	    insufficientHistory: number;
+	    missingTradeDate: number;
+	    queryFailed: number;
+	    signalCount: number;
+	    candidateCount: number;
+	    scoredCount: number;
+	    huntedCount: number;
+	    invalidDataCount: number;
+	    intradayCount: number;
+	    confirmedCount: number;
+	    expiredCount: number;
+	    untradeableCount: number;
+	    riskLevel: string;
+	    status: string;
+	    message: string;
+	    durationMs: number;
+	    // Go type: time
+	    createdAt: any;
+	    // Go type: time
+	    updatedAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new KhunterRunSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.tradeDate = source["tradeDate"];
+	        this.stockTotal = source["stockTotal"];
+	        this.freshStocks = source["freshStocks"];
+	        this.insufficientHistory = source["insufficientHistory"];
+	        this.missingTradeDate = source["missingTradeDate"];
+	        this.queryFailed = source["queryFailed"];
+	        this.signalCount = source["signalCount"];
+	        this.candidateCount = source["candidateCount"];
+	        this.scoredCount = source["scoredCount"];
+	        this.huntedCount = source["huntedCount"];
+	        this.invalidDataCount = source["invalidDataCount"];
+	        this.intradayCount = source["intradayCount"];
+	        this.confirmedCount = source["confirmedCount"];
+	        this.expiredCount = source["expiredCount"];
+	        this.untradeableCount = source["untradeableCount"];
+	        this.riskLevel = source["riskLevel"];
+	        this.status = source["status"];
+	        this.message = source["message"];
+	        this.durationMs = source["durationMs"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -5716,6 +5857,7 @@ export namespace models {
 	        this.f87 = source["f87"];
 	    }
 	}
+	
 	export class TechnicalIndicators {
 	    MACD_GOLDEN_FORK: boolean;
 	    KDJ_GOLDEN_FORK: boolean;

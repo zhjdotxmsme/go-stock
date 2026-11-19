@@ -14,6 +14,10 @@ export function GetMeta() {
   return window['go']['handler']['KhunterHandler']['GetMeta']();
 }
 
+export function GetObservations(arg1) {
+  return window['go']['handler']['KhunterHandler']['GetObservations'](arg1);
+}
+
 export function GetRiskLevel() {
   return window['go']['handler']['KhunterHandler']['GetRiskLevel']();
 }
@@ -38,6 +42,14 @@ export function RunBacktestAsync(arg1, arg2, arg3, arg4) {
   return window['go']['handler']['KhunterHandler']['RunBacktestAsync'](arg1, arg2, arg3, arg4);
 }
 
+export function RunFullBacktestAsync(arg1, arg2, arg3) {
+  return window['go']['handler']['KhunterHandler']['RunFullBacktestAsync'](arg1, arg2, arg3);
+}
+
 export function RunPipelineAsync(arg1) {
   return window['go']['handler']['KhunterHandler']['RunPipelineAsync'](arg1);
+}
+
+export function RunResearchPipelineAsync(arg1) {
+  return window['go']['handler']['KhunterHandler']['RunResearchPipelineAsync'](arg1);
 }

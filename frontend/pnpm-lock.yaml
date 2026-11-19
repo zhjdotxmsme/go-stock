@@ -99,6 +99,9 @@ importers:
       '@vitejs/plugin-vue':
         specifier: ^6.0.6
         version: 6.0.9(vite@7.3.3(@types/node@26.6.2)(less@4.9.1))(vue@3.5.43(typescript@7.0.2))
+      esbuild:
+        specifier: ^0.27.7
+        version: 0.27.7
       html-docx-js-typescript:
         specifier: ^0.1.5
         version: 0.1.5
@@ -114,6 +117,9 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
+      typescript5:
+        specifier: npm:typescript@^5.9.3
+        version: typescript@5.9.3
       unplugin-auto-import:
         specifier: ^20.3.0
         version: 20.3.0
@@ -1409,6 +1415,11 @@ packages:
 
   tslib@2.3.0:
     resolution: {integrity: sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg==}
+
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
 
   typescript@7.0.2:
     resolution: {integrity: sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==}
@@ -2984,6 +2995,8 @@ snapshots:
   tslib@1.14.1: {}
 
   tslib@2.3.0: {}
+
+  typescript@5.9.3: {}
 
   typescript@7.0.2:
     optionalDependencies:

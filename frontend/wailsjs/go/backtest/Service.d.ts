@@ -3,6 +3,8 @@
 import {models} from '../models';
 import {backtest} from '../models';
 
+export function CatchUpSync(arg1:string):Promise<number>;
+
 export function GetBacktestResults(arg1:string,arg2:number,arg3:number):Promise<models.AiRecommendBacktestPageData>;
 
 export function GetKLineCacheStats():Promise<Record<string, any>>;
@@ -18,6 +20,8 @@ export function GetSeedImportStatus():Promise<Record<string, any>>;
 export function GetSyncProgress():Promise<backtest.SyncProgressData>;
 
 export function ResumePendingSyncTasks():Promise<void>;
+
+export function RetryFailedSync():Promise<number>;
 
 export function RunBatchBacktest(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean,arg6:number,arg7:number,arg8:number,arg9:number):Promise<backtest.BatchResult>;
 

@@ -44,11 +44,13 @@
     "@vicons/material": "^0.13.0",
     "@vicons/tabler": "^0.13.0",
     "@vitejs/plugin-vue": "^6.0.6",
+    "esbuild": "^0.27.7",
     "html-docx-js-typescript": "^0.1.5",
     "less": "^4.6.4",
     "naive-ui": "^2.44.1",
     "pinyin-pro": "^3.29.5",
     "typescript": "^7.0.2",
+    "typescript5": "npm:typescript@^5.9.3",
     "unplugin-auto-import": "^20.3.0",
     "unplugin-vue-components": "^29.2.0",
     "vfonts": "^0.0.3",
@@ -59,5 +61,6 @@
     "AI赋能股票分析",
     "go-stock"
   ],
-  "author": "spark"
+  "author": "spark",
+  "packageManager": "pnpm@11.7.0+sha512.19cc852c120c7125760f2443ee6be0ca5b40f9f50598de1a09a1f177503e010e57c23c77646e01e761de59bf874fb22a3398c33ab9691fc13eb946b6f0f4d620"
 }

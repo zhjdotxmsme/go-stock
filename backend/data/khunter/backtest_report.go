@@ -7,37 +7,37 @@ import (
 // BacktestTrade 单笔回测成交记录。EntryPrice/ExitPrice 为含滑点的实际成交价
 // （买入加滑点、卖出减滑点），配合 Shares 与 CostConfig 可完整复算净收益。
 type BacktestTrade struct {
-	Code        string
-	SignalDate  string
-	EntryDate   string
-	ExitDate    string
-	EntryPrice  float64
-	ExitPrice   float64
-	Shares      int
-	GrossReturn float64 // 价格收益（成交价口径，不含佣金/印花税/过户费）
-	NetReturn   float64 // 扣除全部交易成本后的收益
-	HoldingDays int
-	ExitReason  string
+	Code        string  `json:"code"`
+	SignalDate  string  `json:"signalDate"`
+	EntryDate   string  `json:"entryDate"`
+	ExitDate    string  `json:"exitDate"`
+	EntryPrice  float64 `json:"entryPrice"`
+	ExitPrice   float64 `json:"exitPrice"`
+	Shares      int     `json:"shares"`
+	GrossReturn float64 `json:"grossReturn"` // 价格收益（成交价口径，不含佣金/印花税/过户费）
+	NetReturn   float64 `json:"netReturn"`   // 扣除全部交易成本后的收益
+	HoldingDays int     `json:"holdingDays"`
+	ExitReason  string  `json:"exitReason"`
 }
 
 // BacktestMetrics 回测尾部风险与汇总指标。
 // 零收益交易单独计数（ZeroReturnCount），不混入平均亏损分母。
 type BacktestMetrics struct {
-	TradeCount         int
-	InvalidCount       int
-	UntradeableCount   int
-	ZeroReturnCount    int
-	WinRate            float64
-	AvgNetReturn       float64
-	AvgLoss            float64 // 平均亏损，分母只含负收益交易
-	WorstDecileAvg     float64 // 最差十分位平均（样本 <10 时标记 SampleInsufficient）
-	MaxSingleLoss      float64 // 最大单笔亏损（无亏损交易时为 0）
-	PortfolioMaxDD     float64 // 组合每日权益序列的最大回撤
-	FiveDayAvgReturn   float64 // 持有 ≤5 个交易日的交易平均净收益
-	ProfitLossRatio    float64
-	BenchmarkReturn    float64 // 基准（sh000300）同期收益
-	ExcessReturn       float64 // AvgNetReturn - BenchmarkReturn
-	SampleInsufficient bool
+	TradeCount         int     `json:"tradeCount"`
+	InvalidCount       int     `json:"invalidCount"`
+	UntradeableCount   int     `json:"untradeableCount"`
+	ZeroReturnCount    int     `json:"zeroReturnCount"`
+	WinRate            float64 `json:"winRate"`
+	AvgNetReturn       float64 `json:"avgNetReturn"`
+	AvgLoss            float64 `json:"avgLoss"`          // 平均亏损，分母只含负收益交易
+	WorstDecileAvg     float64 `json:"worstDecileAvg"`   // 最差十分位平均（样本 <10 时标记 SampleInsufficient）
+	MaxSingleLoss      float64 `json:"maxSingleLoss"`    // 最大单笔亏损（无亏损交易时为 0）
+	PortfolioMaxDD     float64 `json:"portfolioMaxDD"`   // 组合每日权益序列的最大回撤
+	FiveDayAvgReturn   float64 `json:"fiveDayAvgReturn"` // 持有 ≤5 个交易日的交易平均净收益
+	ProfitLossRatio    float64 `json:"profitLossRatio"`
+	BenchmarkReturn    float64 `json:"benchmarkReturn"` // 基准（sh000300）同期收益
+	ExcessReturn       float64 `json:"excessReturn"`    // AvgNetReturn - BenchmarkReturn
+	SampleInsufficient bool    `json:"sampleInsufficient"`
 }
 
 // BacktestReport 回测报告：失败样本计数守恒——
@@ -46,21 +46,21 @@ type BacktestMetrics struct {
 // StillInWindowCount 为运行数据结束时仍在确认窗口内、未产生结局的信号数；
 // 只要仍有窗口内记录，Unfinished=true（该段运行未完成，结论仅供参考）。
 type BacktestReport struct {
-	SignalCount          int
-	ConfirmedCount       int
-	InvalidCount         int
-	UntradeableCount     int
-	ExpiredCount         int
-	StillInWindowCount   int
-	StillInWindowReasons []string
-	Unfinished           bool
-	TradeCount           int
-	Trades               []BacktestTrade
-	InvalidReasons       []string
-	UntradeableReasons   []string
-	PortfolioEquity      []float64 // 每日权益（现金 + 持仓市值）
-	Limitations          []string
-	Metrics              BacktestMetrics
+	SignalCount          int             `json:"signalCount"`
+	ConfirmedCount       int             `json:"confirmedCount"`
+	InvalidCount         int             `json:"invalidCount"`
+	UntradeableCount     int             `json:"untradeableCount"`
+	ExpiredCount         int             `json:"expiredCount"`
+	StillInWindowCount   int             `json:"stillInWindowCount"`
+	StillInWindowReasons []string        `json:"stillInWindowReasons"`
+	Unfinished           bool            `json:"unfinished"`
+	TradeCount           int             `json:"tradeCount"`
+	Trades               []BacktestTrade `json:"trades"`
+	InvalidReasons       []string        `json:"invalidReasons"`
+	UntradeableReasons   []string        `json:"untradeableReasons"`
+	PortfolioEquity      []float64       `json:"portfolioEquity"` // 每日权益（现金 + 持仓市值）
+	Limitations          []string        `json:"limitations"`
+	Metrics              BacktestMetrics `json:"metrics"`
 }
 
 // NewBacktestReport 创建报告，SignalCount 为本阶段输入信号总数。

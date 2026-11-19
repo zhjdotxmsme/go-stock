@@ -9,6 +9,8 @@ export function GetKellySuggestions():Promise<Array<khunter.KellySuggestion>>;
 
 export function GetMeta():Promise<khunter.KhunterMeta>;
 
+export function GetObservations(arg1:string):Promise<Array<models.KhunterObservation>>;
+
 export function GetRiskLevel():Promise<models.KhunterRiskLevel>;
 
 export function GetRunSummaries(arg1:number):Promise<Array<models.KhunterRunSummary>>;
@@ -21,4 +23,8 @@ export function GetTechAnalysis(arg1:string,arg2:string):Promise<Record<string, 
 
 export function RunBacktestAsync(arg1:Array<string>,arg2:string,arg3:string,arg4:number):Promise<Record<string, any>>;
 
+export function RunFullBacktestAsync(arg1:Array<string>,arg2:string,arg3:string):Promise<Record<string, any>>;
+
 export function RunPipelineAsync(arg1:string):Promise<Record<string, any>>;
+
+export function RunResearchPipelineAsync(arg1:string):Promise<Record<string, any>>;

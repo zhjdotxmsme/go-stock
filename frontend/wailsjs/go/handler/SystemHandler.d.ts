@@ -4,6 +4,7 @@ import {models} from '../models';
 import {handler} from '../models';
 import {data} from '../models';
 import {lo} from '../models';
+import {khunter} from '../models';
 
 export function AnalyzeSkillEffectiveness(arg1:number):Promise<string>;
 
@@ -14,8 +15,6 @@ export function CalculateNextRunTimes(arg1:string,arg2:number):Promise<Array<str
 export function CheckDeviceBinding(arg1:string,arg2:string):Promise<Record<string, any>>;
 
 export function CheckSponsorCode(arg1:string):Promise<Record<string, any>>;
-
-export function VacuumDatabase():Promise<string>;
 
 export function CheckUpdate(arg1:number):Promise<void>;
 
@@ -47,7 +46,7 @@ export function FetchAiModelInfo(arg1:string,arg2:string,arg3:string):Promise<ha
 
 export function FetchAiModels(arg1:string,arg2:string):Promise<Array<string>>;
 
-export function GenerateSkillFromURL(arg1:string):Promise<[models.Skill, number]>;
+export function GenerateSkillFromURL(arg1:string):Promise<models.Skill>;
 
 export function GetAiAssistantSession(arg1:string):Promise<models.AiAssistantSessionResp>;
 
@@ -66,6 +65,8 @@ export function GetCronTaskList(arg1:models.CronTaskQuery):Promise<models.CronTa
 export function GetCronTaskTypes():Promise<Array<lo.Tuple2_string_string_>>;
 
 export function GetEffectiveSponsorVip():Promise<Record<string, any>>;
+
+export function GetKLineSyncReadiness(arg1:string):Promise<khunter.DataReadiness>;
 
 export function GetMCPServerByID(arg1:number):Promise<models.MCPServer>;
 
@@ -108,5 +109,7 @@ export function UpdateCronTask(arg1:models.CronTask):Promise<string>;
 export function UpdateMCPServer(arg1:models.MCPServer):Promise<string>;
 
 export function UpdateSkill(arg1:models.Skill):Promise<string>;
+
+export function VacuumDatabase():Promise<string>;
 
 export function ValidateCronExpr(arg1:string):Promise<string>;
