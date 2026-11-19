@@ -87,3 +87,38 @@ func (h *KhunterHandler) RunBacktestAsync(codes []string, startDate, endDate str
 	}()
 	return map[string]any{"started": true}
 }
+
+// RunResearchPipelineAsync 异步历史研究运行（新"历史"按钮入口）：只写研究记录、
+// 不写生产表；结果经 khunter:research_progress 推送（result.readiness 携带同步诊断）。
+func (h *KhunterHandler) RunResearchPipelineAsync(tradeDate string) map[string]any {
+	go func() {
+		res, err := h.svc.RunResearchPipeline(tradeDate)
+		if err != nil {
+			h.emit("khunter:research_progress", map[string]any{"done": true, "error": err.Error()})
+		} else {
+			h.emit("khunter:research_progress", map[string]any{"done": true, "result": res})
+		}
+	}()
+	return map[string]any{"started": true}
+}
+
+// GetObservations 观察列表（status 为空返回全部）；观察不是买入推荐。
+func (h *KhunterHandler) GetObservations(status string) ([]models.KhunterObservation, error) {
+	return h.svc.GetObservations(status)
+}
+
+// RunFullBacktestAsync 异步全链路四组对照回测（新回测按钮入口）：推送 Task 10
+// 完整报告（四组共享输入凭证 + 区间/样本外结论 + 案例回放），绝不写生产狩猎池。
+func (h *KhunterHandler) RunFullBacktestAsync(codes []string, startDate, endDate string) map[string]any {
+	go func() {
+		res, err := h.svc.RunFullBacktest(context.Background(), khunter.BacktestRequest{
+			Codes: codes, StartDate: startDate, EndDate: endDate,
+		})
+		payload := map[string]any{"result": res}
+		if err != nil {
+			payload = map[string]any{"result": nil, "error": err.Error()}
+		}
+		h.emit("khunter:full_backtest_done", payload)
+	}()
+	return map[string]any{"started": true}
+}

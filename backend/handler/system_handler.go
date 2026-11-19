@@ -27,6 +27,7 @@ import (
 	"go-stock/backend/agent"
 	"go-stock/backend/agent/skill_analysis"
 	"go-stock/backend/data"
+	"go-stock/backend/data/khunter"
 	"go-stock/backend/db"
 	"go-stock/backend/emitter"
 	"go-stock/backend/internal/adapter/repository/sqlite"
@@ -1026,6 +1027,12 @@ func (h *SystemHandler) ExecuteCronTaskNow(id uint) string {
 
 func (h *SystemHandler) GetCronTaskTypes() []lo.Tuple2[string, string] {
 	return agent.NewCronTaskApi().GetTaskTypes()
+}
+
+// GetKLineSyncReadiness 日K同步就绪诊断（狩猎场确认前置条件的展示入口）：
+// 结论只来自日K同步日志，15:30/17:00 触发时点不作数；tradeDate 为空取最近交易日。
+func (h *SystemHandler) GetKLineSyncReadiness(tradeDate string) khunter.DataReadiness {
+	return agent.NewCronTaskApi().GetDailyKLineSyncReadiness(h.currentCtx(), tradeDate)
 }
 
 func (h *SystemHandler) ValidateCronExpr(expr string) string {

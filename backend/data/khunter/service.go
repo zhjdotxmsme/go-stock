@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"go-stock/backend/data"
 	"go-stock/backend/data/khunter/risk"
@@ -24,6 +25,28 @@ func NewService() *Service {
 
 func (s *Service) RunPipeline(tradeDate string) (*PipelineResult, error) {
 	return RunPipeline(context.Background(), tradeDate)
+}
+
+// RunResearchPipeline 历史研究运行入口（新"历史"按钮）：与实时流水线同一套扫描/评分
+// 规则，但只写 KhunterResearchRecord，绝不写生产表（信号/评分/狩猎池/运行汇总）。
+func (s *Service) RunResearchPipeline(tradeDate string) (*PipelineResult, error) {
+	return RunPipelineWithOptions(context.Background(), PipelineOptions{TradeDate: tradeDate, Mode: RunModeResearch})
+}
+
+// GetObservations 观察列表（status 为空返回全部）；观察是待确认记录，不是买入推荐。
+func (s *Service) GetObservations(status string) ([]models.KhunterObservation, error) {
+	return s.repo.GetObservations(status)
+}
+
+// GetDataReadiness 当日日K同步就绪状态（确认前置条件的诊断；tradeDate 为空取最近交易日）。
+func (s *Service) GetDataReadiness(tradeDate string) DataReadiness {
+	return ComputeDataReadiness(context.Background(), tradeDate, time.Now())
+}
+
+// RunFullBacktest 全链路四组对照回测（新回测按钮）：返回 Task 10 完整报告，
+// 只读时点研究记录/本地日K，绝不写生产表。
+func (s *Service) RunFullBacktest(ctx context.Context, req BacktestRequest) (*FullBacktestResult, error) {
+	return RunFullBacktest(ctx, req)
 }
 
 // KhunterMeta 狩猎场数据日期提示（前端默认选中有数据的交易日）

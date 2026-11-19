@@ -125,6 +125,11 @@ type KhunterRunSummary struct {
 	CandidateCount      int       `json:"candidateCount"`
 	ScoredCount         int       `json:"scoredCount"`
 	HuntedCount         int       `json:"huntedCount"`
+	InvalidDataCount    int       `json:"invalidDataCount"` // 数据闸门不放行观察的候选数
+	IntradayCount       int       `json:"intradayCount"`    // 盘中/未同步数据保存的观察数
+	ConfirmedCount      int       `json:"confirmedCount"`   // 确认入池交易数
+	ExpiredCount        int       `json:"expiredCount"`     // 确认窗口过期观察数
+	UntradeableCount    int       `json:"untradeableCount"` // 已确认触发但不足一手
 	RiskLevel           string    `gorm:"size:20" json:"riskLevel"`
 	Status              string    `gorm:"size:20" json:"status"` // success / failed
 	Message             string    `gorm:"type:text" json:"message"`

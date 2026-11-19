@@ -361,6 +361,14 @@ func (a *CronTaskApi) executeKLineSync(ctx context.Context, task *models.CronTas
 	return svc.StartHistoricalSync(params.Years)
 }
 
+// GetDailyKLineSyncReadiness 日K同步就绪状态（kline_sync 任务的真实完成信号）：
+// 从 kline_sync_log 的 pending/running/failed、LastSyncDate 断点覆盖与当日 K 线
+// 覆盖三方面判定，供狩猎场确认前置条件与前端诊断。15:30 只是本任务的触发时间，
+// 从不作为就绪证据。tradeDate 为空取最近有数据的交易日。
+func (a *CronTaskApi) GetDailyKLineSyncReadiness(ctx context.Context, tradeDate string) khunter.DataReadiness {
+	return khunter.ComputeDataReadiness(ctx, tradeDate, time.Now())
+}
+
 func (a *CronTaskApi) executeKhunterDailyPipeline(ctx context.Context, task *models.CronTask) error {
 	logger.SugaredLogger.Infof("执行狩猎场每日流水线任务：%s", task.Name)
 	select {

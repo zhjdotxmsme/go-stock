@@ -121,23 +121,42 @@ func RiskBudgetShares(equity, entry, stop float64, positionLimit float64, usedEx
 	return (shares / 100) * 100
 }
 
-// DailyReadinessChecker 日 K 同步完成度检查接口；默认实现检查实际 K 线存在性，
-// 供 Task 11 后续替换为真实同步子系统信号。
+// DailyReadinessChecker 日 K 同步完成度检查接口；默认实现以日K同步日志为准
+// （kline_sync_log 的 pending/running/failed + LastSyncDate 覆盖），测试可注入 fake。
 type DailyReadinessChecker interface {
 	Ready(ctx context.Context, tradeDate string) bool
 }
 
-// klinePresenceReadinessChecker 当 sh000300 在 tradeDate 有不复权日 K 时认为已同步完成。
-type klinePresenceReadinessChecker struct{}
-
-func (klinePresenceReadinessChecker) Ready(ctx context.Context, tradeDate string) bool {
-	bars, err := datasource.NewKLineStore().QueryKLines(ctx, "sh000300", "day", tradeDate, tradeDate, false)
-	return err == nil && len(bars) > 0
+// ReadinessDetailReporter 可返回完整就绪结论的 checker：默认实现支持，
+// 测试 fake 可只实现 DailyReadinessChecker（此时未就绪只有兜底错误）。
+type ReadinessDetailReporter interface {
+	Readiness(ctx context.Context, tradeDate string) DataReadiness
 }
 
-// DefaultDailyReadinessChecker 返回基于 K 线存在性的默认 readiness 实现。
+// syncLogReadinessChecker 真实就绪检查：以日K同步日志为证据（Task 11 替换
+// K线存在性占位——盘中 sh000300 已有当日 bar 但同步未完成，占位会误判就绪）。
+type syncLogReadinessChecker struct{}
+
+func (syncLogReadinessChecker) Ready(ctx context.Context, tradeDate string) bool {
+	return syncLogReadinessChecker{}.Readiness(ctx, tradeDate).Completed
+}
+
+func (syncLogReadinessChecker) Readiness(ctx context.Context, tradeDate string) DataReadiness {
+	return ComputeDataReadiness(ctx, tradeDate, time.Now())
+}
+
+// DefaultDailyReadinessChecker 返回基于日K同步日志的默认 readiness 实现。
 func DefaultDailyReadinessChecker() DailyReadinessChecker {
-	return klinePresenceReadinessChecker{}
+	return syncLogReadinessChecker{}
+}
+
+// ConfirmStats 确认引擎单日统计：运行汇总与前端诊断的确认会计。
+type ConfirmStats struct {
+	Confirmed   int `json:"confirmed"`   // 确认入池交易数
+	Expired     int `json:"expired"`     // 确认窗口过期观察数
+	Untradeable int `json:"untradeable"` // 已确认触发但不足一手
+	InvalidData int `json:"invalidData"` // 确认日数据闸门不放行
+	Rejected    int `json:"rejected"`    // 风险/跳空/触发价否决（仍在窗口内，次日可再试）
 }
 
 // ConfirmationEngine 负责 T+1~T+3 窗口内的触发价确认与真实交易生成。
@@ -146,7 +165,7 @@ type ConfirmationEngine struct {
 	Readiness DailyReadinessChecker
 }
 
-// NewConfirmationEngine 创建确认引擎，使用默认 K 线存在性 readiness。
+// NewConfirmationEngine 创建确认引擎，使用基于日K同步日志的默认 readiness。
 func NewConfirmationEngine(repo *Repo) *ConfirmationEngine {
 	return &ConfirmationEngine{
 		Repo:      repo,
@@ -155,7 +174,8 @@ func NewConfirmationEngine(repo *Repo) *ConfirmationEngine {
 }
 
 // ConfirmForDate 对 tradeDate 当日的待确认观察执行确认窗口检查、数据/风险重评、
-// 触发价确认与仓位计算；返回当日新确认生成的交易数。
+// 触发价确认与仓位计算；返回当日统计。日K同步未完成时返回 ErrDataNotReady
+// 诊断错误（调用方须已保存盘中观察，确认整体跳过）。
 func (e *ConfirmationEngine) ConfirmForDate(
 	ctx context.Context,
 	tradeDate string,
@@ -163,29 +183,31 @@ func (e *ConfirmationEngine) ConfirmForDate(
 	marketRisk risk.Level,
 	cfg RiskControlConfig,
 	equity float64,
-) (int, error) {
+) (ConfirmStats, error) {
+	stats := ConfirmStats{}
 	if e.Readiness == nil {
 		e.Readiness = DefaultDailyReadinessChecker()
 	}
 	if !e.Readiness.Ready(ctx, tradeDate) {
-		return 0, nil
+		if rp, ok := e.Readiness.(ReadinessDetailReporter); ok {
+			return stats, RequireConfirmationReadiness(rp.Readiness(ctx, tradeDate))
+		}
+		return stats, fmt.Errorf("%w: %s 同步未完成（无详细诊断）", ErrDataNotReady, tradeDate)
 	}
 	if marketRisk.PositionLimit <= 0 {
-		return 0, nil
+		return stats, nil
 	}
 	pending, err := e.Repo.GetPendingObservations(tradeDate)
 	if err != nil {
-		return 0, err
+		return stats, err
 	}
 	if len(pending) == 0 {
-		return 0, nil
+		return stats, nil
 	}
 	usedExposure, err := e.Repo.GetHoldingExposure()
 	if err != nil {
-		return 0, err
+		return stats, err
 	}
-
-	confirmedCount := 0
 	for _, obs := range pending {
 		state := ConfirmationWindowState(obs.SignalDate, tradeDate, tradeDates, cfg)
 		if state == "signal_day" || state == "invalid" {
@@ -195,8 +217,9 @@ func (e *ConfirmationEngine) ConfirmForDate(
 			obs.Status = ObsStatusExpired
 			obs.RejectReason = joinRejectReasons(obs.RejectReason, []string{"确认窗口已过期"})
 			if err := e.Repo.UpsertObservation(&obs); err != nil {
-				return confirmedCount, err
+				return stats, err
 			}
+			stats.Expired++
 			continue
 		}
 
@@ -210,16 +233,18 @@ func (e *ConfirmationEngine) ConfirmForDate(
 		dataDecision := EvaluateDataGate(rawBars, tradeDate, true)
 		if !dataDecision.AllowConfirm {
 			if err := e.recordRejection(&obs, tradeDate, dataDecision.Reasons); err != nil {
-				return confirmedCount, err
+				return stats, err
 			}
+			stats.InvalidData++
 			continue
 		}
 
 		riskDecision := e.evaluateDayRisk(rawBars, dataDecision, marketRisk, cfg)
 		if !riskDecision.AllowConfirm {
 			if err := e.recordRejection(&obs, tradeDate, riskDecision.Reasons); err != nil {
-				return confirmedCount, err
+				return stats, err
 			}
+			stats.Rejected++
 			continue
 		}
 
@@ -241,16 +266,18 @@ func (e *ConfirmationEngine) ConfirmForDate(
 				reason = "未确认"
 			}
 			if err := e.recordRejection(&obs, tradeDate, []string{reason}); err != nil {
-				return confirmedCount, err
+				return stats, err
 			}
+			stats.Rejected++
 			continue
 		}
 
 		shares := RiskBudgetShares(equity, cd.EntryPrice, cd.StopPrice, marketRisk.PositionLimit, usedExposure, cfg)
 		if shares < 100 {
 			if err := e.recordRejection(&obs, tradeDate, []string{"不足一手"}); err != nil {
-				return confirmedCount, err
+				return stats, err
 			}
+			stats.Untradeable++
 			continue
 		}
 
@@ -271,12 +298,12 @@ func (e *ConfirmationEngine) ConfirmForDate(
 				continue
 			}
 			logger.SugaredLogger.Warnf("khunter 确认入池事务失败 %s @ %s: %v", obs.Code, tradeDate, err)
-			return confirmedCount, err
+			return stats, err
 		}
-		confirmedCount++
+		stats.Confirmed++
 		usedExposure += cd.EntryPrice * float64(shares)
 	}
-	return confirmedCount, nil
+	return stats, nil
 }
 
 func (e *ConfirmationEngine) recordRejection(obs *models.KhunterObservation, date string, reasons []string) error {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"time"
 
 	"go-stock/backend/data/indicator"
 	"go-stock/backend/db"
@@ -165,17 +164,18 @@ func ATR14(bars []models.KLineBar) float64 {
 	return v
 }
 
-// dailySyncCompleted 判断 tradeDate 的日 K 是否已过收盘时点（允许确认的数据前提之一）：
-// 目标日早于今天视为已收盘同步；当天以 A 股收盘 15:00（本地时区）为界。
-// 已知限制：真正的"同步完成"信号由数据同步子系统落地后接入，当前为保守时点判断，
-// 盘中扫描产生的观察会带 intraday 状态并被数据闸门禁止确认。
-func dailySyncCompleted(tradeDate string, now time.Time) bool {
-	if tradeDate < now.Format("2006-01-02") {
-		return true
+// GetObservations 观察列表（status 为空返回全部），按信号日倒序、分数倒序。
+// 盘中运行产出的 intraday 观察也包含在内——观察不是买入推荐。
+func (r *Repo) GetObservations(status string) ([]models.KhunterObservation, error) {
+	q := db.Dao.Model(&models.KhunterObservation{}).Order("signal_date DESC, score DESC, code")
+	if status != "" {
+		q = q.Where("status = ?", status)
 	}
-	t, err := time.ParseInLocation("2006-01-02", tradeDate, now.Location())
-	if err != nil {
-		return false
-	}
-	return !now.Before(t.Add(15 * time.Hour))
+	var rows []models.KhunterObservation
+	err := q.Find(&rows).Error
+	return rows, err
 }
+
+// 同步完成前提已由 readiness.go 的真实同步日志证据取代（Task 11）：
+// ComputeDataReadiness 从 kline_sync_log 的 pending/running/failed、LastSyncDate
+// 断点覆盖与当日 K 线覆盖三方面判定；15:00/15:30/17:00 等时点只作触发，不作证据。

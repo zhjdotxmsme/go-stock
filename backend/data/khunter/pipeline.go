@@ -58,6 +58,15 @@ type PipelineResult struct {
 	InsufficientHistory int `json:"insufficientHistory"`
 	MissingTradeDate    int `json:"missingTradeDate"`
 	QueryFailed         int `json:"queryFailed"`
+	// Readiness 当日日K同步就绪结论（确认前置条件）；Completed=false 时确认被
+	// 跳过但盘中观察照常保存（observe-only），Reason 为诊断信息
+	Readiness *DataReadiness `json:"readiness,omitempty"`
+	// 观察/确认会计（运行汇总同名字段一并持久化）
+	InvalidDataCount int `json:"invalidDataCount"` // 数据闸门不放行观察的候选数
+	IntradayCount    int `json:"intradayCount"`    // 以盘中/未同步数据保存的观察数
+	ConfirmedCount   int `json:"confirmedCount"`   // 确认入池交易数（= Hunted）
+	ExpiredCount     int `json:"expiredCount"`     // 确认窗口过期观察数
+	UntradeableCount int `json:"untradeableCount"` // 已确认触发但不足一手
 	// Limitations 研究运行的数据局限说明（幸存者偏差、清单读取失败等）
 	Limitations []string `json:"limitations,omitempty"`
 	// NotBacktestable 缺时点快照、不得用最新值替代的标的（研究运行）
@@ -302,6 +311,10 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 		duration := time.Since(started)
 		status := "success"
 		message := "运行完成"
+		if res.Readiness != nil && !res.Readiness.Completed {
+			// 同步未完成：观察已保存，确认整体跳过；诊断必须完整透出到运行汇总与事件
+			message = "运行完成；确认跳过: " + RequireConfirmationReadiness(*res.Readiness).Error()
+		}
 		if err != nil {
 			status = "failed"
 			message = err.Error()
@@ -317,6 +330,11 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 			CandidateCount:      res.Candidates,
 			ScoredCount:         res.Scored,
 			HuntedCount:         res.Hunted,
+			InvalidDataCount:    res.InvalidDataCount,
+			IntradayCount:       res.IntradayCount,
+			ConfirmedCount:      res.ConfirmedCount,
+			ExpiredCount:        res.ExpiredCount,
+			UntradeableCount:    res.UntradeableCount,
 			RiskLevel:           res.RiskLevel,
 			Status:              status,
 			Message:             message,
@@ -427,9 +445,13 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 
 	// 7. 观察保存：分数达阈值不再直接写入狩猎池，只落观察（真实入池由确认事务完成）。
 	//    数据闸门结论随观察落库：盘中/降级/无效数据只观察不确认，不以中性分冒充买入结论。
+	//    同步就绪结论在此一次计算（Task 11 替换 15:00 时点启发式）：它是数据闸门的
+	//    syncCompleted 前提，也是第 8 步确认引擎的前置条件——证据只来自日K同步日志。
 	//    信号日风险画像同步落库（SignalRiskJSON/RiskHistoryJSON）：风险过滤只输出否决原因，
 	//    不修改形态与评分；信号日失败但后续恢复的候选仍可由确认引擎在拟入场日重算确认。
-	synced := dailySyncCompleted(tradeDate, now)
+	readiness := ComputeDataReadiness(ctx, tradeDate, now)
+	res.Readiness = &readiness
+	synced := readiness.Completed
 	threshold := HuntingThreshold(lv)
 	riskCfg := LoadRiskControlConfig(resolveRiskControlConfigPath())
 	observations := make([]models.KhunterObservation, 0, len(scores))
@@ -448,6 +470,7 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 		}
 		decision := EvaluateDataGate(bars, tradeDate, synced)
 		if !decision.AllowObservation {
+			res.InvalidDataCount++
 			logger.SugaredLogger.Warnf("khunter 候选 %s 数据闸门不放行观察: %s",
 				sc.Code, strings.Join(decision.Reasons, "；"))
 			continue
@@ -456,6 +479,9 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 		if d := AttachSignalRisk(&obs, bars, decision, lv, riskCfg); !d.AllowConfirm {
 			logger.SugaredLogger.Infof("khunter 候选 %s 信号日风险否决: %s",
 				sc.Code, strings.Join(d.Reasons, "；"))
+		}
+		if obs.DataStatus == "intraday" {
+			res.IntradayCount++
 		}
 		observations = append(observations, obs)
 	}
@@ -490,12 +516,22 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 	}
 
 	if len(pending) > 0 && len(tradeDates) > 0 {
-		engine := NewConfirmationEngine(repo)
-		n, err := engine.ConfirmForDate(ctx, tradeDate, tradeDates, lv, riskCfg, riskCfg.InitialCash)
-		if err != nil {
-			logger.SugaredLogger.Warnf("khunter 确认引擎执行失败 %s: %v", tradeDate, err)
+		if confirmErr := RequireConfirmationReadiness(readiness); confirmErr != nil {
+			// 日K同步未完成：盘中观察已保存（observe-only），确认不得运行；
+			// 诊断已随 res.Readiness 与运行汇总透出，待同步完成后下一触发再确认。
+			logger.SugaredLogger.Warnf("khunter %s 确认跳过: %v", tradeDate, confirmErr)
 		} else {
-			res.Hunted += n
+			engine := NewConfirmationEngine(repo)
+			stats, err := engine.ConfirmForDate(ctx, tradeDate, tradeDates, lv, riskCfg, riskCfg.InitialCash)
+			if err != nil {
+				logger.SugaredLogger.Warnf("khunter 确认引擎执行失败 %s: %v", tradeDate, err)
+			} else {
+				res.Hunted += stats.Confirmed
+				res.ConfirmedCount += stats.Confirmed
+				res.ExpiredCount += stats.Expired
+				res.UntradeableCount += stats.Untradeable
+				res.InvalidDataCount += stats.InvalidData
+			}
 		}
 	}
 
