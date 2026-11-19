@@ -48,6 +48,12 @@ func main() {
 	}
 
 	cases := parseList(*casesFlag)
+	// 支持 "CODE:YYYY-MM-DD" 形式（案例锚定信号日），只取代码部分
+	for i, c := range cases {
+		if j := strings.LastIndex(c, ":"); j >= 0 {
+			cases[i] = c[:j]
+		}
+	}
 	if len(cases) > 0 {
 		khunter.DefaultCaseReplayCodes = cases
 	}
