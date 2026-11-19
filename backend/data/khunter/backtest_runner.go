@@ -9,7 +9,7 @@
 //
 //	baseline  信号日收盘入场、研究支撑位失效，无数据闸门/风险过滤/确认窗口；
 //	data_only 只启用数据闸门（Task 3）；
-//	risk      只启用风险过滤（Task 6）；
+//	risk      数据闸门 + 风险过滤（Task 3+6，消融递进在 data_only 之上增加风险层）；
 //	full      数据闸门 + 风险过滤 + T+1~T+3 确认入场（Task 7）+ 退出引擎（Task 8）。
 //
 // 信号/评分输入全部来自时点研究记录；记录缺失时用生产研究流水线重放（只写研究记录表）。
@@ -808,9 +808,17 @@ type candidateCtx struct {
 	report     *BacktestReport
 	vr         *VariantBacktestResult
 	seq        *int
+
+	// 事件保留过滤器：全市场运行时只保留案例代码的轨迹（避免 O(候选×变体)
+	// 事件驻留内存后被丢弃）；显式小清单运行保留全部代码轨迹。
+	keepEvent    bool
+	eventCaseSet map[string]bool
 }
 
 func (cc *candidateCtx) emit(ev ReplayEvent) {
+	if !cc.keepEvent && !cc.eventCaseSet[ev.Code] {
+		return
+	}
 	cc.vr.events = append(cc.vr.events, ev)
 }
 
@@ -830,6 +838,12 @@ func (r *runner) runVariantSplit(variant BacktestVariant, vcfg BacktestInputMani
 	entries := make([]PortfolioEntry, 0, 8)
 	candCount := 0
 
+	// 案例轨迹过滤集合：全市场运行只保留案例代码事件，显式清单保留全部
+	caseSet := map[string]bool{}
+	for _, c := range DefaultCaseReplayCodes {
+		caseSet[stockcode.Normalize(c)] = true
+	}
+
 	for idx := sigStartIdx; idx <= sigEndIdx; idx++ {
 		date := r.days[idx]
 		payload, err := r.research.forDate(date)
@@ -848,6 +862,7 @@ func (r *runner) runVariantSplit(variant BacktestVariant, vcfg BacktestInputMani
 			cc := candidateCtx{
 				variant: variant, vcfg: vcfg, split: split, exitEndIdx: exitEndIdx,
 				report: report, vr: vr, seq: &seq,
+				keepEvent: r.universeSet != nil, eventCaseSet: caseSet,
 			}
 			key := hunted.Code + "|" + date
 			cand, ok := candCache[key]
@@ -856,7 +871,7 @@ func (r *runner) runVariantSplit(variant BacktestVariant, vcfg BacktestInputMani
 				if err != nil {
 					// 无本地 K 线的候选记为无效，不静默丢弃
 					report.AddInvalid(err.Error())
-					vr.events = append(vr.events, ReplayEvent{Date: date, Variant: string(variant), Code: hunted.Code, Stage: stageInvalid, Detail: err.Error()})
+					cc.emit(ReplayEvent{Date: date, Variant: string(variant), Code: hunted.Code, Stage: stageInvalid, Detail: err.Error()})
 					candCount++
 					continue
 				}
