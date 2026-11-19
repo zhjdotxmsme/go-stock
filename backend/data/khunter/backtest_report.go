@@ -41,21 +41,26 @@ type BacktestMetrics struct {
 }
 
 // BacktestReport 回测报告：失败样本计数守恒——
-// SignalCount = TradeCount + InvalidCount + UntradeableCount + ExpiredCount，
-// 任何信号要么成为成交、要么被计入 Invalid/Untradeable/Expired，不允许静默丢弃。
+// SignalCount = ConfirmedCount + ExpiredCount + InvalidCount + UntradeableCount + StillInWindowCount，
+// 任何信号要么成为确认成交、要么被计入 过期/无效/不可成交/仍在窗口，不允许静默丢弃。
+// StillInWindowCount 为运行数据结束时仍在确认窗口内、未产生结局的信号数；
+// 只要仍有窗口内记录，Unfinished=true（该段运行未完成，结论仅供参考）。
 type BacktestReport struct {
-	SignalCount        int
-	ConfirmedCount     int
-	InvalidCount       int
-	UntradeableCount   int
-	ExpiredCount       int
-	TradeCount         int
-	Trades             []BacktestTrade
-	InvalidReasons     []string
-	UntradeableReasons []string
-	PortfolioEquity    []float64 // 每日权益（现金 + 持仓市值）
-	Limitations        []string
-	Metrics            BacktestMetrics
+	SignalCount          int
+	ConfirmedCount       int
+	InvalidCount         int
+	UntradeableCount     int
+	ExpiredCount         int
+	StillInWindowCount   int
+	StillInWindowReasons []string
+	Unfinished           bool
+	TradeCount           int
+	Trades               []BacktestTrade
+	InvalidReasons       []string
+	UntradeableReasons   []string
+	PortfolioEquity      []float64 // 每日权益（现金 + 持仓市值）
+	Limitations          []string
+	Metrics              BacktestMetrics
 }
 
 // NewBacktestReport 创建报告，SignalCount 为本阶段输入信号总数。
@@ -78,6 +83,20 @@ func (r *BacktestReport) AddUntradeable(reason string) {
 // AddExpired 记录一个过期样本。
 func (r *BacktestReport) AddExpired() {
 	r.ExpiredCount++
+}
+
+// AddStillInWindow 记录一个运行结束时仍在确认窗口内、未产生结局的样本，
+// 并把本次运行标记为未完成（结论仅供展示，不得作为替换默认策略的依据）。
+func (r *BacktestReport) AddStillInWindow(reason string) {
+	r.StillInWindowCount++
+	r.Unfinished = true
+	r.StillInWindowReasons = append(r.StillInWindowReasons, reason)
+}
+
+// Conserves 样本守恒校验：
+// SignalCount = Confirmed + Expired + Invalid + Untradeable + StillInWindow。
+func (r *BacktestReport) Conserves() bool {
+	return r.SignalCount == r.ConfirmedCount+r.ExpiredCount+r.InvalidCount+r.UntradeableCount+r.StillInWindowCount
 }
 
 // AddConfirmed 记录一个成功建仓。
