@@ -431,6 +431,54 @@ func (s *Service) ResumePendingSyncTasks() {
 	startSyncWorkers()
 }
 
+// afterCloseCatchUpTrigger 收盘后自动补尾的触发时刻（本地时间 15:10）。
+// 收盘后数据源的当日 bar 才最终生成；盘中完成的同步拿不到当日 bar，
+// 断点会按防假完成设计停在上一交易日，等待下次重扫——该定时器就是那次重扫。
+const (
+	afterCloseCatchUpHour   = 15
+	afterCloseCatchUpMinute = 10
+)
+
+// nextAfterCloseTrigger 返回下一个盘后补尾触发点：当日 15:10，已过则明天 15:10。
+func nextAfterCloseTrigger(now time.Time) time.Time {
+	t := time.Date(now.Year(), now.Month(), now.Day(),
+		afterCloseCatchUpHour, afterCloseCatchUpMinute, 0, 0, now.Location())
+	if !t.After(now) {
+		t = t.AddDate(0, 0, 1)
+	}
+	return t
+}
+
+// ScheduleAfterCloseCatchUp 启动盘后自动补尾循环：每个交易日 15:10 把断点落后的
+// 已完成任务重新排队（through=当日），workers 随即补拉当日 bar——狩猎场确认的
+// 就绪检查因此无需重启应用即可放行。应用在 15:10 之后启动时不补当日：
+// 启动维护 ResumePendingSyncTasks 的重扫逻辑已覆盖该场景。
+func (s *Service) ScheduleAfterCloseCatchUp() {
+	go func(now time.Time) {
+		for {
+			next := nextAfterCloseTrigger(now)
+			timer := time.NewTimer(time.Until(next))
+			<-timer.C
+			now = time.Now()
+			// 周末不触发（expectedLatest 会回退到周五，重新排队是无害空转）；
+			// 节假日触发为无害空拉：数据源无当日 bar，断点不前移，缺口不落空窗。
+			if d := next.Weekday(); d == time.Saturday || d == time.Sunday {
+				continue
+			}
+			through := datasource.ExpectedLatestTradeDate(now)
+			n, err := s.CatchUpSync(through)
+			switch {
+			case err != nil:
+				logger.SugaredLogger.Warnf("盘后日K补尾失败 through=%s: %v", through, err)
+			case n > 0:
+				logger.SugaredLogger.Infof("盘后日K补尾 through=%s: 重新排队 %d 只，开始补拉当日bar", through, n)
+			default:
+				logger.SugaredLogger.Debugf("盘后日K补尾 through=%s: 无落后任务", through)
+			}
+		}
+	}(time.Now())
+}
+
 // syncWorkerCount is the number of goroutines consuming pending sync tasks.
 const syncWorkerCount = 6
 

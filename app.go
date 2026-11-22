@@ -143,6 +143,8 @@ func (a *App) domReady(ctx context.Context) {
 	updateBasicInfo()
 	// 恢复进程重启前遗留的 K 线同步任务（workers 是进程内 goroutine，重启后无人消费）
 	go backtest.NewService().ResumePendingSyncTasks()
+	// 收盘后 15:10 自动补当日尾部：盘中完成的同步拿不到当日 bar，无需重启即可放行狩猎场确认
+	go backtest.NewService().ScheduleAfterCloseCatchUp()
 	a.registerStartupCronTasks()
 }
 
