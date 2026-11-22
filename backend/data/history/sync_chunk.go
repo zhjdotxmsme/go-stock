@@ -1,10 +1,12 @@
 package history
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
 	"go-stock/backend/data/datasource"
+	"go-stock/backend/models"
 	"go-stock/backend/util/timeutil"
 )
 
@@ -258,6 +260,18 @@ func subtractOne(p, sp dateSpan) []dateSpan {
 
 // shouldSyncGap 跳过两侧都已有 K 线、且短于长假阈值的内部空洞。
 // 窗口两端的短缺口仍然同步（尾部增量、起始日休市都要核实）。
+// degradedChunkReason 检查取回的 bar 块是否为降级数据（量或额为 0）。
+// A 股交易日只要生成了 bar 就必有量额；量额为 0 只会出现在限流降级响应里
+// （只有价格、量额字段为 "-"）。返回拒绝原因，健康块返回空串。
+func degradedChunkReason(bars []models.KLineBar) string {
+	for _, b := range bars {
+		if b.Volume <= 0 || b.Amount <= 0 {
+			return fmt.Sprintf("bar %s volume=%d amount=%.2f", b.TradeDate, b.Volume, b.Amount)
+		}
+	}
+	return ""
+}
+
 func shouldSyncGap(gap datasource.DateRange, taskStart, taskEnd string) bool {
 	if gap.Start <= taskStart || gap.End >= taskEnd {
 		return true

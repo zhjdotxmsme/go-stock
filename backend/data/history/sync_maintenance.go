@@ -270,6 +270,10 @@ func PrepareSyncQueueOnStartup(onMorePending func()) {
 	ctx := context.Background()
 	today := timeutil.TodayStr()
 
+	// 一次性维护：单位回填与污染行重拉（幂等；重排在 pending 计数前完成，
+	// 使 workers 由既有 pending>0 路径拉起）。
+	RunUnitBackfillMaintenance(ctx)
+
 	if n, err := RepairBrokenSyncTasks(ctx); err != nil {
 		logger.SugaredLogger.Warnf("repair broken sync tasks: %v", err)
 	} else if n > 0 {

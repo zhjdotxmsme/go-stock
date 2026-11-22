@@ -343,7 +343,13 @@ func syncDateRange(ctx context.Context, router *datasource.Router, store *dataso
 			return "", "", fmt.Errorf("区间 [%s - %s] 未取到任何 K 线（源数据暂缺或长期停牌）", startDate, cursorEnd)
 		}
 
-		bars := datasource.BarsFromKLineData(stockCode, period, "sync", adjusted, data)
+		// 单位按真实提供者换算（eastmoney 手×100→股 / mootdx 已是股）；
+		// 写入方标记仍统一为 sync。两件事不能混用：按 "sync" 换算会把单位判成
+		// unknown，数据闸门永远拒绝确认。
+		bars := datasource.BarsFromKLineData(stockCode, period, data.Source, adjusted, data)
+		for i := range bars {
+			bars[i].Source = "sync"
+		}
 		dates := make([]string, 0, len(bars))
 		for _, bar := range bars {
 			if bar.TradeDate != "" {
@@ -363,6 +369,11 @@ func syncDateRange(ctx context.Context, router *datasource.Router, store *dataso
 			if bar.TradeDate >= startDate && bar.TradeDate <= cursorEnd {
 				filtered = append(filtered, bar)
 			}
+		}
+		if reason := degradedChunkReason(filtered); reason != "" {
+			// 限流/降级响应会给出只有价格的 bar。落库会经 UpdateAll 覆盖同键的
+			// 有效历史行，且断点照常前移——必须整块拒绝，留待健康重拉。
+			return "", "", fmt.Errorf("拒绝降级数据块 [%s - %s] %s: %s", startDate, cursorEnd, stockCode, reason)
 		}
 		if len(filtered) > 0 {
 			if adjusted {
