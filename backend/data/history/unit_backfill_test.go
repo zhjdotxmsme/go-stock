@@ -34,16 +34,17 @@ func TestBackfillKLineUnits(t *testing.T) {
 	seedUnitBar(t, "sh600519", "seed", "", 3000000, 6e9, 1500, "2026-10-09")        // ratio≈1 → share/CNY
 	seedUnitBar(t, "sz000001", "seed", "", 5000000, 4e7, 10, "2026-10-09")          // ratio≈0.8 → share/CNY
 	seedUnitBar(t, "sh600000", "stockdb", "", 8000000, 6e7, 10, "2026-10-09")       // ratio≈0.75 → share/CNY
-	seedUnitBar(t, "sz000002", "seed", "", 7000000, 7e10, 10, "2026-10-09")          // ratio≈100（手量纲误标）→ 不回填
+	seedUnitBar(t, "sz000002", "seed", "", 7000000, 7e10, 10, "2026-10-09")         // ratio=100：已确认来源（前复权漂移）→ share/CNY
 	seedUnitBar(t, "sz000003", "mootdx_kline", "", 6000000, 0, 10, "2026-10-09")    // 额=0 → 只补量单位
 	seedUnitBar(t, "sh600004", "tencent_kline", "", 9000000, 9e7, 10, "2026-10-09") // 未确认来源 ratio≈1 → share/CNY
+	seedUnitBar(t, "sz000777", "freestockdb", "", 5000000, 5e9, 10, "2026-10-09")   // 未确认来源 ratio=100 → 保持空 fail-closed
 
 	n, err := BackfillKLineUnits(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 5 {
-		t.Fatalf("回填行数=%d, want=5（4 行恒等式 + 1 行已确认来源仅量）", n)
+	if n != 7 {
+		t.Fatalf("回填行数=%d, want=7", n)
 	}
 	get := func(code string) models.KLineBar {
 		t.Helper()
@@ -56,8 +57,11 @@ func TestBackfillKLineUnits(t *testing.T) {
 	if b := get("sh600519"); b.VolumeUnit != "share" || b.AmountUnit != "CNY" {
 		t.Fatalf("恒等式行应补 share/CNY: %+v", b)
 	}
-	if b := get("sz000002"); b.VolumeUnit != "" || b.AmountUnit != "" {
-		t.Fatalf("带外行必须保持空单位 fail-closed: %+v", b)
+	if b := get("sz000002"); b.VolumeUnit != "share" || b.AmountUnit != "CNY" {
+		t.Fatalf("已确认来源（含前复权漂移）应补 share/CNY: %+v", b)
+	}
+	if b := get("sz000777"); b.VolumeUnit != "" || b.AmountUnit != "" {
+		t.Fatalf("未确认来源带外行必须保持空单位 fail-closed: %+v", b)
 	}
 	if b := get("sz000003"); b.VolumeUnit != "share" || b.AmountUnit != "" {
 		t.Fatalf("已确认来源额=0 行应只补量单位: %+v", b)

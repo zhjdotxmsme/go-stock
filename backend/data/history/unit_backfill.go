@@ -39,18 +39,29 @@ WHERE period = 'day' AND IFNULL(volume_unit, '') = ''
 	}
 	filled := res.RowsAffected
 
-	// R2 已确认来源（量=股）：量>0 但额=0 或价=0（比值不可判定）的行只补量单位；
-	//    额单位保持空，由数据闸门对 amount<=0 的既有拒绝兜底。
-	//    比值带 ≥50（疑似"手"量纲误标的导入行）保持空单位 fail-closed，不得反推。
+	// R2 已确认来源（seed/stockdb 导入与 mootdx/eastmoney 供应器均为 股/元），
+	//    且量的单位不随前复权因子漂移（比值带外只能说明价格被复权调整过，
+	//    不代表量纲是"手"）：量>0 且额>0 行补 share/CNY。
 	res2 := db.Dao.WithContext(ctx).Exec(`
-UPDATE kline_bars SET volume_unit = 'share'
-WHERE period = 'day' AND IFNULL(volume_unit, '') = '' AND volume > 0
-  AND source IN ('seed', 'stockdb', 'mootdx_kline', 'eastmoney_kline')
-  AND (amount <= 0 OR close <= 0 OR amount / (volume * close) < 50.0)`)
+UPDATE kline_bars SET volume_unit = 'share', amount_unit = 'CNY'
+WHERE period = 'day' AND IFNULL(volume_unit, '') = ''
+  AND volume > 0 AND amount > 0
+  AND source IN ('seed', 'stockdb', 'mootdx_kline', 'eastmoney_kline')`)
 	if res2.Error != nil {
 		return filled, res2.Error
 	}
-	return filled + res2.RowsAffected, nil
+	filled += res2.RowsAffected
+
+	// R3 已确认来源额=0（比值不可判定）：只补量单位；额单位保持空，
+	//    由数据闸门对 amount<=0 的既有拒绝兜底。
+	res3 := db.Dao.WithContext(ctx).Exec(`
+UPDATE kline_bars SET volume_unit = 'share'
+WHERE period = 'day' AND IFNULL(volume_unit, '') = '' AND volume > 0
+  AND source IN ('seed', 'stockdb', 'mootdx_kline', 'eastmoney_kline')`)
+	if res3.Error != nil {
+		return filled, res3.Error
+	}
+	return filled + res3.RowsAffected, nil
 }
 
 // RequeuePoisonedSyncTasks 把 since 以来存在零量额/未声明单位 sync 行的已完成任务
