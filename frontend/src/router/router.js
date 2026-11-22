@@ -6,11 +6,8 @@ import aboutView from "../components/about.vue";
 import fundView from "../components/fund.vue";
 import marketView from "../components/market.vue";
 import agentChat from "../components/agent-chat.vue"
-import klineAnalysis from "../components/kline-analysis.vue"
 import backtestPanel from "../components/BacktestPanel.vue"
 import dataManager from "../components/DataManager.vue"
-import dailyPickPanel from "../components/DailyPickPanel.vue"
-import khunterPanel from "../components/KhunterPanel.vue"
 import commodityView from "../components/commodity.vue"
 import newsView from '../components/NewsPage.vue'
 
@@ -21,6 +18,7 @@ import stockChangesMonitor from "../components/stockChangesMonitor.vue"
 import uplimitLadder from "../components/uplimitLadder.vue"
 import promptTemplateList from "../components/promptTemplateList.vue"
 import ScreeningWorkbench from "../components/ScreeningWorkbench.vue"
+import analysisCenter from "../components/analysis/AnalysisCenter.vue"
 
 // 系统管理组件
 import cronTaskManager from "../components/cron-task-manager.vue"
@@ -37,11 +35,11 @@ const routes = [
     { path: '/settings', component: settingsView, name: 'settings' },
     { path: '/about', component: aboutView, name: 'about' },
 
-    // 分析工具
-    { path: '/kline-analysis', component: klineAnalysis, name: 'klineAnalysis' },
+    // 分析工具 — 旧入口（K线分析/每日选股/狩猎场）已收敛进统一分析中心，仅保留重定向到对应 Tab
+    { path: '/kline-analysis', name: 'klineAnalysis', redirect: { name: 'analysisCenter', query: { tab: 'kline' } } },
     { path: '/backtest', component: backtestPanel, name: 'backtest' },
-    { path: '/daily-pick', component: dailyPickPanel, name: 'dailyPick' },
-    { path: '/khunter', component: khunterPanel, name: 'khunter' },
+    { path: '/daily-pick', name: 'dailyPick', redirect: { name: 'analysisCenter', query: { tab: 'recommend' } } },
+    { path: '/khunter', name: 'khunter', redirect: { name: 'analysisCenter', query: { tab: 'khunter' } } },
 
     // 数据 & 资讯
     { path: '/data-manager', component: dataManager, name: 'data-manager' },
@@ -54,8 +52,10 @@ const routes = [
     { path: '/research/changes', component: stockChangesMonitor, name: 'researchChanges' },
     { path: '/research/uplimit', component: uplimitLadder, name: 'researchUplimit' },
     { path: '/research/prompts', component: promptTemplateList, name: 'researchPrompts' },
-    // 选股工作台（合并原 形态选股/指标选股；旧路径重定向到对应 tab，旧组件摘除路由保留代码）
+    // 统一分析中心（推荐 / 狩猎场 / 选股工作台 / K线分析 四 Tab；?tab= 切换）
     { path: '/analysis/workbench', component: ScreeningWorkbench, name: 'analysisWorkbench' },
+    { path: '/analysis', component: analysisCenter, name: 'analysisCenter' },
+    // 选股工作台旧路径重定向（旧组件摘除路由保留代码）
     { path: '/analysis/pattern', redirect: { name: 'analysisWorkbench', query: { tab: 'pattern' } } },
     { path: '/analysis/screening', redirect: { name: 'analysisWorkbench', query: { tab: 'strategy' } } },
 

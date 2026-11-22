@@ -263,13 +263,13 @@ export function createMenuOptions(deps) {
       ],
     },
 
-    // ===== 3. 分析工具 =====
+    // ===== 3. 分析工具（统一分析中心：推荐/狩猎场/选股工作台/K线分析 四 Tab）=====
     {
       label: () =>
         h(
           RouterLink,
           {
-            to: { name: 'klineAnalysis' },
+            to: { name: 'analysisCenter' },
             onClick: () => {
               activeKey.value = MENU_GROUP_KEYS.ANALYSIS
             },
@@ -280,29 +280,13 @@ export function createMenuOptions(deps) {
       icon: renderIcon(icons.StatsChartOutline),
       children: [
         routeItem({
-          title: 'K线分析',
+          title: '分析中心',
+          key: 'analysisCenter',
           groupKey: MENU_GROUP_KEYS.ANALYSIS,
           icon: icons.StatsChartOutline,
-          to: { name: 'klineAnalysis' },
+          to: { name: 'analysisCenter' },
         }),
-        routeItem({
-          title: '选股工作台',
-          groupKey: MENU_GROUP_KEYS.ANALYSIS,
-          icon: icons.SearchOutline,
-          to: { name: 'analysisWorkbench' },
-        }),
-        routeItem({
-          title: '每日选股',
-          groupKey: MENU_GROUP_KEYS.ANALYSIS,
-          icon: icons.TrendingUp,
-          to: { name: 'dailyPick' },
-        }),
-        routeItem({
-          title: '狩猎场',
-          groupKey: MENU_GROUP_KEYS.ANALYSIS,
-          icon: icons.Flag,
-          to: { name: 'khunter' },
-        }),
+        // 回测验证暂留（第二阶段迁入回测中心）
         routeItem({
           title: '回测验证',
           groupKey: MENU_GROUP_KEYS.ANALYSIS,
@@ -334,12 +318,7 @@ export function createMenuOptions(deps) {
           icon: icons.ReportAnalytics,
           to: { name: 'researchReports' },
         }),
-        routeItem({
-          title: '股票推荐',
-          groupKey: MENU_GROUP_KEYS.RESEARCH,
-          icon: icons.Star,
-          to: { name: 'researchRecommends' },
-        }),
+        // 「股票推荐」菜单项已收敛：页面仍可达，入口在分析中心推荐视图页头链接
         routeItem({
           title: '异动监控',
           groupKey: MENU_GROUP_KEYS.RESEARCH,

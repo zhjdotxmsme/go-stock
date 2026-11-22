@@ -279,7 +279,17 @@ watch(() => route.query.code, (newCode) => {
   }
 })
 
+const props = defineProps({
+  // 嵌入分析中心 Tab 壳时为 true：返回交给父容器处理，不跳首页
+  embedded: { type: Boolean, default: false },
+})
+const emit = defineEmits(['back'])
+
 function goBack() {
+  if (props.embedded) {
+    emit('back')
+    return
+  }
   router.push({ path: '/' })
 }
 
@@ -335,7 +345,7 @@ async function loadTechAnalysis() {
 <template>
   <div class="kline-analysis-page" :class="{ 'kline-analysis-page--dark': darkTheme }">
     <div class="kline-title-bar">
-      <NButton v-if="isFromQuery" size="tiny" quaternary @click="goBack" style="margin-right: 8px; padding: 0 4px">⟵ 返回</NButton>
+      <NButton v-if="isFromQuery || embedded" size="tiny" quaternary @click="goBack" style="margin-right: 8px; padding: 0 4px">⟵ 返回</NButton>
       <NText :depth="darkTheme ? 1 : 3" style="font-size: 15px; font-weight: 700">{{ selectedName }}&nbsp;</NText>
       <NText depth="3" style="font-size: 13px">{{ selectedCode }}</NText>
     </div>
