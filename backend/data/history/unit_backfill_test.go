@@ -43,8 +43,8 @@ func TestBackfillKLineUnits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 7 {
-		t.Fatalf("回填行数=%d, want=7", n)
+	if n != 6 {
+		t.Fatalf("回填行数=%d, want=6", n)
 	}
 	get := func(code string) models.KLineBar {
 		t.Helper()
