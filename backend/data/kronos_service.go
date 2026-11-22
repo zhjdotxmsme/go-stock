@@ -28,13 +28,13 @@ import (
 
 // KronosForecast 单只持仓/股票的预测摘要（供数据包与 prompt 使用）
 type KronosForecast struct {
-	Direction   string  `json:"direction"`   // up / down
-	ChangePct   float64 `json:"changePct"`   // 预测期末相对现价涨跌 %
-	PredEnd     float64 `json:"predEnd"`     // 预测期末收盘
-	PredHigh    float64 `json:"predHigh"`    // 预测期最高
-	PredLow     float64 `json:"predLow"`     // 预测期最低
-	Confidence  float64 `json:"confidence"`  // 0~100
-	PredLen     int     `json:"predLen"`
+	Direction  string  `json:"direction"`  // up / down
+	ChangePct  float64 `json:"changePct"`  // 预测期末相对现价涨跌 %
+	PredEnd    float64 `json:"predEnd"`    // 预测期末收盘
+	PredHigh   float64 `json:"predHigh"`   // 预测期最高
+	PredLow    float64 `json:"predLow"`    // 预测期最低
+	Confidence float64 `json:"confidence"` // 0~100
+	PredLen    int     `json:"predLen"`
 }
 
 // KronosBar 一根预测K线
@@ -49,8 +49,8 @@ type KronosBar struct {
 
 // KronosPrediction 预测结果（前端 K 线叠加使用）
 type KronosPrediction struct {
-	Bars     []*KronosBar    `json:"bars"`
-	Summary  *KronosForecast `json:"summary"`
+	Bars    []*KronosBar    `json:"bars"`
+	Summary *KronosForecast `json:"summary"`
 }
 
 // kronosSinglePredictTimeout 单次 /predict：含首次 HuggingFace 模型加载，CPU 上常超过 30s。
@@ -58,11 +58,11 @@ const kronosSinglePredictTimeout = 300 * time.Second
 
 // 预测错误码（前端按码提示）
 var (
-	ErrKronosDisabled      = errors.New("KRONOS_DISABLED")
-	ErrKronosOffline       = errors.New("KRONOS_OFFLINE")
-	ErrKronosTimeout       = errors.New("KRONOS_TIMEOUT")
-	ErrKronosModelMissing  = errors.New("KRONOS_MODEL_MISSING")
-	ErrKronosInsuffData    = errors.New("KRONOS_INSUFFICIENT_DATA")
+	ErrKronosDisabled     = errors.New("KRONOS_DISABLED")
+	ErrKronosOffline      = errors.New("KRONOS_OFFLINE")
+	ErrKronosTimeout      = errors.New("KRONOS_TIMEOUT")
+	ErrKronosModelMissing = errors.New("KRONOS_MODEL_MISSING")
+	ErrKronosInsuffData   = errors.New("KRONOS_INSUFFICIENT_DATA")
 	// ErrKronosModelLoading 模型冷加载进行中：predict 立即返回可读错误，
 	// 避免请求在 Python _model_lock 上排队直到 300s 超时（用户感知的"卡住"）。
 	ErrKronosModelLoading = errors.New("Kronos 模型正在加载（冷启动约需数分钟），请稍后重试")
@@ -202,16 +202,16 @@ func normalizePythonExe(p string) (string, error) {
 		return "", errors.New("未找到 Python：请在 PATH 安装 Python 3.10+，或在设置页填写 python.exe 完整路径")
 	}
 	if st, err := os.Stat(p); err == nil && st.IsDir() {
-			p = filepath.Join(p, "python.exe")
-		} else if err != nil && strings.ContainsAny(p, `\/`) {
-			// 目录路径写错/缺 python.exe：依次尝试子路径与 .exe 后缀
-			for _, c := range []string{filepath.Join(p, "python.exe"), p + ".exe"} {
-				if fileExists(c) {
-					p = c
-					break
-				}
+		p = filepath.Join(p, "python.exe")
+	} else if err != nil && strings.ContainsAny(p, `\/`) {
+		// 目录路径写错/缺 python.exe：依次尝试子路径与 .exe 后缀
+		for _, c := range []string{filepath.Join(p, "python.exe"), p + ".exe"} {
+			if fileExists(c) {
+				p = c
+				break
 			}
 		}
+	}
 	if _, err := os.Stat(p); err != nil {
 		if strings.ContainsAny(p, `\/`) {
 			return "", fmt.Errorf("Python 路径不存在: %s", p)
@@ -582,15 +582,19 @@ func (p *kronosProcess) Stop() {
 	}
 }
 
-// Status 返回服务状态：online / offline / disabled
+// Status 返回服务状态：disabled / loading / offline / online。
+// online 要求模型已就绪（/ready）；进程存活但模型冷加载中为 loading。
 func (p *kronosProcess) Status(cfg KronosConfigSnapshot) string {
 	if !cfg.Enable {
 		return "disabled"
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	if p.isAlive(ctx, cfg.Port) {
+	if p.isModelReady(ctx, cfg.Port) {
 		return "online"
+	}
+	if p.isAlive(ctx, cfg.Port) {
+		return "loading"
 	}
 	return "offline"
 }
@@ -692,8 +696,8 @@ func kronosPostPredict(ctx context.Context, cfg KronosConfigSnapshot, candles []
 	}
 
 	var out struct {
-		Bars    []*KronosBar     `json:"bars"`
-		Summary *KronosForecast  `json:"summary"`
+		Bars    []*KronosBar    `json:"bars"`
+		Summary *KronosForecast `json:"summary"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, err
@@ -941,18 +945,61 @@ func NormalizeKronosCode(code string) string {
 	return stockcode.Normalize(code)
 }
 
-// PredictKLineForStock 预测单只股票未来日K（供 Wails handler 调用）。
+// PredictKLineForStock 预测单只股票未来日K。
+// Deprecated: 统一入口为 PredictKLine（asOfDate 传空串表示最新），本函数为兼容保留。
 func PredictKLineForStock(ctx context.Context, stockCode string, predLen int) (*KronosPrediction, error) {
+	return PredictKLine(ctx, stockCode, predLen, "")
+}
+
+// PredictKLine 统一 K 线预测入口：确保服务在线后调用 /predict。
+// stockCode 支持任意格式（内部经 NormalizeKronosCode 规范）；asOfDate 为空表示最新。
+// 返回的错误可直接 errors.Is 匹配 ErrKronosDisabled/ErrKronosOffline/ErrKronosTimeout/ErrKronosModelLoading。
+func PredictKLine(ctx context.Context, stockCode string, predLen int, asOfDate string) (*KronosPrediction, error) {
 	apiCode := NormalizeKronosCode(stockCode)
 	if apiCode == "" {
 		return nil, ErrKronosInsuffData
 	}
-	return kronosPredict(ctx, apiCode, predLen)
+	return kronosPredictEx(ctx, apiCode, predLen, asOfDate)
 }
 
-// KronosServiceStatus 返回服务状态：disabled / offline / online
+// KronosServiceStatus 返回服务状态：disabled / offline / loading / online
 func KronosServiceStatus() string {
 	return kronosProc.Status(GetKronosConfig())
+}
+
+// EnsureKronosRunning 统一拉起入口：服务未运行时启动托管的 Python 推理子进程并等待 /health 健康，
+// 已健康则直接返回（模型冷加载中视为健康，状态查询见 KronosServiceStatus 的 loading）。
+// 未开启返回 ErrKronosDisabled；等待超过 timeout 返回 ErrKronosTimeout；ctx 取消返回 ctx.Err()。
+// 经全局单例 kronosProc 操作，与预测/回测共用同一子进程生命周期。
+func EnsureKronosRunning(ctx context.Context, timeout time.Duration) error {
+	cfg := GetKronosConfig()
+	if !cfg.Enable {
+		return ErrKronosDisabled
+	}
+	done := make(chan error, 1)
+	go func() {
+		// 存活快速路径：避免对已健康的服务重复 Start（Start 会清理并重启子进程）
+		c, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		alive := kronosProc.isAlive(c, cfg.Port)
+		cancel()
+		if alive {
+			done <- nil
+			return
+		}
+		if err := kronosProc.Start(cfg); err != nil {
+			done <- err
+			return
+		}
+		done <- kronosProc.waitUntilHealthy(cfg, timeout)
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(timeout):
+		return ErrKronosTimeout
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // KronosServiceStart 手动启动托管服务（忽略惰性启动配置）

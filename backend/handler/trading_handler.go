@@ -642,8 +642,10 @@ func (h *TradingRecordHandler) currentCtx() context.Context {
 
 // PredictKLine Kronos 未来日K预测（可选增强：未开启/服务离线返回结构化错误码）。
 // stockCode 支持前端 K 线组件的代码格式（"1.600519"、"600519.SH"、"600519"、美股等）。
+//
+// Deprecated: 统一入口已迁移至 AnalysisCenterHandler，本方法为兼容保留。
 func (h *TradingRecordHandler) PredictKLine(stockCode string, predLen int) (*data.KronosPrediction, error) {
-	return data.PredictKLineForStock(h.currentCtx(), stockCode, predLen)
+	return data.PredictKLine(h.currentCtx(), stockCode, predLen, "")
 }
 
 // BacktestKLine Kronos 历史切点回测：asOfDate 为空时自动取倒数第 predLen+1 根为切点。
@@ -658,14 +660,18 @@ func (h *TradingRecordHandler) RollingBacktestKLine(stockCode string, stepDays, 
 	})
 }
 
-// GetKronosStatus Kronos 服务状态：disabled / offline / online
+// GetKronosStatus Kronos 服务状态：disabled / offline / loading / online
+//
+// Deprecated: 统一入口已迁移至 AnalysisCenterHandler，本方法为兼容保留。
 func (h *TradingRecordHandler) GetKronosStatus() string {
 	return data.KronosServiceStatus()
 }
 
 // StartKronosService 手动启动 Kronos 推理服务（阻塞至在线或超时）
+//
+// Deprecated: 统一入口已迁移至 AnalysisCenterHandler，本方法为兼容保留。
 func (h *TradingRecordHandler) StartKronosService() error {
-	return data.KronosServiceStart()
+	return data.EnsureKronosRunning(context.Background(), 120*time.Second)
 }
 
 // StopKronosService 停止 Kronos 推理服务

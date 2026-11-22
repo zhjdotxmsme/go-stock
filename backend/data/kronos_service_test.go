@@ -1,11 +1,26 @@
 package data
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"go-stock/backend/db"
 )
+
+// forceKronosDisabledSettings 强制"设置未开启"路径：本包多个测试会 db.Init 真实库，
+// 这里临时置空 db.Dao 使 GetSettingConfigSafe 返回默认（KronosEnable=false）配置，
+// 保证 Kronos 相关断言与执行顺序/本机设置无关。
+func forceKronosDisabledSettings(t *testing.T) {
+	t.Helper()
+	orig := db.Dao
+	db.Dao = nil
+	t.Cleanup(func() { db.Dao = orig })
+}
 
 // TestNormalizePythonExe 路径规整：目录补 python.exe、带引号去引号、不存在时报错
 func TestNormalizePythonExe(t *testing.T) {
@@ -93,5 +108,36 @@ func TestBuildHoldingsDeepPromptWithKronos(t *testing.T) {
 	noPred := BuildHoldingsDeepPrompt([]*HoldingsDeepStock{{StockCode: "sh600519", StockName: "贵州茅台"}})
 	if strings.Contains(noPred, "Kronos模型K线预测") {
 		t.Error("无预测数据时 prompt 不应包含 Kronos 段")
+	}
+}
+
+// TestKronosServiceStatusDisabledByDefault 设置未开启时（KronosEnable=false）状态必须为 disabled。
+// 测试环境无 DB（db.Dao == nil），GetSettingConfigSafe 返回默认关闭的配置。
+func TestKronosServiceStatusDisabledByDefault(t *testing.T) {
+	forceKronosDisabledSettings(t)
+	if got := KronosServiceStatus(); got != "disabled" {
+		t.Fatalf("未开启应返回 disabled: %s", got)
+	}
+}
+
+// TestPredictKLineDisabledByDefault 统一预测入口在未开启时必须返回 ErrKronosDisabled（errors.Is 语义）
+func TestPredictKLineDisabledByDefault(t *testing.T) {
+	forceKronosDisabledSettings(t)
+	_, err := PredictKLine(context.Background(), "600519", 5, "")
+	if !errors.Is(err, ErrKronosDisabled) {
+		t.Fatalf("未开启应返回 ErrKronosDisabled: %v", err)
+	}
+}
+
+// TestEnsureKronosRunningDisabledByDefault 统一拉起入口在未开启时必须返回 ErrKronosDisabled，且快速返回
+func TestEnsureKronosRunningDisabledByDefault(t *testing.T) {
+	forceKronosDisabledSettings(t)
+	start := time.Now()
+	err := EnsureKronosRunning(context.Background(), 5*time.Second)
+	if !errors.Is(err, ErrKronosDisabled) {
+		t.Fatalf("未开启应返回 ErrKronosDisabled: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("未开启时应快速返回，耗时 %v", elapsed)
 	}
 }
