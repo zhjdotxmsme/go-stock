@@ -1,0 +1,7 @@
+{
+  "enable": false,
+  "topN": 30,
+  "predLen": 5,
+  "weight": 0.05,
+  "maxWeight": 0.15
+}

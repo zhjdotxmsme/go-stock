@@ -24,7 +24,7 @@ func EnsureMigrate() error {
 	}
 	return db.Dao.AutoMigrate(
 		&models.KhunterSignal{}, &models.KhunterScore{}, &models.KhunterHunting{},
-		&models.KhunterObservation{},
+		&models.KhunterObservation{}, &models.KhunterKronosPrediction{},
 		&models.KhunterMoneyFlowDaily{}, &models.KhunterRiskLevel{}, &models.KhunterEvent{},
 		&models.KhunterRunSummary{},
 		&models.KhunterResearchRecord{}, &models.KhunterFundamentalSnapshot{}, &models.KhunterSectorSnapshot{},
@@ -354,4 +354,15 @@ func (r *Repo) GetSectorSnapshotAsOf(code, asOfDate string) (models.KhunterSecto
 		return row, ErrSnapshotUnavailable
 	}
 	return row, err
+}
+
+// SaveKronosPredictions 按 (code, signal_date) 幂等保存批量预测明细。
+func (r *Repo) SaveKronosPredictions(rows []models.KhunterKronosPrediction) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	return db.Dao.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "code"}, {Name: "signal_date"}},
+		UpdateAll: true,
+	}).Create(&rows).Error
 }

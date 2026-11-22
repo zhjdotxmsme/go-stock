@@ -94,6 +94,22 @@ type KhunterObservation struct {
 
 func (KhunterObservation) TableName() string { return "khunter_observations" }
 
+// KhunterKronosPrediction 观察候选的 Kronos 批量预测明细（推荐视图可展开，因子透明化）。
+type KhunterKronosPrediction struct {
+	ID             uint      `gorm:"primarykey" json:"id"`
+	Code           string    `gorm:"size:20;index:idx_kkp_code_date,unique" json:"code"`
+	SignalDate     string    `gorm:"size:10;index:idx_kkp_code_date,unique" json:"signalDate"`
+	PredLen        int       `json:"predLen"`
+	ForecastJSON   string    `gorm:"type:text" json:"forecastJson"` // 完整预测（KronosPrediction 序列化）；降级时为空
+	FactorScore    float64   `json:"factorScore"`
+	Weight         float64   `json:"weight"`
+	DegradedReason string    `gorm:"size:200" json:"degradedReason"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+func (KhunterKronosPrediction) TableName() string { return "khunter_kronos_predictions" }
+
 // KhunterMoneyFlowDaily 资金流历史落库
 type KhunterMoneyFlowDaily struct {
 	ID         uint    `gorm:"primarykey"`

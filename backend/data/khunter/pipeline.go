@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go-stock/backend/data"
 	"go-stock/backend/data/datasource"
 	"go-stock/backend/data/khunter/risk"
 	"go-stock/backend/data/khunter/scorer"
@@ -518,7 +519,46 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 	}
 	res.Observed = len(observations)
 
-	// 8. T+1~T+3 触发价确认引擎：对当日待确认观察重新评估数据闸门、风险画像、
+	// 8. Kronos 排序因子（异步旁路）：不参与五维评分、不改观察名单，
+	//    只在后台批量预测并落库明细，供推荐视图排序与展开。
+	//    结果按 (code, signal_date) 关联，不依赖 upsert 后的自增 ID。
+	if kcfg := LoadKronosFactorConfig(""); kcfg.Enable && len(observations) > 0 {
+		go func(rows []models.KhunterObservation, byCode map[string]models.KhunterObservation, kc KronosFactorConfig) {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.SugaredLogger.Errorf("khunter Kronos 因子 panic: %v", r)
+				}
+			}()
+			frs, ferr := ApplyKronosFactor(context.Background(), rows, kc, data.KronosBatchPredict)
+			if ferr != nil {
+				logger.SugaredLogger.Warnf("khunter Kronos 因子批量预测失败: %v", ferr)
+				return
+			}
+			recs := make([]models.KhunterKronosPrediction, 0, len(frs))
+			degraded := 0
+			for _, fr := range frs {
+				if fr.DegradedReason != "" {
+					degraded++
+				}
+				signalDate := tradeDate
+				if o, ok := byCode[fr.Code]; ok && o.SignalDate != "" {
+					signalDate = o.SignalDate
+				}
+				recs = append(recs, models.KhunterKronosPrediction{
+					Code: fr.Code, SignalDate: signalDate, PredLen: kc.PredLen,
+					ForecastJSON: fr.ForecastJSON, FactorScore: fr.FactorScore,
+					Weight: fr.Weight, DegradedReason: fr.DegradedReason,
+				})
+			}
+			if err := repo.SaveKronosPredictions(recs); err != nil {
+				logger.SugaredLogger.Warnf("khunter Kronos 预测明细落库失败: %v", err)
+				return
+			}
+			logger.SugaredLogger.Infof("khunter Kronos 因子完成 %s: %d 只，降级 %d 只", tradeDate, len(frs), degraded)
+		}(append([]models.KhunterObservation(nil), observations...), buildObsByCode(observations), kcfg)
+	}
+
+	// 9. T+1~T+3 触发价确认引擎：对当日待确认观察重新评估数据闸门、风险画像、
 	//    触发价与跳空约束，确认成功后生成真实不复权交易。
 	pending, err := repo.GetPendingObservations(tradeDate)
 	if err != nil {
