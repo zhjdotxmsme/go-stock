@@ -58,6 +58,10 @@ export function RunSingleBacktest(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
   return window['go']['backtest']['Service']['RunSingleBacktest'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 
+export function ScheduleAfterCloseCatchUp() {
+  return window['go']['backtest']['Service']['ScheduleAfterCloseCatchUp']();
+}
+
 export function StartHistoricalSync(arg1) {
   return window['go']['backtest']['Service']['StartHistoricalSync'](arg1);
 }

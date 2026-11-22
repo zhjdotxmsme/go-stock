@@ -31,4 +31,6 @@ export function RunSeedImport(arg1:string,arg2:string,arg3:string,arg4:number):P
 
 export function RunSingleBacktest(arg1:string,arg2:string,arg3:number,arg4:number,arg5:number,arg6:number,arg7:boolean):Promise<backtest.Result>;
 
+export function ScheduleAfterCloseCatchUp():Promise<void>;
+
 export function StartHistoricalSync(arg1:number):Promise<void>;
