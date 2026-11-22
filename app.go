@@ -20,28 +20,29 @@ import (
 
 // App struct
 type App struct {
-	ctx                 context.Context
-	cache               *freecache.Cache
-	cron                *cron.Cron
-	cronEntrys          map[string]cron.EntryID
-	cronEntrysMu        sync.Mutex
-	AiTools             []data.Tool
-	stockAlertMu        sync.Mutex
-	stockAlertLastSent  map[string]time.Time
-	priceAtAlertReset   map[string]float64
-	notificationHandler *handler.NotificationHandler
-	dailyPickHandler    *handler.DailyPickHandler
-	fundHandler         *handler.FundHandler
-	commodityHandler    *handler.CommodityHandler
-	newsHandler         *handler.NewsHandler
-	marketHandler       *handler.MarketHandler
-	agentHandler        *handler.AgentHandler
-	analysisHandler     *handler.AnalysisHandler
-	stockHandler        *handler.StockHandler
-	systemHandler       *handler.SystemHandler
-	tradingHandler      *handler.TradingRecordHandler
-	stockChangeHandler  *handler.StockChangeHandler
-	khunterHandler      *handler.KhunterHandler
+	ctx                   context.Context
+	cache                 *freecache.Cache
+	cron                  *cron.Cron
+	cronEntrys            map[string]cron.EntryID
+	cronEntrysMu          sync.Mutex
+	AiTools               []data.Tool
+	stockAlertMu          sync.Mutex
+	stockAlertLastSent    map[string]time.Time
+	priceAtAlertReset     map[string]float64
+	notificationHandler   *handler.NotificationHandler
+	dailyPickHandler      *handler.DailyPickHandler
+	fundHandler           *handler.FundHandler
+	commodityHandler      *handler.CommodityHandler
+	newsHandler           *handler.NewsHandler
+	marketHandler         *handler.MarketHandler
+	agentHandler          *handler.AgentHandler
+	analysisHandler       *handler.AnalysisHandler
+	stockHandler          *handler.StockHandler
+	systemHandler         *handler.SystemHandler
+	tradingHandler        *handler.TradingRecordHandler
+	stockChangeHandler    *handler.StockChangeHandler
+	khunterHandler        *handler.KhunterHandler
+	analysisCenterHandler *handler.AnalysisCenterHandler
 }
 
 // NewApp creates a new App application struct
@@ -84,6 +85,7 @@ func NewApp() *App {
 	app.tradingHandler = handler.NewDefaultTradingRecordHandler(func() context.Context { return app.ctx }, emit)
 	app.stockChangeHandler = handler.NewDefaultStockChangeHandler(func() context.Context { return app.ctx })
 	app.khunterHandler = handler.NewKhunterHandler(emit)
+	app.analysisCenterHandler = handler.NewAnalysisCenterHandler()
 	return app
 }
 

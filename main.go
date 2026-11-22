@@ -10,13 +10,13 @@ import (
 	"go-stock/backend/data"
 	backtestService "go-stock/backend/data/backtest"
 	"go-stock/backend/data/datasource"
-	"go-stock/backend/data/datasource/freestockdb"
-	dailyPickBacktestService "go-stock/backend/service"
 	"go-stock/backend/data/datasource/fallback"
+	"go-stock/backend/data/datasource/freestockdb"
 	"go-stock/backend/db"
 	log "go-stock/backend/logger"
 	"go-stock/backend/machineid"
 	"go-stock/backend/models"
+	dailyPickBacktestService "go-stock/backend/service"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -73,7 +73,6 @@ var Version string
 var VersionCommit string
 var OFFICIAL_STATEMENT string
 var BuildKey string
-
 
 func initDataSources() {
 	router := datasource.GetRouter()
@@ -278,6 +277,7 @@ func main() {
 			app.commodityHandler,
 			app.newsHandler,
 			app.khunterHandler,
+			app.analysisCenterHandler,
 		},
 		// Windows platform specific options
 		Windows: &windows.Options{

@@ -1,3 +1,80 @@
+export namespace analysis {
+	
+	export class AnalysisCenterStatus {
+	    kronosStatus: string;
+	    lastRun?: models.KhunterRunSummary;
+	    pendingObservations: number;
+	    factorEnabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AnalysisCenterStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kronosStatus = source["kronosStatus"];
+	        this.lastRun = this.convertValues(source["lastRun"], models.KhunterRunSummary);
+	        this.pendingObservations = source["pendingObservations"];
+	        this.factorEnabled = source["factorEnabled"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RecommendRow {
+	    code: string;
+	    name: string;
+	    signalDate: string;
+	    status: string;
+	    dataStatus: string;
+	    rejectReason?: string;
+	    score: number;
+	    factorScore?: number;
+	    factorWeight?: number;
+	    blendedScore: number;
+	    hasFactor: boolean;
+	    degraded: boolean;
+	    degradedReason?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RecommendRow(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.signalDate = source["signalDate"];
+	        this.status = source["status"];
+	        this.dataStatus = source["dataStatus"];
+	        this.rejectReason = source["rejectReason"];
+	        this.score = source["score"];
+	        this.factorScore = source["factorScore"];
+	        this.factorWeight = source["factorWeight"];
+	        this.blendedScore = source["blendedScore"];
+	        this.hasFactor = source["hasFactor"];
+	        this.degraded = source["degraded"];
+	        this.degradedReason = source["degradedReason"];
+	    }
+	}
+
+}
+
 export namespace backtest {
 	
 	export class Result {
@@ -3414,6 +3491,54 @@ export namespace khunter {
 	        this.latestSignalDate = source["latestSignalDate"];
 	        this.latestRunDate = source["latestRunDate"];
 	    }
+	}
+	export class PredictJob {
+	    id: string;
+	    code: string;
+	    predLen: number;
+	    asOfDate: string;
+	    status: string;
+	    resultJson?: string;
+	    err?: string;
+	    // Go type: time
+	    createdAt: any;
+	    // Go type: time
+	    updatedAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new PredictJob(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.code = source["code"];
+	        this.predLen = source["predLen"];
+	        this.asOfDate = source["asOfDate"];
+	        this.status = source["status"];
+	        this.resultJson = source["resultJson"];
+	        this.err = source["err"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }
