@@ -274,6 +274,38 @@ func TestHuntingMigrationDeduplicatesLegacyRows(t *testing.T) {
 	}
 }
 
+// TestSaveKronosPredictionsPreservesJudgedState 同一 (code, signal_date) 重跑历史流水线时，
+// 冲突更新只允许刷新预测内容列，不得抹掉 khunter_review 已回写的终态 hit/actual_pct。
+func TestSaveKronosPredictionsPreservesJudgedState(t *testing.T) {
+	setupTestDB(t)
+	r := NewRepo()
+
+	judged := models.KhunterKronosPrediction{Code: "600519", SignalDate: "2026-09-24",
+		PredLen: 5, ForecastJSON: `{"v":1}`, FactorScore: 70, Weight: 0.8,
+		Hit: "hit", ActualPct: 3.5}
+	if err := db.Dao.Create(&judged).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rerun := models.KhunterKronosPrediction{Code: "600519", SignalDate: "2026-09-24",
+		PredLen: 10, ForecastJSON: `{"v":2}`, FactorScore: 65, Weight: 0.6,
+		DegradedReason: "kronos_timeout"}
+	if err := r.SaveKronosPredictions([]models.KhunterKronosPrediction{rerun}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got models.KhunterKronosPrediction
+	if err := db.Dao.Where("code=? AND signal_date=?", "600519", "2026-09-24").First(&got).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got.PredLen != 10 || got.ForecastJSON != `{"v":2}` || got.FactorScore != 65 || got.Weight != 0.6 {
+		t.Fatalf("预测内容列应被刷新: %+v", got)
+	}
+	if got.Hit != "hit" || got.ActualPct != 3.5 {
+		t.Fatalf("已判终态 hit/actual_pct 不得被抹掉: got %s/%v", got.Hit, got.ActualPct)
+	}
+}
+
 // seedDayBar 造一根指定 adjusted 口径的日 K（GetTradeDates 覆盖度测试用）。
 func seedDayBar(code, date string, adjusted bool) models.KLineBar {
 	return models.KLineBar{

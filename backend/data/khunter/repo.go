@@ -358,13 +358,16 @@ func (r *Repo) GetSectorSnapshotAsOf(code, asOfDate string) (models.KhunterSecto
 }
 
 // SaveKronosPredictions 按 (code, signal_date) 幂等保存批量预测明细。
+// 冲突更新只刷新预测内容列；hit/actual_pct 是 khunter_review 回写的终态，重跑历史流水线不得抹掉。
 func (r *Repo) SaveKronosPredictions(rows []models.KhunterKronosPrediction) error {
 	if len(rows) == 0 {
 		return nil
 	}
 	return db.Dao.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "code"}, {Name: "signal_date"}},
-		UpdateAll: true,
+		Columns: []clause.Column{{Name: "code"}, {Name: "signal_date"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"pred_len", "forecast_json", "factor_score", "weight", "degraded_reason", "updated_at",
+		}),
 	}).Create(&rows).Error
 }
 
