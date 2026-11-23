@@ -57,6 +57,15 @@
 
 ### 2.3 调权切源
 
+> **修订记录（2026-11-23 全分支评审）**：原设计写"策略胜率调权迁移到 khunter"——
+> 实现裁剪为**只迁移 Kronos 因子调权**（命中率驱动，源自 `daily_pick_kronos.go`
+> 的 `kronosFactorMultiplier`），策略级胜率调权（`daily_pick_weighting.go`）不迁移：
+> khunter 的 `scorer.Score` 为五维固定加权，无策略权重注入点，迁移无可挂之处。
+> `KhunterHunting.ReturnT1/3D/5D` 在本阶段无消费者，是阶段 3 效果看板的数据地基。
+> 口径差异提示：daily_pick 跳过无方向的预测记录，khunter 的 judgePrediction 在
+> `Summary.Direction` 缺失时按 ChangePct 符号兜底推导方向并计入样本——两侧样本构成
+> 有微小差异，命中率跨链路对比时需注意。
+
 - `daily_pick_weighting.go` 的策略自动调权（胜率→调权系数）迁移到 khunter 包：
   khunter 批量因子的混分权重从"配置固定值"升级为"复盘驱动的自动调权"
   （应用点在阶段 1 的混分/落库路径，只改系数来源，不改混分公式），
@@ -85,6 +94,18 @@
 **时序约束（硬）**：2.1-2.3 部署并跨至少一个完整交易日周期验证 cron 实跑
 （khunter_review 09:15 回填正确、调权系数生效且回放对照 DIFF 0）之后，
 方可执行 2.4 删除自动化。删除是收紧操作，不回滚假设。
+
+**部署门控清单（2026-11-23 全分支评审补充）**：
+1. 接线已上线、自动化保留（d6766a29 恢复）的状态下部署；
+2. 首日 09:15 后查日志 `khunter_review 完成：…`（非零回填/对账数即实跑成功）；
+3. 次日 17:00 流水线日志查 `Kronos 因子调权 命中率系数 …`（enable 翻真且样本 ≥20 时）；
+4. 首周内用 `review_verify_test.go` 对库副本重跑复核，并核对交叉验证中
+   前复权回溯导致的不一致是否随除权落地消失；
+5. 全部通过后，才合入"删除 daily_pick 自动化"的后续 commit（即还原
+   `350836a9` 中 app_lifecycle.go 的拆除 hunk）。
+6. 兼容性提示：新版本库在新列上写过后，**回退老版本二进制写入的行进不了复盘**
+   （hit 为 NULL 不匹配 `hit = ''` 谓词）；如需回退老版本，
+   先执行 `UPDATE khunter_kronos_predictions SET hit='' WHERE hit IS NULL`。
 
 ### 2.5 验证
 
