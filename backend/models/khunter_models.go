@@ -46,25 +46,31 @@ func (KhunterScore) TableName() string { return "khunter_scores" }
 // 唯一键 (code, signal_date) 与 (code, enter_date)：同一股票同一信号日只有一条记录，
 // 同一股票同一确认日只保留一条入池记录。
 type KhunterHunting struct {
-	ID               uint      `gorm:"primarykey" json:"id"`
-	Code             string    `gorm:"size:20;uniqueIndex:idx_khh_code_signal,priority:1;uniqueIndex:idx_khh_code_enter,priority:1" json:"code"`
-	Name             string    `gorm:"size:50" json:"name"`
-	SignalDate       string    `gorm:"size:10;uniqueIndex:idx_khh_code_signal,priority:2" json:"signalDate"`
-	EnterDate        string    `gorm:"size:10;uniqueIndex:idx_khh_code_enter,priority:2" json:"enterDate"`
-	EnterScore       float64   `json:"enterScore"`
-	SupportPrice     float64   `json:"supportPrice"`
-	EntryPrice       float64   `json:"entryPrice"` // 真实确认成交价
-	InitialStopPrice float64   `json:"initialStopPrice"`
-	ProtectPrice     float64   `json:"protectPrice"`
-	InitialRisk      float64   `json:"initialRisk"`
-	Shares           int       `json:"shares"`
-	Status           string    `gorm:"size:10" json:"status"` // 持仓中 / 已退出 / 历史待核
-	TrackDays        int       `json:"trackDays"`
-	ExitDate         string    `gorm:"size:10" json:"exitDate"`
-	ExitPrice        float64   `json:"exitPrice"`
-	ExitReason       string    `gorm:"size:100" json:"exitReason"`
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
+	ID               uint    `gorm:"primarykey" json:"id"`
+	Code             string  `gorm:"size:20;uniqueIndex:idx_khh_code_signal,priority:1;uniqueIndex:idx_khh_code_enter,priority:1" json:"code"`
+	Name             string  `gorm:"size:50" json:"name"`
+	SignalDate       string  `gorm:"size:10;uniqueIndex:idx_khh_code_signal,priority:2" json:"signalDate"`
+	EnterDate        string  `gorm:"size:10;uniqueIndex:idx_khh_code_enter,priority:2" json:"enterDate"`
+	EnterScore       float64 `json:"enterScore"`
+	SupportPrice     float64 `json:"supportPrice"`
+	EntryPrice       float64 `json:"entryPrice"` // 真实确认成交价
+	InitialStopPrice float64 `json:"initialStopPrice"`
+	ProtectPrice     float64 `json:"protectPrice"`
+	InitialRisk      float64 `json:"initialRisk"`
+	Shares           int     `json:"shares"`
+	Status           string  `gorm:"size:10" json:"status"` // 持仓中 / 已退出 / 历史待核
+	TrackDays        int     `json:"trackDays"`
+	ExitDate         string  `gorm:"size:10" json:"exitDate"`
+	ExitPrice        float64 `json:"exitPrice"`
+	ExitReason       string  `gorm:"size:100" json:"exitReason"`
+	// 复盘回填（09:15 khunter_review，基准=确认日真实成交价 EntryPrice，单位 %）：
+	// 0 表示该窗口未回填/未到期；存在才回填，到期后重复运行自动补齐。
+	ReturnT1  float64   `json:"returnT1"` // T+1：EnterDate 后第 1 个交易日收盘/EntryPrice-1
+	Return3D  float64   `json:"return3d"` // 3 日持有：第 3 个交易日收盘/EntryPrice-1
+	Return5D  float64   `json:"return5d"` // 5 日持有：第 5 个交易日收盘/EntryPrice-1
+	Reviewed  bool      `json:"reviewed" gorm:"default:false;index"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 func (KhunterHunting) TableName() string { return "khunter_hunting" }
@@ -96,16 +102,20 @@ func (KhunterObservation) TableName() string { return "khunter_observations" }
 
 // KhunterKronosPrediction 观察候选的 Kronos 批量预测明细（推荐视图可展开，因子透明化）。
 type KhunterKronosPrediction struct {
-	ID             uint      `gorm:"primarykey" json:"id"`
-	Code           string    `gorm:"size:20;index:idx_kkp_code_date,unique" json:"code"`
-	SignalDate     string    `gorm:"size:10;index:idx_kkp_code_date,unique" json:"signalDate"`
-	PredLen        int       `json:"predLen"`
-	ForecastJSON   string    `gorm:"type:text" json:"forecastJson"` // 完整预测（KronosPrediction 序列化）；降级时为空
-	FactorScore    float64   `json:"factorScore"`
-	Weight         float64   `json:"weight"`
-	DegradedReason string    `gorm:"size:200" json:"degradedReason"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	ID             uint    `gorm:"primarykey" json:"id"`
+	Code           string  `gorm:"size:20;index:idx_kkp_code_date,unique" json:"code"`
+	SignalDate     string  `gorm:"size:10;index:idx_kkp_code_date,unique" json:"signalDate"`
+	PredLen        int     `json:"predLen"`
+	ForecastJSON   string  `gorm:"type:text" json:"forecastJson"` // 完整预测（KronosPrediction 序列化）；降级时为空
+	FactorScore    float64 `json:"factorScore"`
+	Weight         float64 `json:"weight"`
+	DegradedReason string  `gorm:"size:200" json:"degradedReason"`
+	// Hit 预测期末对账结果（09:15 khunter_review 回写）：hit/miss/flat，"" 表示未对账/未到期。
+	// flat = 实际涨跌绝对值 ≤0.3%（方向带）被排除，不计入命中率统计，但为终态不再重判。
+	Hit       string    `gorm:"size:10" json:"hit"`
+	ActualPct float64   `json:"actualPct"` // 预测期末实际涨幅 %（0=未对账）
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 func (KhunterKronosPrediction) TableName() string { return "khunter_kronos_predictions" }
