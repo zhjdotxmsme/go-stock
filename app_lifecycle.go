@@ -248,45 +248,6 @@ func (a *App) registerStartupCronTasks() {
 		a.setCronEntry(follow.StockCode, entryID)
 	}
 	//logger.SugaredLogger.Infof("domReady-cronEntrys:%+v", a.cronEntrys)
-
-	// ---- Daily Pick cron tasks ----
-	// Auto-run daily pick after market close (15:30 weekdays)
-	dailyPickSvc := data.NewDailyPickService()
-	pickEntryID, err := a.cron.AddFunc("0 30 15 * * 1-5", func() {
-		today := time.Now().Format("2006-01-02")
-		logger.SugaredLogger.Infof("daily_pick: auto-run for %s", today)
-		if _, err := dailyPickSvc.RunDailyPick(today, 5); err != nil {
-			logger.SugaredLogger.Errorf("daily_pick: auto-run failed: %v", err)
-		}
-	})
-	if err != nil {
-		logger.SugaredLogger.Errorf("daily_pick: add auto-run cron failed: %v", err)
-	} else {
-		a.setCronEntry("dailyPickAutoRun", pickEntryID)
-	}
-
-	// Auto-review picks before market open (09:15 weekdays)
-	reviewEntryID, err := a.cron.AddFunc("0 15 9 * * 1-5", func() {
-		today := time.Now().Format("2006-01-02")
-		logger.SugaredLogger.Infof("daily_pick: auto-review for %s", today)
-		dailyPickSvc.RunDailyReview(today, "")
-	})
-	if err != nil {
-		logger.SugaredLogger.Errorf("daily_pick: add auto-review cron failed: %v", err)
-	} else {
-		a.setCronEntry("dailyPickAutoReview", reviewEntryID)
-	}
-
-	// Check for unreviewed picks on startup
-	go func() {
-		time.Sleep(5 * time.Second) // wait for DB init
-		today := time.Now().Format("2006-01-02")
-		// Only auto-review on weekdays if market hasn't opened yet
-		if isTradingDay(time.Now()) && !isTradingTime(time.Now()) {
-			logger.SugaredLogger.Info("daily_pick: startup review check")
-			dailyPickSvc.RunDailyReview(today, "")
-		}
-	}()
 }
 
 func syncAllStockInfo(ctx context.Context) {

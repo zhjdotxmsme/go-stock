@@ -139,6 +139,7 @@ func (a *CronTaskApi) GetTaskTypes() []lo.Tuple2[string, string] {
 		{A: "stock_change_save", B: "异动数据保存"},
 		{A: "kline_sync", B: "K线数据同步"},
 		{A: "khunter_daily_pipeline", B: "狩猎场每日流水线"},
+		{A: "khunter_review", B: "狩猎场复盘回填"},
 	}
 }
 
@@ -222,6 +223,8 @@ func (a *CronTaskApi) executeTaskByType(ctx context.Context, task *models.CronTa
 		return a.executeKLineSync(ctx, task)
 	case "khunter_daily_pipeline":
 		return a.executeKhunterDailyPipeline(ctx, task)
+	case "khunter_review":
+		return a.executeKhunterReview(ctx, task)
 	case "custom":
 		return a.executeCustomTask(ctx, task)
 	default:
@@ -378,6 +381,23 @@ func (a *CronTaskApi) executeKhunterDailyPipeline(ctx context.Context, task *mod
 	}
 	_, err := khunter.NewService().RunPipeline("")
 	return err
+}
+
+// executeKhunterReview 每日 09:15 狩猎场复盘：回填 T+1/3/5 收益并对账 Kronos 预测命中。
+func (a *CronTaskApi) executeKhunterReview(ctx context.Context, task *models.CronTask) error {
+	logger.SugaredLogger.Infof("执行狩猎场复盘回填任务：%s", task.Name)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	res, err := khunter.NewReview().RunDailyReview(ctx)
+	if err != nil {
+		return err
+	}
+	logger.SugaredLogger.Infof("khunter_review 完成：狩猎回填 %d（部分 %d，跳过 %d），预测对账 %d（未到期 %d）",
+		res.HuntingReviewed, res.HuntingPartial, res.HuntingSkipped, res.PredJudged, res.PredPending)
+	return nil
 }
 
 func (a *CronTaskApi) executeMarketAnalysis(ctx context.Context, task *models.CronTask) error {

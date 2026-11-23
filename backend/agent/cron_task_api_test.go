@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -86,4 +87,27 @@ func TestCronTaskApiDailyKLineSyncReadiness(t *testing.T) {
 	if !strings.Contains(r.Reason, "running=1") {
 		t.Fatalf("诊断缺少 running 计数: %s", r.Reason)
 	}
+}
+
+// 任务类型必须注册到分发器：ctx 已取消时应命中 executeKhunterReview 的守卫并返回 ctx.Err()，
+// 而不是落入 default 的"未知任务类型"。
+func TestExecuteTaskByTypeKhunterReviewDispatch(t *testing.T) {
+	a := NewCronTaskApi()
+	task := &models.CronTask{Name: "狩猎场复盘回填", TaskType: "khunter_review"}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := a.executeTaskByType(ctx, task)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+// 新任务类型必须出现在类型清单（前端下拉与任务创建依赖）。
+func TestGetTaskTypesIncludesKhunterReview(t *testing.T) {
+	for _, tt := range NewCronTaskApi().GetTaskTypes() {
+		if tt.A == "khunter_review" {
+			return
+		}
+	}
+	t.Fatal("khunter_review missing from GetTaskTypes")
 }

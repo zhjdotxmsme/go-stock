@@ -867,6 +867,22 @@ func (h *SystemHandler) InitCronTasks() {
 			logger.SugaredLogger.Info("已自动创建狩猎场每日流水线定时任务")
 		}
 	}
+	if !cronApi.ExistsByTaskType("khunter_review") {
+		task := &models.CronTask{
+			Name:        "狩猎场复盘回填",
+			CronExpr:    "0 15 9 * * *",
+			TaskType:    "khunter_review",
+			Enable:      true,
+			Status:      "active",
+			Description: "每日 09:15 回填狩猎记录 T+1/3/5 收益并对账 Kronos 预测命中（替代 daily_pick 自动复盘）",
+		}
+		err := cronApi.Create(task)
+		if err != nil {
+			logger.SugaredLogger.Errorf("自动创建狩猎场复盘回填任务失败：%v", err)
+		} else {
+			logger.SugaredLogger.Info("已自动创建狩猎场复盘回填定时任务")
+		}
+	}
 	if !cronApi.ExistsByTaskType("kline_sync") {
 		task := &models.CronTask{
 			Name:        "K线数据同步",
