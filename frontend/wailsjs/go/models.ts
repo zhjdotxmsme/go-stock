@@ -4949,6 +4949,10 @@ export namespace models {
 	    exitDate: string;
 	    exitPrice: number;
 	    exitReason: string;
+	    returnT1: number;
+	    return3d: number;
+	    return5d: number;
+	    reviewed: boolean;
 	    // Go type: time
 	    createdAt: any;
 	    // Go type: time
@@ -4977,6 +4981,10 @@ export namespace models {
 	        this.exitDate = source["exitDate"];
 	        this.exitPrice = source["exitPrice"];
 	        this.exitReason = source["exitReason"];
+	        this.returnT1 = source["returnT1"];
+	        this.return3d = source["return3d"];
+	        this.return5d = source["return5d"];
+	        this.reviewed = source["reviewed"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	    }
