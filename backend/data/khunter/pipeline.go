@@ -523,6 +523,7 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 	//    只在后台批量预测并落库明细，供推荐视图排序与展开。
 	//    结果按 (code, signal_date) 关联，不依赖 upsert 后的自增 ID。
 	if kcfg := LoadKronosFactorConfig(""); kcfg.Enable && len(observations) > 0 {
+		kcfg = AdjustedKronosWeight(context.Background(), kcfg)
 		go func(rows []models.KhunterObservation, byCode map[string]models.KhunterObservation, kc KronosFactorConfig) {
 			defer func() {
 				if r := recover(); r != nil {
