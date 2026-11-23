@@ -3,6 +3,7 @@ package khunter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"go-stock/backend/db"
@@ -365,4 +366,50 @@ func (r *Repo) SaveKronosPredictions(rows []models.KhunterKronosPrediction) erro
 		Columns:   []clause.Column{{Name: "code"}, {Name: "signal_date"}},
 		UpdateAll: true,
 	}).Create(&rows).Error
+}
+
+// HuntingNeedingReview 待回填狩猎记录：真实持仓（持仓中/已退出）、未复盘完、进入日在回看窗口内。
+// 历史待核（旧迁移记录，非真实持仓）显式排除，避免假样本污染统计。
+func (r *Repo) HuntingNeedingReview(cutoff string) ([]models.KhunterHunting, error) {
+	if db.Dao == nil {
+		return nil, fmt.Errorf("db not initialized")
+	}
+	var rows []models.KhunterHunting
+	err := db.Dao.
+		Where("status IN ? AND reviewed = ? AND enter_date >= ?",
+			[]string{HuntingStatusHolding, HuntingStatusExited}, false, cutoff).
+		Order("enter_date asc").
+		Find(&rows).Error
+	return rows, err
+}
+
+// SaveHuntingReview 保存回填后的狩猎记录。
+func (r *Repo) SaveHuntingReview(h *models.KhunterHunting) error {
+	if db.Dao == nil {
+		return fmt.Errorf("db not initialized")
+	}
+	return db.Dao.Save(h).Error
+}
+
+// PredictionsNeedingHit 待对账预测：有预测明细、未回写 Hit、信号日在回看窗口内。
+func (r *Repo) PredictionsNeedingHit(cutoff string) ([]models.KhunterKronosPrediction, error) {
+	if db.Dao == nil {
+		return nil, fmt.Errorf("db not initialized")
+	}
+	var rows []models.KhunterKronosPrediction
+	err := db.Dao.
+		Where("forecast_json <> '' AND hit = '' AND signal_date >= ?", cutoff).
+		Order("signal_date asc").
+		Find(&rows).Error
+	return rows, err
+}
+
+// SavePredictionHit 回写预测对账结果（hit/miss/flat）与期末实际涨幅。
+func (r *Repo) SavePredictionHit(id uint, hit string, actualPct float64) error {
+	if db.Dao == nil {
+		return fmt.Errorf("db not initialized")
+	}
+	return db.Dao.Model(&models.KhunterKronosPrediction{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{"hit": hit, "actual_pct": actualPct}).Error
 }
