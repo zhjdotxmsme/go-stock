@@ -11,22 +11,22 @@ import (
 )
 
 func TestKronosHorizonHit(t *testing.T) {
-	if got := kronosHorizonHit("up", 1.2); got != "hit" {
+	if got := KronosHorizonHit("up", 1.2); got != "hit" {
 		t.Fatalf("up vs +1.2: %s", got)
 	}
-	if got := kronosHorizonHit("up", -1.2); got != "miss" {
+	if got := KronosHorizonHit("up", -1.2); got != "miss" {
 		t.Fatalf("up vs -1.2: %s", got)
 	}
-	if got := kronosHorizonHit("down", -2); got != "hit" {
+	if got := KronosHorizonHit("down", -2); got != "hit" {
 		t.Fatalf("down vs -2: %s", got)
 	}
-	if got := kronosHorizonHit("up", 0.1); got != "" {
+	if got := KronosHorizonHit("up", 0.1); got != "" {
 		t.Fatalf("flat tape should stay out of the hit rate, got %q", got)
 	}
-	if got := kronosHorizonHit("flat", 0.1); got != "hit" {
+	if got := KronosHorizonHit("flat", 0.1); got != "hit" {
 		t.Fatalf("flat forecast on a flat tape: %s", got)
 	}
-	if got := kronosHorizonHit("flat", 2); got != "miss" {
+	if got := KronosHorizonHit("flat", 2); got != "miss" {
 		t.Fatalf("flat forecast on a rise: %s", got)
 	}
 	// 次日下跌、第 5 日上涨：旧逻辑会记 miss，现在按 5 日收益记 hit。

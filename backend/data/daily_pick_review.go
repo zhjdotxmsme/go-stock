@@ -65,10 +65,10 @@ func (r *DailyPickReview) RunDailyReview(ctx context.Context, reviewDate string,
 // reviewKlineBars 复盘取数根数：需覆盖 TradeDate 及其后 5 个交易日。
 const reviewKlineBars = 20
 
-// findBarAfter 在 K 线序列中定位 TradeDate 之后的下一根 K 线下标（即 T+1）。
+// FindBarAfter 在 K 线序列中定位 TradeDate 之后的下一根 K 线下标（即 T+1）。
 // Day 格式为 "YYYY-MM-DD ..."（或纯日期），按 ISO 前缀比较；找不到返回 -1。
 // 校验其前一根确实是 TradeDate（停牌等情形下容忍前一根早于 TradeDate）。
-func findBarAfter(klines []KLineData, tradeDate string) int {
+func FindBarAfter(klines []KLineData, tradeDate string) int {
 	for i := range klines {
 		day := klines[i].Day
 		if len(day) > 10 {
@@ -98,7 +98,7 @@ func (r *DailyPickReview) reviewOne(ctx context.Context, pick *models.DailyPick,
 	}
 	klines := *klineData
 
-	t1 := findBarAfter(klines, pick.TradeDate)
+	t1 := FindBarAfter(klines, pick.TradeDate)
 	if t1 <= 0 {
 		// t1==0 说明序列第一根就已晚于推荐日，推荐日基准不在窗口内（数据太旧）。
 		logger.SugaredLogger.Warnf("daily_review: kline window does not cover trade date %s for %s", pick.TradeDate, pick.StockCode)
@@ -167,7 +167,7 @@ func (r *DailyPickReview) backfillWindows(ctx context.Context) {
 			continue
 		}
 		klines := *klineData
-		t1 := findBarAfter(klines, p.TradeDate)
+		t1 := FindBarAfter(klines, p.TradeDate)
 		if t1 <= 0 {
 			continue
 		}

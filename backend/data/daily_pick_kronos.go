@@ -207,17 +207,17 @@ func (e *DailyPickEngine) kronosFactorStats(ctx context.Context) KronosFactorSta
 	return stats
 }
 
-// kronosHorizon 预测对照的交易日数。历史记录没有 predLen 时按默认 5 日。
-func kronosHorizon(predLen int) int {
+// KronosHorizon 预测对照的交易日数。历史记录没有 predLen 时按默认 5 日。
+func KronosHorizon(predLen int) int {
 	if predLen <= 0 {
 		return 5
 	}
 	return predLen
 }
 
-// kronosHorizonHit 用预测期末涨跌对照方向。未到期返回空字符串。
+// KronosHorizonHit 用预测期末涨跌对照方向。未到期返回空字符串。
 // 涨跌绝对值不超过 0.3% 视为平盘，不记入命中率。
-func kronosHorizonHit(direction string, horizonRet float64) string {
+func KronosHorizonHit(direction string, horizonRet float64) string {
 	const band = 0.3
 	if math.Abs(horizonRet) <= band || direction == "flat" {
 		if direction == "flat" && math.Abs(horizonRet) <= band {
@@ -251,12 +251,12 @@ func applyKronosHorizonHit(pick *models.DailyPick, klines []KLineData, t1 int, b
 		return false
 	}
 	want := ""
-	horizon := kronosHorizon(pick.KronosPredLen)
+	horizon := KronosHorizon(pick.KronosPredLen)
 	idx := t1 + horizon - 1
 	if idx >= 0 && idx < len(klines) {
 		closePx := parseFloat64(klines[idx].Close)
 		if closePx > 0 {
-			want = kronosHorizonHit(pick.KronosDirection, (closePx/base-1)*100)
+			want = KronosHorizonHit(pick.KronosDirection, (closePx/base-1)*100)
 		}
 	}
 	if pick.KronosHit == want {
@@ -271,7 +271,7 @@ func judgeKronosPick(p models.DailyPick) (hit string, actual float64, ok bool) {
 	if p.KronosDirection == "" {
 		return "", 0, false
 	}
-	horizon := kronosHorizon(p.KronosPredLen)
+	horizon := KronosHorizon(p.KronosPredLen)
 	switch {
 	case horizon <= 1:
 		actual = p.NextReturnT1
@@ -286,7 +286,7 @@ func judgeKronosPick(p models.DailyPick) (hit string, actual float64, ok bool) {
 	if !ok {
 		return "", 0, false
 	}
-	hit = kronosHorizonHit(p.KronosDirection, actual)
+	hit = KronosHorizonHit(p.KronosDirection, actual)
 	if hit == "" {
 		return "", actual, false
 	}
