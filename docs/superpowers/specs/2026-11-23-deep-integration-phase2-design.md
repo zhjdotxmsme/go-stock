@@ -65,23 +65,26 @@
 - 迁移后 khunter 侧调权与 daily_pick 侧调权**并存双跑一个交易日周期**，
   对比两口径系数差异在容忍范围内，再执行 2.4 删除。
 
-### 2.4 daily_pick 退役
+### 2.4 daily_pick 退役（范围修订 2026-11-23：只拆自动化，引擎保留）
 
-删除清单：
-- `app_lifecycle.go:258` 启动自动选股；
-- `DailyPickHandler` 及其 Wails 绑定、`AnalysisHandler` 内的 daily_pick 触发点
-  （`analysis_handler.go:87`）；
-- DailyPick 引擎、`daily_pick_kronos.go` 因子、`daily_pick_weighting.go` 调权、
-  `daily_pick_review.go` 复盘（逻辑已分别迁移/退役）；
-- `daily_picks` 表的写入路径全部移除。
+**删除清单（本阶段）**：
+- `app_lifecycle.go` 两个 daily_pick 定时任务（15:30 自动选股、09:15 自动复盘——
+  复盘职责由 `khunter_review` 取代）；
+- daily_pick 的"无人值守自动写入"路径（若有其他 cron/启动触发点一并移除）。
 
-保留：
-- `daily_picks` 表数据（历史复盘与统计可查，只读）；
-- `DailyPick` 模型定义与只读查询（统计接口若存在则保留只读）。
+**保留（显式降级为手动研究工具）**：
+- DailyPick 引擎、`DailyPickHandler`、SelectStock.vue 手动选股链路、`daily_picks` 表写入——
+  选股工作台的选股功能依赖它们（`SelectStock.vue` ← `ScreeningWorkbench.vue`，
+  是分析中心活 Tab）；
+- 它们不再承担调权/因子统计数据源职责（2.2/2.3 已切 khunter），
+  仅作为用户手动选股工具存在。
+
+**并入阶段 4**：SelectStock 迁移到统一引擎后，DailyPick 引擎与 `daily_picks`
+表写入的彻底删除随引擎统一完成。
 
 **时序约束（硬）**：2.1-2.3 部署并跨至少一个完整交易日周期验证 cron 实跑
-（khunter_review 09:15 回填正确、调权系数双跑对比通过）之后，方可执行 2.4 删除。
-删除是收紧操作，不回滚假设。
+（khunter_review 09:15 回填正确、调权系数生效且回放对照 DIFF 0）之后，
+方可执行 2.4 删除自动化。删除是收紧操作，不回滚假设。
 
 ### 2.5 验证
 
