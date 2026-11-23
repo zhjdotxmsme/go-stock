@@ -1821,7 +1821,7 @@ git commit -m "feat(analysis): unified analysis center shell with recommend view
 **Files:**
 - Modify: 无（验证任务）
 
-- [ ] **Step 1: 后端全量回归**
+- [x] **Step 1: 后端全量回归**（2026-11-23 验证：build/vet ✓；khunter/handler/agent ✓；backend/data 确定性用例全绿，11 个存量 live 网络用例环境性失败——东财 API EOF×7、钉钉无配置×1、 InvestCalendar×1、爬虫 chromedp 挂起×3，文件均为 6-8 月存量未动，与本合并无关）
 
 ```bash
 PATH="/d/Go/bin:$PATH" go build ./...
@@ -1831,7 +1831,7 @@ PATH="/d/Go/bin:$PATH" go test ./backend/data/khunter/ ./backend/data/ ./backend
 
 Expected: 全部 ok。（`go test ./backend/data/...` 会因网络用例超时，用上面的定向包组合。）
 
-- [ ] **Step 2: 前端构建**
+- [x] **Step 2: 前端构建**（2026-11-23 验证：✓ built in 4m14s）
 
 ```bash
 cd frontend && node node_modules/vite/bin/vite.js build 2>&1 | tail -2
@@ -1839,7 +1839,7 @@ cd frontend && node node_modules/vite/bin/vite.js build 2>&1 | tail -2
 
 Expected: `✓ built`。
 
-- [ ] **Step 3: 回放基线（合并前后同库同参，可证伪）**
+- [x] **Step 3: 回放基线（合并前后同库同参，可证伪）**（2026-11-23 验证：27b3ae20 与 HEAD 两二进制同库同参 → DIFF COUNT 0；且与存档 five-cases-after-merge.json 逐字节一致）
 
 **先建立基线**，再与合并后对照——否则默认 `enable:false` 时"评分不变"是必然结果，什么都证明不了：
 
@@ -1881,7 +1881,7 @@ sys.exit(1 if diff else 0)
 
 Expected: `DIFF COUNT 0`，退出码 0。**任何差异都是回归**，必须查明后再继续（不允许"允许污染差异"式豁免）。
 
-- [ ] **Step 4: 因子开启后的名单不变性（证明因子未侵入入选项）**
+- [x] **Step 4: 因子开启后的名单不变性（证明因子未侵入入选项）**（2026-11-23 验证：enable:true + 服务离线降级 → 与基线 DIFF COUNT 0，信号数/结局计数一致；配置已恢复 enable:false）
 
 ```bash
 mkdir -p /tmp/kc && cp config/khunter_kronos.json /tmp/kc/ 2>/dev/null || true
@@ -1911,7 +1911,7 @@ Expected: 完全一致（因子不参与评分与入选）。评分字段允许�
 5. 推荐视图：有数据或明确空态；Kronos 未开启时徽标 `disabled`；开启后 `online`/`loading`/`offline` 均能显示；
 6. 点"AI预测"：未开启 → 立即报错且停止轮询；开启但服务离线 → 任务 `failed` 有原因、可再次点击重试（新任务 ID）。
 
-- [ ] **Step 6: 收尾提交（如上述步骤有代码修正）**
+- [x] **Step 6: 收尾提交（如上述步骤有代码修正）**（2026-11-23：验证全程零代码修正，无需提交；临时 worktree/比对脚本已清理）
 
 ```bash
 git add -A && git commit -m "chore(analysis): e2e verification fixes" # 仅当有修正时
