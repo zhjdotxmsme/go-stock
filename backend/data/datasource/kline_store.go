@@ -422,6 +422,8 @@ func NormalizeKLineVolume(source string, raw int64) (int64, string) {
 	switch source {
 	case "eastmoney_kline":
 		return raw * 100, "share"
+	case "tencent_kline":
+		return raw * 100, "share"
 	case "mootdx_kline", "freestockdb", "seed":
 		return raw, "share"
 	default:

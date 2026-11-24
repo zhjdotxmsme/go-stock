@@ -99,13 +99,23 @@ func parseTencentKLineResponse(body []byte, code, period, tencentCode string) (*
 		if !ok || len(vv) < 6 {
 			continue
 		}
+		// 真实接口 volume 是带小数点的手数字符串（"56976.00"），ParseInt 会整体失败成 0；
+		// 成交额在数组第 8 位（万元）。两者都必须解析，否则反降级守卫会拒绝整个同步块。
+		vol, volUnit := datasource.NormalizeKLineVolume("tencent_kline", int64(parseFloat64(convertor.ToString(vv[5]))))
 		bar := datasource.KLineBar{
-			Time:   parseKLineTime(convertor.ToString(vv[0])),
-			Open:   parseFloat64(convertor.ToString(vv[1])),
-			Close:  parseFloat64(convertor.ToString(vv[2])),
-			High:   parseFloat64(convertor.ToString(vv[3])),
-			Low:    parseFloat64(convertor.ToString(vv[4])),
-			Volume: parseInt64(convertor.ToString(vv[5])),
+			Time:       parseKLineTime(convertor.ToString(vv[0])),
+			Open:       parseFloat64(convertor.ToString(vv[1])),
+			Close:      parseFloat64(convertor.ToString(vv[2])),
+			High:       parseFloat64(convertor.ToString(vv[3])),
+			Low:        parseFloat64(convertor.ToString(vv[4])),
+			Volume:     vol,
+			VolumeUnit: volUnit,
+		}
+		if len(vv) > 8 {
+			if amt := parseFloat64(convertor.ToString(vv[8])); amt > 0 {
+				bar.Amount = amt * 10000 // 万元 → 元
+				bar.AmountUnit = "CNY"
+			}
 		}
 		if bar.Time.IsZero() {
 			continue

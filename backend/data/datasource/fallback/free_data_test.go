@@ -68,7 +68,33 @@ func TestParseTencentKLineResponse(t *testing.T) {
 	assert.InDelta(t, 1710.00, bar.Close, 0.01)
 	assert.InDelta(t, 1720.00, bar.High, 0.01)
 	assert.InDelta(t, 1690.00, bar.Low, 0.01)
-	assert.Equal(t, int64(10000), bar.Volume)
+	assert.Equal(t, int64(1000000), bar.Volume) // 10000 手 → 股
+	assert.Equal(t, "share", bar.VolumeUnit)
+}
+
+func TestParseTencentKLineResponseRealShape(t *testing.T) {
+	// 真实接口形态：volume 是带小数点的手数字符串（"56976.00"），
+	// 成交额在数组第 8 位（万元）。旧实现 ParseInt 丢 volume、不读 amount，
+	// 导致同步链路被反降级守卫整块拒绝（issue: 数据同步一直失败）。
+	body := []byte(`{
+		"code": 0,
+		"data": {
+			"sh600519": {
+				"qfqday": [
+					["2026-11-23", "1475.35", "1439.00", "1478.00", "1428.00", "56976.00", {}, "0.46", "822383.90", ""]
+				]
+			}
+		}
+	}`)
+	kline, err := parseTencentKLineResponse(body, "600519", "101", "sh600519")
+	assert.NoError(t, err)
+	assert.Len(t, kline.Bars, 1)
+
+	bar := kline.Bars[0]
+	assert.Equal(t, int64(5697600), bar.Volume)   // 56976 手 → 股
+	assert.Equal(t, "share", bar.VolumeUnit)
+	assert.InDelta(t, 822383.90*10000, bar.Amount, 0.01) // 万元 → 元
+	assert.Equal(t, "CNY", bar.AmountUnit)
 }
 
 func TestParseTencentKLineResponseFallbackDay(t *testing.T) {

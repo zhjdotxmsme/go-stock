@@ -79,8 +79,8 @@ func TestBarsFromKLineDataFillsUnitsFromSource(t *testing.T) {
 		t.Fatalf("未声明单位的东财数据应换算一次: got=(%d,%s)", em[0].Volume, em[0].VolumeUnit)
 	}
 	tc := datasource.BarsFromKLineData("sh600000", "101", "tencent_kline", true, raw)
-	if tc[0].Volume != 130 || tc[0].VolumeUnit != "unknown" {
-		t.Fatalf("未知来源不得换算: got=(%d,%s)", tc[0].Volume, tc[0].VolumeUnit)
+	if tc[0].Volume != 13000 || tc[0].VolumeUnit != "share" {
+		t.Fatalf("腾讯手数应换算为股: got=(%d,%s)", tc[0].Volume, tc[0].VolumeUnit)
 	}
 }
 
