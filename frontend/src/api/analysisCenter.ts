@@ -9,8 +9,12 @@ import {
   GetForecast,
   SubmitPredictJob,
   GetPredictJob,
+  RunPipeline,
+  GetPipelineStatus,
+  GetPipelineResult,
+  GetPipelineDetail,
 } from '../../wailsjs/go/handler/AnalysisCenterHandler'
-import type { khunter } from '../../wailsjs/go/models'
+import type { khunter, analysis } from '../../wailsjs/go/models'
 import type { RecommendRow, AnalysisCenterStatus } from '../components/analysis/recommend'
 
 export async function fetchRecommendations(tradeDate = '', topN = 30): Promise<RecommendRow[]> {
@@ -33,4 +37,22 @@ export async function submitPredictJob(code: string, predLen = 5, asOfDate = '')
 
 export async function fetchPredictJob(id: string): Promise<khunter.PredictJob> {
   return GetPredictJob(id)
+}
+
+// ========== 智能流水线 ==========
+
+export async function runPipeline(tradeDate: string): Promise<void> {
+  return RunPipeline(tradeDate)
+}
+
+export async function fetchPipelineStatus(): Promise<analysis.PipelineStatus> {
+  return GetPipelineStatus()
+}
+
+export async function fetchPipelineResult(tradeDate: string, topN = 30): Promise<analysis.PipelineResult> {
+  return GetPipelineResult(tradeDate, topN)
+}
+
+export async function fetchPipelineDetail(code: string, signalDate: string): Promise<analysis.PipelineDetail> {
+  return GetPipelineDetail(code, signalDate)
 }

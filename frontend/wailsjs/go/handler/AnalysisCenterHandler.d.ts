@@ -9,6 +9,14 @@ export function GetForecast(arg1:string,arg2:string):Promise<string>;
 
 export function GetPredictJob(arg1:string):Promise<khunter.PredictJob>;
 
+export function GetPipelineDetail(arg1:string,arg2:string):Promise<analysis.PipelineDetail>;
+
+export function GetPipelineResult(arg1:string,arg2:number):Promise<analysis.PipelineResult>;
+
+export function GetPipelineStatus():Promise<analysis.PipelineStatus>;
+
+export function RunPipeline(arg1:string):Promise<void>;
+
 export function GetRecommendations(arg1:string,arg2:number):Promise<Array<analysis.RecommendRow>>;
 
 export function SubmitPredictJob(arg1:string,arg2:number,arg3:string):Promise<khunter.PredictJob>;

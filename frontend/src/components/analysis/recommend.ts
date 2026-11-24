@@ -1,6 +1,6 @@
 // 推荐视图纯函数：与服务端口径一致（后端 round2），便于单测。
 
-export const ANALYSIS_TABS = ['recommend', 'khunter', 'workbench', 'kline'] as const
+export const ANALYSIS_TABS = ['recommend', 'khunter', 'workbench', 'kline', 'pipeline'] as const
 export type AnalysisTab = (typeof ANALYSIS_TABS)[number]
 
 /** 混分：w<=0 或缺失时保持原分；保留 2 位小数（与 Go round2 一致）。 */
@@ -10,7 +10,7 @@ export function blendedScore(score: number, factorScore: number, weight: number)
 }
 
 export function tabFromQuery(v: unknown): AnalysisTab {
-  return ANALYSIS_TABS.includes(v as AnalysisTab) ? (v as AnalysisTab) : 'recommend'
+  return ANALYSIS_TABS.includes(v as AnalysisTab) ? (v as AnalysisTab) : 'pipeline'
 }
 
 export interface RecommendRow {

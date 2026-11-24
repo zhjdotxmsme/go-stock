@@ -44,6 +44,8 @@ const props = defineProps({
   longTakeProfitPrice: { type: [String, Number], default: undefined },
   /** 成本价 */
   costPrice: { type: [String, Number], default: undefined },
+  /** 隐藏顶部工具栏（周期/AI预测/多单等），用于流水线详情等紧凑场景 */
+  hideToolbar: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
@@ -992,7 +994,7 @@ watch(
         @help="showHelpModal = true"
       />
       <div class="lw-kline-main">
-        <NFlex :size="6" wrap style="row-gap: 4px; align-items: center">
+        <NFlex v-if="!hideToolbar" :size="6" wrap style="row-gap: 4px; align-items: center">
           <NText depth="3" style="font-size: 12px; margin-right: 2px">周期</NText>
           <NButton
             v-for="it in INTERVALS"

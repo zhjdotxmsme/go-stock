@@ -72,6 +72,249 @@ export namespace analysis {
 	        this.degradedReason = source["degradedReason"];
 	    }
 	}
+	
+	export class PipelineStep {
+	    key: string;
+	    label: string;
+	    description: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PipelineStep(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.label = source["label"];
+	        this.description = source["description"];
+	    }
+	}
+	
+	export class PipelineStatus {
+	    running: boolean;
+	    step: string;
+	    message: string;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PipelineStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.running = source["running"];
+	        this.step = source["step"];
+	        this.message = source["message"];
+	        this.error = source["error"];
+	    }
+	}
+	
+	export class PipelineKlineBar {
+	    date: string;
+	    open: number;
+	    high: number;
+	    low: number;
+	    close: number;
+	    volume: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PipelineKlineBar(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.open = source["open"];
+	        this.high = source["high"];
+	        this.low = source["low"];
+	        this.close = source["close"];
+	        this.volume = source["volume"];
+	    }
+	}
+	
+	export class PipelineForecast {
+	    direction: string;
+	    changePct: number;
+	    predEnd: number;
+	    predHigh: number;
+	    predLow: number;
+	    confidence: number;
+	    predLen: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PipelineForecast(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.direction = source["direction"];
+	        this.changePct = source["changePct"];
+	        this.predEnd = source["predEnd"];
+	        this.predHigh = source["predHigh"];
+	        this.predLow = source["predLow"];
+	        this.confidence = source["confidence"];
+	        this.predLen = source["predLen"];
+	    }
+	}
+	
+	export class PipelineTechDetail {
+	    trend: string;
+	    volume: string;
+	    position: string;
+	    momentum: string;
+	    sections: Array<{title: string, text: string}>;
+	
+	    static createFrom(source: any = {}) {
+	        return new PipelineTechDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.trend = source["trend"];
+	        this.volume = source["volume"];
+	        this.position = source["position"];
+	        this.momentum = source["momentum"];
+	        this.sections = source["sections"];
+	    }
+	}
+	
+	export class PipelineFactorDetail {
+	    factorScore: number;
+	    weight: number;
+	    contribution: number;
+	    rank: number;
+	    total: number;
+	    degradedReason?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PipelineFactorDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.factorScore = source["factorScore"];
+	        this.weight = source["weight"];
+	        this.contribution = source["contribution"];
+	        this.rank = source["rank"];
+	        this.total = source["total"];
+	        this.degradedReason = source["degradedReason"];
+	    }
+	}
+	
+	export class PipelineAIDetail {
+	    forecast?: PipelineForecast;
+	    factorScore: number;
+	    degraded: boolean;
+	    degradedReason?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PipelineAIDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.forecast = this.convertValues(source["forecast"], PipelineForecast);
+	        this.factorScore = source["factorScore"];
+	        this.degraded = source["degraded"];
+	        this.degradedReason = source["degradedReason"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class PipelineDetail {
+	    code: string;
+	    name: string;
+	    tech?: PipelineTechDetail;
+	    factor?: PipelineFactorDetail;
+	    ai?: PipelineAIDetail;
+	    klineBars?: PipelineKlineBar[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PipelineDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.name = source["name"];
+	        this.tech = this.convertValues(source["tech"], PipelineTechDetail);
+	        this.factor = this.convertValues(source["factor"], PipelineFactorDetail);
+	        this.ai = this.convertValues(source["ai"], PipelineAIDetail);
+	        this.klineBars = this.convertValues(source["klineBars"], PipelineKlineBar);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class PipelineResult {
+	    tradeDate: string;
+	    steps: PipelineStep[];
+	    rows: RecommendRow[];
+	    status: PipelineStatus;
+	
+	    static createFrom(source: any = {}) {
+	        return new PipelineResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tradeDate = source["tradeDate"];
+	        this.steps = this.convertValues(source["steps"], PipelineStep);
+	        this.rows = this.convertValues(source["rows"], RecommendRow);
+	        this.status = this.convertValues(source["status"], PipelineStatus);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 

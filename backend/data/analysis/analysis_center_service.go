@@ -10,18 +10,22 @@ package analysis
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"sort"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
 	"go-stock/backend/data"
+	"go-stock/backend/data/datasource"
 	"go-stock/backend/data/khunter"
 	"go-stock/backend/db"
 	"go-stock/backend/models"
+	"go-stock/backend/util/timeutil"
 )
 
 type RecommendRow struct {
@@ -45,6 +49,90 @@ type AnalysisCenterStatus struct {
 	LastRun             *models.KhunterRunSummary `json:"lastRun,omitempty"`
 	PendingObservations int                       `json:"pendingObservations"`
 	FactorEnabled       bool                      `json:"factorEnabled"`
+}
+
+// PipelineStep 流水线步骤定义
+type PipelineStep struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+}
+
+// PipelineStatus 流水线运行状态
+type PipelineStatus struct {
+	Running bool   `json:"running"`
+	Step    string `json:"step"`
+	Message string `json:"message"`
+	Error   string `json:"error"`
+}
+
+// PipelineKlineBar K线数据点
+type PipelineKlineBar struct {
+	Date   string  `json:"date"`
+	Open   float64 `json:"open"`
+	High   float64 `json:"high"`
+	Low    float64 `json:"low"`
+	Close  float64 `json:"close"`
+	Volume int64   `json:"volume"`
+}
+
+// PipelineForecast AI预测摘要
+type PipelineForecast struct {
+	Direction  string  `json:"direction"`
+	ChangePct  float64 `json:"changePct"`
+	PredEnd    float64 `json:"predEnd"`
+	PredHigh   float64 `json:"predHigh"`
+	PredLow    float64 `json:"predLow"`
+	Confidence float64 `json:"confidence"`
+	PredLen    int     `json:"predLen"`
+}
+
+// PipelineTechDetail 技术面详情
+type PipelineTechDetail struct {
+	Trend    string `json:"trend"`
+	Volume   string `json:"volume"`
+	Position string `json:"position"`
+	Momentum string `json:"momentum"`
+	Sections []struct {
+		Title string `json:"title"`
+		Text  string `json:"text"`
+	} `json:"sections"`
+}
+
+// PipelineFactorDetail 因子面详情
+type PipelineFactorDetail struct {
+	FactorScore    float64 `json:"factorScore"`
+	Weight         float64 `json:"weight"`
+	Contribution   float64 `json:"contribution"`
+	Rank           int     `json:"rank"`
+	Total          int     `json:"total"`
+	DegradedReason string  `json:"degradedReason,omitempty"`
+}
+
+// PipelineAIDetail AI面详情
+type PipelineAIDetail struct {
+	Forecast      *PipelineForecast `json:"forecast,omitempty"`
+	FactorScore   float64           `json:"factorScore"`
+	Degraded      bool              `json:"degraded"`
+	DegradedReason string           `json:"degradedReason,omitempty"`
+}
+
+// PipelineDetail 行内展开详情
+type PipelineDetail struct {
+	Code     string                `json:"code"`
+	Name     string                `json:"name"`
+	Tech     *PipelineTechDetail   `json:"tech,omitempty"`
+	Factor   *PipelineFactorDetail `json:"factor,omitempty"`
+	AI       *PipelineAIDetail     `json:"ai,omitempty"`
+	KlineBars []PipelineKlineBar   `json:"klineBars,omitempty"`
+}
+
+// PipelineResult 流水线完整结果
+type PipelineResult struct {
+	TradeDate string         `json:"tradeDate"`
+	Steps     []PipelineStep `json:"steps"`
+	Rows      []RecommendRow `json:"rows"`
+	Status    PipelineStatus `json:"status"`
 }
 
 type AnalysisCenterService struct {
@@ -201,3 +289,232 @@ func latestObservationDate() (string, error) {
 
 // round2 与前端 blendedScore 展示同口径（两位小数）。
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
+
+// ===== 智能流水线 =====
+
+var pipelineSteps = []PipelineStep{
+	{Key: "data", Label: "数据获取", Description: "获取行情数据"},
+	{Key: "scan", Label: "候选筛选", Description: "策略扫描与候选筛选"},
+	{Key: "kronos", Label: "Kronos评分", Description: "Kronos 因子评分"},
+	{Key: "predict", Label: "AI预测", Description: "AI 预测与排序"},
+}
+
+// GetPipelineSteps 返回流水线步骤定义
+func (s *AnalysisCenterService) GetPipelineSteps() []PipelineStep {
+	return pipelineSteps
+}
+
+// RunPipeline 触发流水线（异步）：调用 khunter 流水线并等待完成
+func (s *AnalysisCenterService) RunPipeline(tradeDate string) error {
+	if db.Dao == nil {
+		return errNoDB
+	}
+	// 直接调用 khunter 流水线（同步等待完成）
+	_, err := khunter.RunPipeline(context.Background(), tradeDate)
+	return err
+}
+
+// GetPipelineStatus 查询流水线状态（通过 khunter 运行汇总推断）
+func (s *AnalysisCenterService) GetPipelineStatus() (PipelineStatus, error) {
+	if db.Dao == nil {
+		return PipelineStatus{}, errNoDB
+	}
+	var sum models.KhunterRunSummary
+	err := db.Dao.Order("trade_date DESC").First(&sum).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return PipelineStatus{Running: false, Step: "", Message: "尚无运行记录"}, nil
+		}
+		return PipelineStatus{}, err
+	}
+	status := PipelineStatus{
+		Running: false,
+		Step:    "done",
+		Message: fmt.Sprintf("最近运行: %s", sum.TradeDate),
+	}
+	if sum.Status == "failed" {
+		status.Error = sum.Message
+	}
+	return status, nil
+}
+
+// GetPipelineResult 获取流水线结果（推荐列表 + 状态）
+func (s *AnalysisCenterService) GetPipelineResult(tradeDate string, topN int) (PipelineResult, error) {
+	if db.Dao == nil {
+		return PipelineResult{}, errNoDB
+	}
+	rows, err := s.GetRecommendations(tradeDate, topN)
+	if err != nil {
+		return PipelineResult{}, err
+	}
+	status, err := s.GetPipelineStatus()
+	if err != nil {
+		return PipelineResult{}, err
+	}
+	td := tradeDate
+	if td == "" {
+		td = latestObservationDateOrEmpty()
+	}
+	return PipelineResult{
+		TradeDate: td,
+		Steps:     pipelineSteps,
+		Rows:      rows,
+		Status:    status,
+	}, nil
+}
+
+// GetPipelineDetail 获取单只股票详情（懒加载）
+func (s *AnalysisCenterService) GetPipelineDetail(code, signalDate string) (PipelineDetail, error) {
+	if db.Dao == nil {
+		return PipelineDetail{}, errNoDB
+	}
+	detail := PipelineDetail{Code: code}
+	
+	// 1. 技术画像
+	techProfile, err := s.getTechProfile(code)
+	if err == nil && techProfile != nil {
+		detail.Tech = techProfile
+	}
+	
+	// 2. Kronos 因子
+	var pred models.KhunterKronosPrediction
+	err = db.Dao.Where("code = ? AND signal_date = ?", code, signalDate).First(&pred).Error
+	if err == nil {
+		contribution := round2(pred.FactorScore * pred.Weight)
+		detail.Factor = &PipelineFactorDetail{
+			FactorScore:    pred.FactorScore,
+			Weight:         pred.Weight,
+			Contribution:   contribution,
+			DegradedReason: pred.DegradedReason,
+		}
+		// 解析预测 JSON
+		if pred.ForecastJSON != "" {
+			var forecast data.KronosPrediction
+			if json.Unmarshal([]byte(pred.ForecastJSON), &forecast) == nil && forecast.Summary != nil {
+				detail.AI = &PipelineAIDetail{
+					Forecast: &PipelineForecast{
+						Direction:  forecast.Summary.Direction,
+						ChangePct:  forecast.Summary.ChangePct,
+						PredEnd:    forecast.Summary.PredEnd,
+						PredHigh:   forecast.Summary.PredHigh,
+						PredLow:    forecast.Summary.PredLow,
+						Confidence: forecast.Summary.Confidence,
+						PredLen:    forecast.Summary.PredLen,
+					},
+					FactorScore: pred.FactorScore,
+				}
+			}
+		}
+		if detail.AI == nil {
+			detail.AI = &PipelineAIDetail{
+				FactorScore:    pred.FactorScore,
+				Degraded:       pred.DegradedReason != "",
+				DegradedReason: pred.DegradedReason,
+			}
+		}
+	}
+	
+	// 3. K线数据（近30天）
+	bars, err := s.getRecentKlineBars(code, 30)
+	if err == nil {
+		detail.KlineBars = bars
+	}
+	
+	// 4. 名称
+	var obs models.KhunterObservation
+	if err := db.Dao.Where("code = ? AND signal_date = ?", code, signalDate).First(&obs).Error; err == nil {
+		detail.Name = obs.Name
+	}
+	
+	return detail, nil
+}
+
+// getTechProfile 获取技术画像（复用 khunter.BuildTechProfile）
+func (s *AnalysisCenterService) getTechProfile(code string) (*PipelineTechDetail, error) {
+	// 查询近 60 根日K
+	store := datasource.NewKLineStore()
+	ctx := context.Background()
+	endDate := timeutil.TodayStr()
+	startDate := timeutil.DateStr(time.Now().AddDate(0, -3, 0))
+	
+	bars, err := store.QueryKLinesPreferAdjusted(ctx, code, "day", startDate, endDate)
+	if err != nil || len(bars) == 0 {
+		return nil, err
+	}
+	
+	profile := khunter.BuildTechProfile(bars)
+	if profile == nil {
+		return nil, nil
+	}
+	
+	// 从 map[string]any 中提取字段
+	trend, _ := profile["trend"].(string)
+	volume, _ := profile["volume"].(string)
+	position, _ := profile["position"].(string)
+	momentum, _ := profile["momentum"].(string)
+	
+	// 转换 sections
+	sections := make([]struct {
+		Title string `json:"title"`
+		Text  string `json:"text"`
+	}, 0)
+	if secs, ok := profile["sections"].([]models.TechSection); ok {
+		for _, sec := range secs {
+			sections = append(sections, struct {
+				Title string `json:"title"`
+				Text  string `json:"text"`
+			}{
+				Title: sec.Title,
+				Text:  sec.Text,
+			})
+		}
+	}
+	
+	return &PipelineTechDetail{
+		Trend:    trend,
+		Volume:   volume,
+		Position: position,
+		Momentum: momentum,
+		Sections: sections,
+	}, nil
+}
+
+// getRecentKlineBars 获取最近 N 根日K
+func (s *AnalysisCenterService) getRecentKlineBars(code string, limit int) ([]PipelineKlineBar, error) {
+	store := datasource.NewKLineStore()
+	ctx := context.Background()
+	endDate := timeutil.TodayStr()
+	startDate := timeutil.DateStr(time.Now().AddDate(0, -6, 0))
+	
+	bars, err := store.QueryKLinesPreferAdjusted(ctx, code, "day", startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	
+	// 取最后 limit 根
+	if len(bars) > limit {
+		bars = bars[len(bars)-limit:]
+	}
+	
+	result := make([]PipelineKlineBar, 0, len(bars))
+	for _, b := range bars {
+		result = append(result, PipelineKlineBar{
+			Date:   b.TradeDate,
+			Open:   b.Open,
+			High:   b.High,
+			Low:    b.Low,
+			Close:  b.Close,
+			Volume: b.Volume,
+		})
+	}
+	return result, nil
+}
+
+// latestObservationDateOrEmpty 最新观察日期（空串兜底）
+func latestObservationDateOrEmpty() string {
+	d, err := latestObservationDate()
+	if err != nil {
+		return ""
+	}
+	return d
+}

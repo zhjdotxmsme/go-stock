@@ -14,6 +14,22 @@ export function GetPredictJob(arg1) {
   return window['go']['handler']['AnalysisCenterHandler']['GetPredictJob'](arg1);
 }
 
+export function GetPipelineDetail(arg1, arg2) {
+  return window['go']['handler']['AnalysisCenterHandler']['GetPipelineDetail'](arg1, arg2);
+}
+
+export function GetPipelineResult(arg1, arg2) {
+  return window['go']['handler']['AnalysisCenterHandler']['GetPipelineResult'](arg1, arg2);
+}
+
+export function GetPipelineStatus() {
+  return window['go']['handler']['AnalysisCenterHandler']['GetPipelineStatus']();
+}
+
+export function RunPipeline(arg1) {
+  return window['go']['handler']['AnalysisCenterHandler']['RunPipeline'](arg1);
+}
+
 export function GetRecommendations(arg1, arg2) {
   return window['go']['handler']['AnalysisCenterHandler']['GetRecommendations'](arg1, arg2);
 }

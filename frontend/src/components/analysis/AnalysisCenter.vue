@@ -1,5 +1,8 @@
 <template>
   <n-tabs v-model:value="tab" type="line" animated display-directive="show" @update:value="syncQuery">
+    <n-tab-pane name="pipeline" tab="智能流水线">
+      <SmartPipeline />
+    </n-tab-pane>
     <n-tab-pane name="recommend" tab="推荐">
       <RecommendView @open-research-recommends="openResearchRecommends" />
     </n-tab-pane>
@@ -18,6 +21,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import SmartPipeline from './SmartPipeline.vue'
 import RecommendView from './RecommendView.vue'
 import KhunterPanel from '../KhunterPanel.vue'
 import ScreeningWorkbench from '../ScreeningWorkbench.vue'

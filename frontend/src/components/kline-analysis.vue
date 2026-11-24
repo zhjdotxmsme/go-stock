@@ -282,6 +282,8 @@ watch(() => route.query.code, (newCode) => {
 const props = defineProps({
   // 嵌入分析中心 Tab 壳时为 true：返回交给父容器处理，不跳首页
   embedded: { type: Boolean, default: false },
+  // 隐藏 K 线工具栏（周期/AI预测/多单等），用于流水线详情等紧凑场景
+  hideToolbar: { type: Boolean, default: false },
 })
 const emit = defineEmits(['back'])
 
@@ -356,6 +358,7 @@ async function loadTechAnalysis() {
       :darkTheme="darkTheme"
       :chartHeight="chartHeight"
       :realtimeIntervalMs="60000"
+      :hideToolbar="hideToolbar"
     />
 
     <div class="kline-search-bar">
