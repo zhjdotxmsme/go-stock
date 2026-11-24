@@ -123,7 +123,7 @@
         <n-card size="small" title="K线技术图" class="kline-card">
           <KlineAnalysis
             v-if="detail.code"
-            :code="toEastMoneyCode(detail.code)"
+            :code="detail.code"
             :stockName="detail.name"
             :embedded="true"
             :hideToolbar="true"
@@ -166,14 +166,7 @@ const forecastDirectionText = computed(() => {
   return detail.value.ai.forecast.direction === 'up' ? '上涨' : '下跌'
 })
 
-function toEastMoneyCode(code: string): string {
-  if (!code) return ''
-  const lower = code.toLowerCase()
-  if (lower.startsWith('sh')) return lower.slice(2) + '.SH'
-  if (lower.startsWith('sz')) return lower.slice(2) + '.SZ'
-  if (lower.startsWith('bj')) return lower.slice(2) + '.BJ'
-  return code
-}
+// 代码直接传内部格式（sh600519 等），格式转换由 kline-analysis 内部完成
 
 async function loadDetail() {
   if (!props.code || !props.visible) return

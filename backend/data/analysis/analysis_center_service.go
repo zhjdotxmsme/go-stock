@@ -16,6 +16,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"gorm.io/gorm"
@@ -304,20 +305,38 @@ func (s *AnalysisCenterService) GetPipelineSteps() []PipelineStep {
 	return pipelineSteps
 }
 
-// RunPipeline 触发流水线（异步）：调用 khunter 流水线并等待完成
+var pipelineBusy atomic.Bool
+
+// RunPipeline 触发流水线（异步）：立即返回，进度经 GetPipelineStatus 轮询。
+// 后台执行 khunter 流水线（含第 8 步 Kronos 批量预测异步旁路），运行结果
+// 落 KhunterRunSummary；失败信息随汇总透出，前端据此展示。
 func (s *AnalysisCenterService) RunPipeline(tradeDate string) error {
 	if db.Dao == nil {
 		return errNoDB
 	}
-	// 直接调用 khunter 流水线（同步等待完成）
-	_, err := khunter.RunPipeline(context.Background(), tradeDate)
-	return err
+	if !pipelineBusy.CompareAndSwap(false, true) {
+		return errors.New("流水线正在运行，请等待当前运行结束")
+	}
+	go func() {
+		defer pipelineBusy.Store(false)
+		// 失败已由 khunter 落 failed 运行汇总并打日志，错误经 GetPipelineStatus 透出
+		_, _ = khunter.RunPipeline(context.Background(), tradeDate)
+	}()
+	return nil
 }
 
-// GetPipelineStatus 查询流水线状态（通过 khunter 运行汇总推断）
+// GetPipelineStatus 查询流水线状态：运行中返回 khunter 实时阶段（含 Kronos
+// 异步旁路）；空闲时回读最近一次运行汇总。
 func (s *AnalysisCenterService) GetPipelineStatus() (PipelineStatus, error) {
 	if db.Dao == nil {
 		return PipelineStatus{}, errNoDB
+	}
+	if khunter.IsRunning() {
+		return PipelineStatus{
+			Running: true,
+			Step:    mapPipelineStep(khunter.CurrentStep()),
+			Message: "流水线运行中",
+		}, nil
 	}
 	var sum models.KhunterRunSummary
 	err := db.Dao.Order("trade_date DESC").First(&sum).Error
@@ -336,6 +355,20 @@ func (s *AnalysisCenterService) GetPipelineStatus() (PipelineStatus, error) {
 		status.Error = sum.Message
 	}
 	return status, nil
+}
+
+// mapPipelineStep khunter 内部阶段 → 展示步骤 key（数据获取/候选筛选/Kronos/AI预测）
+func mapPipelineStep(khStep string) string {
+	switch khStep {
+	case "data":
+		return "data"
+	case "scan", "score", "observe":
+		return "scan"
+	case "kronos":
+		return "kronos"
+	default:
+		return ""
+	}
 }
 
 // GetPipelineResult 获取流水线结果（推荐列表 + 状态）

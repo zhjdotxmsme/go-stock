@@ -126,15 +126,39 @@ async function startPipeline() {
   running.value = true
   error.value = ''
   try {
+    // 后台异步执行：立即返回，进度与完成经 GetPipelineStatus 轮询获得
     await runPipeline(tradeDateStr())
-    message.success('流水线运行完成')
-    await refresh()
   } catch (e: unknown) {
-    error.value = `运行失败：${errText(e)}`
-    message.error(error.value)
-  } finally {
     running.value = false
+    error.value = `启动失败：${errText(e)}`
+    message.error(error.value)
+    return
   }
+  pollUntilDone()
+}
+
+function pollUntilDone() {
+  pollTimer = window.setTimeout(async () => {
+    if (!running.value) return // 组件已卸载或运行被终止
+    try {
+      status.value = await fetchPipelineStatus()
+    } catch {
+      // 忽略单次轮询错误，继续下一轮
+    }
+    if (!running.value) return
+    if (status.value?.running) {
+      pollUntilDone()
+      return
+    }
+    running.value = false
+    if (status.value?.error) {
+      error.value = `运行失败：${status.value.error}`
+      message.error(error.value)
+    } else {
+      message.success('流水线运行完成')
+    }
+    await refresh()
+  }, 2000)
 }
 
 function onDateChange() {
@@ -145,25 +169,18 @@ function onExpand(code: string) {
   expandedCode.value = expandedCode.value === code ? '' : code
 }
 
-// ===== 轮询 =====
-async function pollStatus() {
-  try {
-    const s = await fetchPipelineStatus()
-    status.value = s
-    if (s.running) {
-      pollTimer = window.setTimeout(pollStatus, 2000)
-    }
-  } catch {
-    // 忽略轮询错误
+// ===== 生命周期 =====
+onMounted(async () => {
+  await refresh()
+  // 切回本页时若有流水线正在跑（后端 khunter 状态），接管轮询直到完成
+  if (status.value?.running) {
+    running.value = true
+    pollUntilDone()
   }
-}
-
-onMounted(() => {
-  refresh()
-  pollStatus()
 })
 
 onUnmounted(() => {
+  running.value = false
   if (pollTimer) window.clearTimeout(pollTimer)
 })
 </script>

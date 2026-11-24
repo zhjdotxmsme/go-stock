@@ -128,6 +128,25 @@ var ErrPipelineRunning = errors.New("狩猎场流水线正在运行，请等待�
 
 var pipelineRunning atomic.Bool
 
+// pipelineStepVal 记录流水线当前阶段（data/scan/score/observe/kronos），
+// 供分析中心进度条轮询；kronosRunning 覆盖第 8 步异步旁路批量预测。
+var pipelineStepVal atomic.Value
+var kronosRunning atomic.Bool
+
+// setStep 记录当前阶段，只在 runLivePipeline 主流程顺序调用，无并发竞争。
+func setStep(s string) { pipelineStepVal.Store(s) }
+
+// IsRunning 流水线主流程或 Kronos 批量预测旁路是否在跑
+func IsRunning() bool { return pipelineRunning.Load() || kronosRunning.Load() }
+
+// CurrentStep 当前阶段；空闲时返回空字符串
+func CurrentStep() string {
+	if v, ok := pipelineStepVal.Load().(string); ok {
+		return v
+	}
+	return ""
+}
+
 // marketRisk 计算并返回当日沪深300风险档；数据不足时按保守默认档处理。
 func marketRisk(ctx context.Context, tradeDate string, now time.Time) (risk.Level, float64) {
 	lv := risk.LevelOf(0)
@@ -375,6 +394,7 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 	}()
 
 	// 1. 全市场股票清单（A 股）
+	setStep("data")
 	stocks, err := loadStockList()
 	if err != nil {
 		return nil, err
@@ -382,6 +402,7 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 	res.StockTotal = len(stocks)
 
 	// 2. 5 策略并行扫描（纯本地 K 线，8 并发；停牌过滤：bars 末日 < tradeDate 跳过）
+	setStep("scan")
 	signals, hits, lastBars, stat := scanStrategySignals(ctx, tradeDate, stocks)
 	res.FreshStocks = len(lastBars)
 	res.InsufficientHistory = stat.InsufficientHistory
@@ -411,6 +432,7 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 	}
 	res.RiskLevel = lv.Name
 
+	setStep("score")
 	scores := make([]models.KhunterScore, 0, len(candidates))
 	if len(candidates) == 0 {
 		// 重跑同日且本次无候选：清空旧评分，保证库内结果和本次扫描一致。
@@ -478,6 +500,7 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 	//    syncCompleted 前提，也是第 8 步确认引擎的前置条件——证据只来自日K同步日志。
 	//    信号日风险画像同步落库（SignalRiskJSON/RiskHistoryJSON）：风险过滤只输出否决原因，
 	//    不修改形态与评分；信号日失败但后续恢复的候选仍可由确认引擎在拟入场日重算确认。
+	setStep("observe")
 	readiness := ComputeDataReadiness(ctx, tradeDate, now)
 	res.Readiness = &readiness
 	synced := readiness.Completed
@@ -524,10 +547,13 @@ func runLivePipeline(ctx context.Context, repo *Repo, tradeDate string, now time
 	//    结果按 (code, signal_date) 关联，不依赖 upsert 后的自增 ID。
 	if kcfg := LoadKronosFactorConfig(""); kcfg.Enable && len(observations) > 0 {
 		kcfg = AdjustedKronosWeight(context.Background(), kcfg)
+		setStep("kronos")
+		kronosRunning.Store(true)
 		go func(rows []models.KhunterObservation, byCode map[string]models.KhunterObservation, kc KronosFactorConfig) {
+			defer kronosRunning.Store(false)
 			defer func() {
 				if r := recover(); r != nil {
-					logger.SugaredLogger.Errorf("khunter Kronos 因子 panic: %v", r)
+					logger.SugaredLogger.Errorf("khunter Kronos factor panic: %v", r)
 				}
 			}()
 			frs, ferr := ApplyKronosFactor(context.Background(), rows, kc, data.KronosBatchPredict)
