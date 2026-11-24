@@ -1,5 +1,9 @@
 <template>
   <div v-if="visible" class="pipeline-detail">
+    <div class="detail-header">
+      <n-text strong>{{ detail?.name || code }}</n-text>
+      <n-button size="tiny" quaternary @click="emit('close')">收起</n-button>
+    </div>
     <n-spin :show="loading">
       <n-alert v-if="error" type="error" :bordered="false" style="margin-bottom: 12px">
         {{ error }}
@@ -144,6 +148,10 @@ const props = defineProps<{
   visible: boolean
 }>()
 
+const emit = defineEmits<{
+  (e: 'close'): void
+}>()
+
 const detail = ref<analysis.PipelineDetail | null>(null)
 const loading = ref(false)
 const error = ref('')
@@ -192,6 +200,14 @@ watch(() => [props.code, props.visible], () => {
   padding: 12px;
   background: var(--surface, #f8f9fa);
   border-radius: 8px;
+  margin-top: 8px;
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
 }
 
 .detail-card {

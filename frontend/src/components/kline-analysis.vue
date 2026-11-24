@@ -345,7 +345,7 @@ async function loadTechAnalysis() {
 </script>
 
 <template>
-  <div class="kline-analysis-page" :class="{ 'kline-analysis-page--dark': darkTheme }">
+  <div class="kline-analysis-page" :class="{ 'kline-analysis-page--dark': darkTheme, 'kline-analysis-page--embedded': embedded }">
     <div class="kline-title-bar">
       <NButton v-if="isFromQuery || embedded" size="tiny" quaternary @click="goBack" style="margin-right: 8px; padding: 0 4px">⟵ 返回</NButton>
       <NText :depth="darkTheme ? 1 : 3" style="font-size: 15px; font-weight: 700">{{ selectedName }}&nbsp;</NText>
@@ -452,6 +452,12 @@ async function loadTechAnalysis() {
   z-index: 10;
   width: 320px;
 }
+/* 嵌入流水线详情时：搜索栏改为静态顶部，避免 fixed 定位脱离容器 */
+.kline-analysis-page--embedded .kline-search-bar {
+  position: static;
+  width: 100%;
+  margin: 8px 0;
+}
 .recent-stocks {
   display: flex;
   align-items: center;
@@ -463,5 +469,9 @@ async function loadTechAnalysis() {
 .kline-tech-card {
   margin: 8px 0 90px 0;
   text-align: left;
+}
+/* 嵌入模式：不需要为 fixed 搜索栏留底部空间 */
+.kline-analysis-page--embedded .kline-tech-card {
+  margin: 8px 0;
 }
 </style>

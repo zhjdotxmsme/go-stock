@@ -10,6 +10,37 @@
     </n-space>
     <n-alert v-if="loadError" type="error" :bordered="false" style="margin-bottom: 8px">{{ loadError }}</n-alert>
     <n-data-table :columns="columns" :data="rows" :loading="loading" size="small" />
+
+    <!-- 预测结果弹窗 -->
+    <n-modal v-model:show="showForecastModal" preset="card" :title="forecastTitle" style="width: 480px">
+      <n-spin :show="forecastLoading">
+        <n-alert v-if="forecastError" type="error" :bordered="false">{{ forecastError }}</n-alert>
+        <template v-else-if="forecast">
+          <div class="forecast-summary">
+            <div class="forecast-direction" :class="forecast.direction === 'up' ? 'dir-up' : 'dir-down'">
+              {{ forecast.direction === 'up' ? '上涨' : '下跌' }}
+              {{ forecast.changePct > 0 ? '+' : '' }}{{ forecast.changePct?.toFixed(1) }}%
+            </div>
+            <div class="forecast-grid">
+              <div class="fg-row"><span>预测期末</span><span>{{ forecast.predEnd?.toFixed(2) }}</span></div>
+              <div class="fg-row"><span>区间</span><span>{{ forecast.predLow?.toFixed(2) }} ~ {{ forecast.predHigh?.toFixed(2) }}</span></div>
+              <div class="fg-row"><span>置信度</span><span>{{ forecast.confidence?.toFixed(0) }}/100</span></div>
+              <div class="fg-row"><span>预测天数</span><span>{{ forecast.predLen }} 天</span></div>
+            </div>
+          </div>
+          <n-divider style="margin: 12px 0" />
+          <div class="forecast-bars">
+            <div class="bars-title">预测 K 线（{{ forecastBars.length }} 根）</div>
+            <div class="bars-list">
+              <div v-for="bar in forecastBars" :key="bar.date" class="bar-row">
+                <span class="bar-date">{{ bar.date }}</span>
+                <span class="bar-ohlc">O:{{ bar.open?.toFixed(2) }} H:{{ bar.high?.toFixed(2) }} L:{{ bar.low?.toFixed(2) }} C:{{ bar.close?.toFixed(2) }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </n-spin>
+    </n-modal>
   </div>
 </template>
 
@@ -21,6 +52,7 @@ import {
   fetchRecommendations, fetchAnalysisStatus, fetchForecast, submitPredictJob, fetchPredictJob,
 } from '../../api/analysisCenter'
 import { rowSubtitle, kronosTagType, errText, type RecommendRow, type AnalysisCenterStatus } from './recommend'
+import type { data } from '../../../wailsjs/go/models'
 
 defineEmits<{ (e: 'open-research-recommends'): void }>()
 
@@ -30,6 +62,14 @@ const loading = ref(false)
 const loadError = ref('')
 const message = useMessage()
 const pollTimers = new Map<string, number>()
+
+// 预测结果弹窗
+const showForecastModal = ref(false)
+const forecastLoading = ref(false)
+const forecastError = ref('')
+const forecast = ref<data.KronosForecast | null>(null)
+const forecastBars = ref<data.KronosBar[]>([])
+const forecastTitle = ref('')
 
 const columns: DataTableColumns<RecommendRow> = [
   { title: '代码', key: 'code', width: 96 },
@@ -76,7 +116,6 @@ async function refresh() {
     rows.value = await fetchRecommendations()
     status.value = await fetchAnalysisStatus()
   } catch (e: unknown) {
-    // 门面返回 error 时必须显式报错，不能把空列表显示成"今天没候选"
     loadError.value = `加载失败：${errText(e)}`
   } finally {
     loading.value = false
@@ -84,16 +123,25 @@ async function refresh() {
 }
 
 async function expandForecast(row: RecommendRow) {
+  forecastTitle.value = `${row.name} (${row.code}) 预测明细`
+  showForecastModal.value = true
+  forecastLoading.value = true
+  forecastError.value = ''
+  forecast.value = null
+  forecastBars.value = []
   try {
     const raw = await fetchForecast(row.code, row.signalDate)
     if (!raw) {
-      message.warning('该候选暂无落库预测明细')
+      forecastError.value = '该候选暂无落库预测明细'
       return
     }
-    // 明细用 modal/抽屉展示预测曲线；最小实现为 JSON 预览
-    message.info(`${row.code} 预测明细已加载（${raw.length} 字节）`)
+    const parsed: data.KronosPrediction = JSON.parse(raw)
+    forecast.value = parsed.summary || null
+    forecastBars.value = parsed.bars || []
   } catch (e: unknown) {
-    message.error(`读取明细失败：${errText(e)}`)
+    forecastError.value = `解析预测明细失败：${errText(e)}`
+  } finally {
+    forecastLoading.value = false
   }
 }
 
@@ -112,6 +160,18 @@ async function pollJob(id: string) {
     const j = await fetchPredictJob(id)
     if (j.status === 'done') {
       message.success(`${j.code} 预测完成`)
+      // 自动展示结果
+      if (j.resultJson) {
+        try {
+          const parsed: data.KronosPrediction = JSON.parse(j.resultJson)
+          forecastTitle.value = `${j.code} 预测结果`
+          showForecastModal.value = true
+          forecast.value = parsed.summary || null
+          forecastBars.value = parsed.bars || []
+        } catch {
+          // 解析失败不弹窗
+        }
+      }
       return
     }
     if (j.status === 'failed') {
@@ -119,7 +179,6 @@ async function pollJob(id: string) {
       return
     }
   } catch (e: unknown) {
-    // 未知 ID / 任务过期：停止轮询并提示，绝不无限循环
     message.error(`预测任务已失效：${errText(e)}`)
     return
   }
@@ -136,3 +195,52 @@ onUnmounted(() => {
   pollTimers.clear()
 })
 </script>
+
+<style scoped>
+.forecast-summary {
+  text-align: center;
+}
+.forecast-direction {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.dir-up { color: #ef5350; }
+.dir-down { color: #26a69a; }
+.forecast-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fg-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--muted, #666);
+}
+.forecast-bars {
+  margin-top: 8px;
+}
+.bars-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.bars-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+.bar-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border, #eee);
+}
+.bar-date {
+  color: var(--muted, #999);
+}
+.bar-ohlc {
+  font-family: monospace;
+}
+</style>

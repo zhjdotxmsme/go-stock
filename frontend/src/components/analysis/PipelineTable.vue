@@ -7,17 +7,25 @@
       size="small"
       :row-key="(r: RecommendRow) => r.code"
     />
+    <!-- 展开详情面板 -->
+    <PipelineDetail
+      v-if="expandedCode"
+      :code="expandedCode"
+      :signal-date="expandedSignalDate"
+      :visible="true"
+      @close="emit('expand', '')"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { h, ref, watch } from 'vue'
+import { h, ref, watch, computed } from 'vue'
 import { NButton, NTag, NText, NIcon } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { ChevronDownOutline, ChevronUpOutline } from '@vicons/ionicons5'
 import PipelineDetail from './PipelineDetail.vue'
 import type { RecommendRow } from './recommend'
-import { rowSubtitle, kronosTagType } from './recommend'
+import { rowSubtitle } from './recommend'
 
 const props = defineProps<{
   rows: RecommendRow[]
@@ -29,10 +37,10 @@ const emit = defineEmits<{
   (e: 'expand', code: string): void
 }>()
 
-const expandedRowKeys = ref<string[]>([])
-
-watch(() => props.expandedCode, (code) => {
-  expandedRowKeys.value = code ? [code] : []
+// 找到展开行的 signalDate
+const expandedSignalDate = computed(() => {
+  const row = props.rows.find(r => r.code === props.expandedCode)
+  return row?.signalDate || ''
 })
 
 const columns: DataTableColumns<RecommendRow> = [
