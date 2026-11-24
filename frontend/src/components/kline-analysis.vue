@@ -236,8 +236,15 @@ onMounted(() => {
   updateChartHeight()
   window.addEventListener('resize', updateChartHeight)
 
+  // 从 props 直接传入代码（流水线详情等嵌入场景）
+  if (props.code) {
+    selectedCode.value = props.code
+    selectedName.value = props.stockName || resolveNameByCode(props.code) || ''
+    isFromQuery.value = true
+    searchQuery.value = selectedName.value
+  }
   // 从 query 参数自动加载股票（来自 stock.vue 的跳转）
-  if (route.query.code) {
+  else if (route.query.code) {
     selectedCode.value = route.query.code
     selectedName.value = route.query.name || resolveNameByCode(route.query.code) || ''
     isFromQuery.value = true
@@ -267,6 +274,26 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', updateChartHeight)
 })
 
+const props = defineProps({
+  // 嵌入分析中心 Tab 壳时为 true：返回交给父容器处理，不跳首页
+  embedded: { type: Boolean, default: false },
+  // 隐藏 K 线工具栏（周期/AI预测/多单等），用于流水线详情等紧凑场景
+  hideToolbar: { type: Boolean, default: false },
+  // 直接传入股票代码（东财格式如 600519.SH），用于流水线详情等场景
+  code: { type: String, default: '' },
+  // 直接传入股票名称，与 code 配合使用
+  stockName: { type: String, default: '' },
+})
+const emit = defineEmits(['back'])
+
+function goBack() {
+  if (props.embedded) {
+    emit('back')
+    return
+  }
+  router.push({ path: '/' })
+}
+
 // 监听路由 query 变化（从 stock.vue 切换不同股票时）
 watch(() => route.query.code, (newCode) => {
   if (newCode && newCode !== selectedCode.value) {
@@ -279,21 +306,16 @@ watch(() => route.query.code, (newCode) => {
   }
 })
 
-const props = defineProps({
-  // 嵌入分析中心 Tab 壳时为 true：返回交给父容器处理，不跳首页
-  embedded: { type: Boolean, default: false },
-  // 隐藏 K 线工具栏（周期/AI预测/多单等），用于流水线详情等紧凑场景
-  hideToolbar: { type: Boolean, default: false },
-})
-const emit = defineEmits(['back'])
-
-function goBack() {
-  if (props.embedded) {
-    emit('back')
-    return
+// 监听 props.code 变化（流水线详情切换不同股票时）
+watch(() => props.code, (newCode) => {
+  if (newCode && newCode !== selectedCode.value) {
+    selectedCode.value = newCode
+    selectedName.value = props.stockName || resolveNameByCode(newCode) || ''
+    isFromQuery.value = true
+    searchQuery.value = selectedName.value
+    loadTechAnalysis()
   }
-  router.push({ path: '/' })
-}
+})
 
 /** 从已加载的股票列表中补全显示名，避免标题只显示代码 */
 function resolveNameByCode(code) {
